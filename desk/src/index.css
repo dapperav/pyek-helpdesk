@@ -204,12 +204,30 @@ body {
   --surface-gray-3: rgba(255, 255, 255, 0.12); /* user-menu hover */
   --surface-base: rgba(255, 255, 255, 0.1); /* user-menu open */
 
-  /* Active nav pill -> accent blue (active item uses bg-surface-elevation-3) */
-  --surface-elevation-3: #2563eb;
+  /* Active nav pill -> a softer translucent blue so the bright left accent bar
+     below reads against it (active item uses bg-surface-elevation-3). */
+  --surface-elevation-3: rgba(37, 99, 235, 0.32);
 
   /* Dividers / right border -> faint white so they read on navy */
   --outline-gray-1: rgba(255, 255, 255, 0.12);
   --outline-gray-2: rgba(255, 255, 255, 0.12);
+}
+
+/* Bright blue left accent bar on the active nav item (Outlook/Teams style).
+   Centered vertically at 60% height so it clears the row's rounded corners. */
+[data-slot="sidebar"] [data-slot="sidebar-item"][data-state="active"] {
+  position: relative;
+}
+[data-slot="sidebar"] [data-slot="sidebar-item"][data-state="active"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background-color: #60a5fa;
 }
 
 /* --- Accent blue = PYEK blue (themed blue vars are baked to hex, so remap
