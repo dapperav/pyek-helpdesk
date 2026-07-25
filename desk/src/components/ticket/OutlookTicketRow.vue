@@ -53,21 +53,16 @@
         >
           {{ requester }}
         </span>
-        <span
-          v-if="isMobileView"
-          class="size-2 shrink-0 rounded-full"
-          :style="{ backgroundColor: statusDotColor }"
-          :title="statusLabel"
-        />
         <span class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
       </div>
 
       <!-- Line 2: priority indicator + subject + status pill -->
       <div class="flex items-center gap-2">
         <span
+          v-if="isHighPriority"
           class="size-2 shrink-0 rounded-full"
           :style="{ backgroundColor: priorityColor }"
-          :title="row.priority || 'No priority'"
+          :title="row.priority"
         />
         <span
           class="min-w-0 flex-1 truncate text-sm"
@@ -207,6 +202,11 @@ const PRIORITY_COLORS: Record<string, string> = {
 const priorityColor = computed(
   () => PRIORITY_COLORS[props.row.priority] || "#CBD5E1"
 );
+// Only surface the priority dot when it's actionable (High/Urgent) — Medium/Low
+// dots showed on nearly every row and just added noise.
+const isHighPriority = computed(() =>
+  ["High", "Urgent"].includes(props.row.priority)
+);
 
 // --- Status pill ---
 const STATUS_THEME: Record<string, string> = {
@@ -222,20 +222,6 @@ const statusLabel = computed(
   () => getStatus(props.row.status)?.label_agent || props.row.status || ""
 );
 const statusTheme = computed(() => STATUS_THEME[props.row.status] || "gray");
-
-// On phones the text pill is shown as a compact colored dot to save row width.
-const STATUS_DOT: Record<string, string> = {
-  Open: "#2563EB",
-  Replied: "#16A34A",
-  Resolved: "#16A34A",
-  Closed: "#64748B",
-  "Waiting on Customer": "#D97706",
-  "On Hold": "#64748B",
-  Escalated: "#E03434",
-};
-const statusDotColor = computed(
-  () => STATUS_DOT[props.row.status] || "#94A3B8"
-);
 
 // --- Due date (AI-enriched `pyek_requested_due_date`; replaces the old SLA
 // badge). Shown only when a due date is set; turns red once overdue and
