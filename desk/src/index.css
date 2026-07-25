@@ -169,3 +169,78 @@ body {
     --fade-bottom: 0px;
   }
 }
+
+/* ==========================================================================
+   PYEK BRANDING
+   Matches the Barcuda app so the two tools read as one PYEK toolset.
+   frappe-ui is a monochrome theme whose semantic Tailwind classes resolve to
+   CSS custom properties (e.g. `bg-surface-sidebar` -> var(--surface-sidebar)).
+   We rebrand by REMAPPING those variables rather than editing components:
+     - navy sidebar + light text: scoped to [data-slot="sidebar"] (vars inherit,
+       so the whole sidebar subtree recolors without touching the rest of the app)
+     - accent blue (links / focus / toggles / primary buttons): a small set of
+       themed blue + darkest-surface vars remapped to the PYEK blue family.
+   Inter is already the global body font (frappe-ui loads InterVar); we only add
+   tighter heading tracking to match Barcuda.
+   Brand navy #1B2A4A · accent #2563EB · darker #1D4ED8 · lighter #3B82F6
+   ========================================================================== */
+
+/* --- Navy sidebar (scoped so only the app sidebar is affected) --- */
+[data-slot="sidebar"] {
+  /* Sidebar surface -> brand navy */
+  --surface-sidebar: #1b2a4a;
+
+  /* Flip the ink ramp light so text/icons are legible on navy. These cascade
+     to every descendant of the sidebar via custom-property inheritance. */
+  --ink-gray-9: #ffffff; /* brand name, section chevrons */
+  --ink-gray-8: #ffffff; /* active nav label */
+  --ink-gray-7: #cbd6e6; /* nav icons, username */
+  --ink-gray-6: #b6c2d6; /* inactive nav labels */
+  --ink-gray-5: #93a1bd; /* ⌘K hint, chevron-down */
+  --ink-gray-4: #7b88a6;
+
+  /* Hover / open surfaces -> subtle translucent white on navy */
+  --surface-gray-2: rgba(255, 255, 255, 0.08); /* nav item hover */
+  --surface-gray-3: rgba(255, 255, 255, 0.12); /* user-menu hover */
+  --surface-base: rgba(255, 255, 255, 0.1); /* user-menu open */
+
+  /* Active nav pill -> accent blue (active item uses bg-surface-elevation-3) */
+  --surface-elevation-3: #2563eb;
+
+  /* Dividers / right border -> faint white so they read on navy */
+  --outline-gray-1: rgba(255, 255, 255, 0.12);
+  --outline-gray-2: rgba(255, 255, 255, 0.12);
+}
+
+/* --- Accent blue = PYEK blue (themed blue vars are baked to hex, so remap
+   them directly). Applied in both themes; blue reads the same either way. --- */
+:root,
+[data-theme="dark"] {
+  --ink-blue-link: #2563eb;
+  --ink-blue-4: #3b82f6;
+  --ink-blue-5: #2563eb;
+  --ink-blue-6: #1d4ed8;
+  --surface-blue-4: #3b82f6;
+  --surface-blue-5: #2563eb;
+  --surface-blue-6: #1d4ed8;
+  --outline-blue-4: #3b82f6;
+  --outline-blue-5: #2563eb;
+  --outline-blue-6: #1d4ed8;
+}
+
+/* --- Primary (solid) buttons: frappe's default is near-black
+   (bg-surface-gray-10 / hover bg-surface-gray-9, white text). Recolor to PYEK
+   blue. Light mode only so dark mode's light buttons are left intact. --- */
+:root:not([data-theme="dark"]) {
+  --surface-gray-10: #2563eb; /* primary button bg */
+  --surface-gray-9: #1d4ed8; /* primary button hover */
+  --surface-gray-8: #1e40af; /* primary button active */
+}
+
+/* --- Barcuda heading polish: slightly tighter tracking --- */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.011em;
+}
