@@ -43,11 +43,6 @@
       <!-- Line 1: requester + date -->
       <div class="flex items-center gap-2">
         <span
-          v-if="unread"
-          class="size-2 shrink-0 rounded-full bg-surface-blue-5"
-          title="Unread"
-        />
-        <span
           class="min-w-0 flex-1 truncate text-sm text-ink-gray-8"
           :class="unread ? 'font-semibold' : 'font-medium'"
         >
