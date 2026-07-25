@@ -237,6 +237,19 @@ body {
   --surface-gray-8: #1e40af; /* primary button active */
 }
 
+/* --- Keep dark chrome (toasts, tooltips) neutral. In frappe's monochrome
+   system the primary button and the dark toast/tooltip share the darkest-
+   surface tokens (surface-gray-9/10), which we remapped to blue above. Restore
+   those two surfaces via their own reliable selectors so error/info toasts and
+   tooltips read as neutral dark, not accent blue. Among reka poppers only the
+   tooltip bubble uses bg-surface-gray-10, so there's no collision. --- */
+[data-sonner-toast] {
+  background-color: #383838 !important; /* original surface-gray-9 */
+}
+[data-reka-popper-content-wrapper] .bg-surface-gray-10 {
+  background-color: #171717 !important; /* tooltip bubble, original surface-gray-10 */
+}
+
 /* --- Barcuda heading polish: slightly tighter tracking --- */
 h1,
 h2,
