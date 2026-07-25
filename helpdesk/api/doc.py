@@ -152,30 +152,44 @@ def get_list_data(
 
         _cutoff = add_days(today(), 7)
 
-        def _with_condition(base, field, op, value):
-            if isinstance(base, dict):
-                merged = dict(base)
-                merged[field] = [op, value]
-                return merged
-            return list(base) + [[field, op, value]]
+        # Normalise incoming filters to a list of [field, op, value] conditions
+        # so we can safely append the due-date bounds (a dict can't hold two
+        # conditions on the same field).
+        if isinstance(filters, dict):
+            _base = []
+            for _k, _v in filters.items():
+                if isinstance(_v, (list, tuple)) and len(_v) == 2:
+                    _base.append([_k, _v[0], _v[1]])
+                else:
+                    _base.append([_k, "=", _v])
+        else:
+            _base = list(filters)
 
+        # IMPORTANT: frappe's `<=` on a nullable Date INCLUDES NULL rows, so the
+        # due-soon bucket MUST also require the field is set — otherwise every
+        # no-due ticket falls into it and (since NULLs sort first on `asc`)
+        # buries the real due dates at the top. Verified against the live data.
         _due_soon = (
             frappe.get_list(
                 doctype,
                 fields=rows,
-                filters=_with_condition(
-                    filters, "pyek_requested_due_date", "<=", _cutoff
-                ),
+                filters=_base
+                + [
+                    ["pyek_requested_due_date", "is", "set"],
+                    ["pyek_requested_due_date", "<=", _cutoff],
+                ],
                 order_by="pyek_requested_due_date asc",
                 page_length=page_length,
             )
             or []
         )
+        # Everything else (no due date, or due beyond the cutoff), in the
+        # requested order. Disjoint from the due-soon bucket.
         _rest = (
             frappe.get_list(
                 doctype,
                 fields=rows,
-                filters=filters,
+                filters=_base,
                 or_filters=[
                     ["pyek_requested_due_date", "is", "not set"],
                     ["pyek_requested_due_date", ">", _cutoff],
