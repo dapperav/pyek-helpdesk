@@ -42,6 +42,20 @@
   >
     <LoadingIndicator :scale="8" />
   </div>
+  <!-- Outlook-inbox rows (PYEK): custom row rendering, all list chrome above
+       and the footer below stay intact. -->
+  <div
+    v-else-if="options.outlookRows && list.data?.data.length > 0"
+    class="flex-1 overflow-y-auto"
+  >
+    <OutlookTicketRow
+      v-for="row in list.data.data"
+      :key="row.name"
+      :row="row"
+      @click="openOutlookRow(row)"
+    />
+  </div>
+
   <!-- List View -->
   <ListView
     v-else-if="list.data?.data.length > 0"
@@ -174,6 +188,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import EmptyState from "./EmptyState.vue";
 import ListRows from "./ListRows.vue";
+import OutlookTicketRow from "./ticket/OutlookTicketRow.vue";
 
 interface P {
   options: {
@@ -196,6 +211,9 @@ interface P {
     default_page_length?: number;
     isCustomerPortal?: boolean;
     rowRoute?: Record<string, string>;
+    // PYEK: render the list as Outlook-inbox style rows instead of the column
+    // table. Keeps all view/filter/sort/pagination chrome intact.
+    outlookRows?: boolean;
   };
 }
 
@@ -337,6 +355,15 @@ const options = computed(() => {
     ...props.options,
   };
 });
+
+// PYEK: navigate on Outlook-row click (mirrors ListView's getRowRoute).
+function openOutlookRow(row: any) {
+  router.push({
+    name: options.value.rowRoute?.name,
+    params: { [options.value.rowRoute?.prop as string]: row.name },
+    query: { view: route.query?.view },
+  });
+}
 
 const { isMobileView } = useScreenSize();
 

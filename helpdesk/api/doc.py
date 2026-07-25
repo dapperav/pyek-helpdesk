@@ -113,6 +113,27 @@ def get_list_data(
     rows.append("name") if "name" not in rows else rows
     if doctype == "HD Ticket":
         rows.append("_seen") if "_seen" not in rows else rows
+        # PYEK: fields the Outlook-style agent list row renders (requester, park
+        # strip, SLA, preview snippet, date). Force-appended so they're present
+        # under any saved view, mirroring the _seen append above. Agent portal
+        # only — don't push internal fields into the customer portal payload.
+        if not show_customer_portal_fields:
+            for _pyek_field in (
+                "raised_by",
+                "contact",
+                "subject",
+                "status",
+                "priority",
+                "agent_group",
+                "agreement_status",
+                "status_category",
+                "pyek_property",
+                "description",
+                "modified",
+                "creation",
+            ):
+                if _pyek_field not in rows:
+                    rows.append(_pyek_field)
     data = (
         frappe.get_list(
             doctype,

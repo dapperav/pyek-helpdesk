@@ -84,6 +84,7 @@ import { useAuthStore } from "@/stores/auth";
 import { __ } from "@/translation";
 import { AxisChart, Button, createResource, dayjs, DonutChart, NumberChart, usePageMeta } from "frappe-ui";
 import { computed } from "vue";
+import { parkColor, parkLabel } from "@/config/parks";
 
 usePageMeta(() => ({ title: __("Dashboard") }));
 
@@ -206,20 +207,6 @@ const teamChart = computed(() => {
 });
 
 // ---- By Park (donut, brand colors) --------------------------------------
-const PARK_COLORS: Record<string, string> = {
-  TTH: "#E91E8C",
-  TTA: "#2563EB",
-  CBB: "#0891B2",
-  CBC: "#D97706",
-  CBV: "#7C3AED",
-  ALL: "#16A34A",
-  DTL: "#0EA5E9",
-};
-function parkLabel(v: any): string {
-  if (!v) return "Unspecified";
-  if (String(v).toLowerCase().startsWith("corporate")) return "Corporate";
-  return String(v);
-}
 const parkChart = computed(() => {
   const m = countBy(rows.value, (t) => parkLabel(t.pyek_property));
   const data = [...m.entries()].map(([label, value]) => ({ label, value }));
@@ -228,11 +215,7 @@ const parkChart = computed(() => {
     data,
     categoryColumn: "label",
     valueColumn: "value",
-    colors: data.map(
-      (d) =>
-        PARK_COLORS[d.label] ||
-        (d.label === "Corporate" ? "#475569" : "#94A3B8")
-    ),
+    colors: data.map((d) => parkColor(d.label)),
     maxSliceCount: 12,
   };
 });

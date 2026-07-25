@@ -178,6 +178,8 @@ const options = computed(() => ({
     },
   },
   isCustomerPortal: isCustomerPortal.value,
+  // PYEK: Outlook-inbox row layout for the agent portal only.
+  outlookRows: !isCustomerPortal.value,
   selectable: true,
   showSelectBanner: true,
   selectBannerActions,
