@@ -148,6 +148,34 @@ def get_list_data(
     if doctype == "TP Call Log":
         data = parse_call_logs(data)
 
+    # PYEK: attach the latest email in each ticket's thread as `_last_message`
+    # so the agent list preview shows the most recent reply (Outlook-style), not
+    # the original description. Falls back to the description when a ticket has
+    # no email communications yet (e.g. portal/Wrike-created). Agent portal only.
+    if doctype == "HD Ticket" and not show_customer_portal_fields and data:
+        from frappe.utils import strip_html_tags
+
+        _names = [d.get("name") for d in data if d.get("name")]
+        if _names:
+            _comms = frappe.get_all(
+                "Communication",
+                filters={
+                    "reference_doctype": "HD Ticket",
+                    "reference_name": ["in", _names],
+                    "communication_type": "Communication",
+                },
+                fields=["reference_name", "content"],
+                order_by="creation desc",
+            )
+            _latest = {}
+            for _c in _comms:
+                _rn = _c.get("reference_name")
+                if _rn and _rn not in _latest:
+                    _latest[_rn] = _c.get("content")
+            for _d in data:
+                _html = _latest.get(_d.get("name")) or _d.get("description") or ""
+                _d["_last_message"] = " ".join(strip_html_tags(_html).split())[:200]
+
     fields = frappe.get_meta(doctype).fields
     fields = [field for field in fields if field.fieldtype not in no_value_fields]
     fields = [

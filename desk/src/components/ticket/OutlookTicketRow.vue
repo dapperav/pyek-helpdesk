@@ -175,8 +175,11 @@ const SLA_THEME: Record<string, string> = {
 };
 const slaTheme = computed(() => SLA_THEME[props.row.agreement_status] || null);
 
-// --- Preview snippet from the ticket description (HTML -> plain text) ---
+// --- Preview snippet: the latest email in the thread (Outlook-style), provided
+// pre-stripped by the backend as `_last_message`; falls back to the ticket
+// description (HTML) when there are no email communications yet. ---
 const snippet = computed(() => {
+  if (props.row._last_message) return props.row._last_message;
   const html = props.row.description;
   if (!html) return "";
   const el = document.createElement("div");
