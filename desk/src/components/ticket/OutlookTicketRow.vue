@@ -27,6 +27,12 @@
         >
           {{ requester }}
         </span>
+        <span
+          v-if="isMobileView"
+          class="size-2 shrink-0 rounded-full"
+          :style="{ backgroundColor: statusDotColor }"
+          :title="statusLabel"
+        />
         <span class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
       </div>
 
@@ -44,7 +50,7 @@
           {{ row.subject || __("(No subject)") }}
         </span>
         <Badge
-          v-if="statusLabel"
+          v-if="statusLabel && !isMobileView"
           class="shrink-0"
           :label="statusLabel"
           :theme="statusTheme"
@@ -58,7 +64,7 @@
           {{ snippet }}
         </span>
         <Badge
-          v-if="slaTheme"
+          v-if="slaTheme && !isMobileView"
           class="shrink-0"
           :label="__(row.agreement_status)"
           :theme="slaTheme"
@@ -66,6 +72,7 @@
         />
         <MultipleAvatar
           v-if="row._assign"
+          class="shrink-0"
           :avatars="row._assign"
           :hide-name="true"
         />
@@ -76,6 +83,7 @@
 
 <script setup lang="ts">
 import { MultipleAvatar } from "@/components";
+import { useScreenSize } from "@/composables/screen";
 import { parkColor, parkLabel } from "@/config/parks";
 import { useAuthStore } from "@/stores/auth";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
@@ -88,6 +96,7 @@ defineEmits<{ (e: "click"): void }>();
 
 const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
+const { isMobileView } = useScreenSize();
 
 // --- Park strip ---
 const park = computed(() => parkLabel(props.row.pyek_property));
@@ -143,6 +152,20 @@ const statusLabel = computed(
   () => getStatus(props.row.status)?.label_agent || props.row.status || ""
 );
 const statusTheme = computed(() => STATUS_THEME[props.row.status] || "gray");
+
+// On phones the text pill is shown as a compact colored dot to save row width.
+const STATUS_DOT: Record<string, string> = {
+  Open: "#2563EB",
+  Replied: "#16A34A",
+  Resolved: "#16A34A",
+  Closed: "#64748B",
+  "Waiting on Customer": "#D97706",
+  "On Hold": "#64748B",
+  Escalated: "#E03434",
+};
+const statusDotColor = computed(
+  () => STATUS_DOT[props.row.status] || "#94A3B8"
+);
 
 // --- SLA badge (only the actionable states; hide Fulfilled/Paused/empty) ---
 const SLA_THEME: Record<string, string> = {

@@ -26,7 +26,9 @@ const portalRoutes = [
   // Agent Portal Routes
   {
     path: "",
-    redirect: "/home",
+    // PYEK: phones open straight to the ticket inbox; desktop lands on the
+    // dashboard home.
+    redirect: () => (isMobileView.value ? "/tickets" : "/home"),
   },
   {
     path: "/home",
