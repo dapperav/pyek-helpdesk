@@ -46,29 +46,28 @@
        and the footer below stay intact. -->
   <div
     v-else-if="options.outlookRows && list.data?.data.length > 0"
-    class="relative flex flex-1 flex-col overflow-hidden"
+    class="flex-1 overflow-y-auto"
   >
-    <div class="flex-1 overflow-y-auto">
-      <OutlookTicketRow
-        v-for="row in list.data.data"
-        :key="row.name"
-        :row="row"
-        :selected="outlookSelected.has(row.name)"
-        @click="openOutlookRow(row)"
-        @toggle="toggleOutlookSelect(row.name)"
-      />
-    </div>
-    <!-- Bulk action bar (PYEK): appears when rows are selected -->
+    <OutlookTicketRow
+      v-for="row in list.data.data"
+      :key="row.name"
+      :row="row"
+      :selected="outlookSelected.has(row.name)"
+      @click="openOutlookRow(row)"
+      @toggle="toggleOutlookSelect(row.name)"
+    />
+    <!-- Bulk action bar (PYEK): sticky at the bottom of the list whenever rows
+         are selected, so the status control is always visible. -->
     <div
       v-if="outlookSelected.size"
-      class="flex items-center justify-between gap-3 border-t bg-surface-white px-4 py-2.5"
+      class="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-surface-white px-4 py-3 shadow-lg"
     >
       <span class="text-sm font-medium text-ink-gray-7">
         {{ outlookSelected.size }} {{ __("selected") }}
       </span>
       <div class="flex items-center gap-2">
         <Dropdown :options="bulkStatusOptions" placement="top">
-          <Button :label="__('Set status')" :loading="bulkUpdating">
+          <Button variant="solid" :label="__('Set status')" :loading="bulkUpdating">
             <template #suffix>
               <FeatherIcon name="chevron-down" class="h-4 w-4" />
             </template>
