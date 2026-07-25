@@ -31,7 +31,10 @@ const portalRoutes = [
   {
     path: "/home",
     name: "Home",
-    component: () => import("@/pages/home/Home.vue"),
+    // PYEK: branded dashboard landing (metric cards + charts + saved-view
+    // launchers). Upstream Home.vue (the customizable widget board) is kept in
+    // the tree but no longer the landing.
+    component: () => import("@/pages/home/PyekHome.vue"),
   },
 
   {
