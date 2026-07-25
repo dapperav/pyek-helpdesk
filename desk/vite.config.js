@@ -55,12 +55,12 @@ export default defineConfig(async ({ mode }) => {
         },
         manifest: {
           display: "standalone",
-          name: "PYEK Helpdesk",
-          short_name: "PYEK Helpdesk",
+          name: "PYEKMAIL",
+          short_name: "PYEKMAIL",
           start_url: "/helpdesk",
           theme_color: "#1B2A4A",
           background_color: "#1B2A4A",
-          description: "PYEK Group internal helpdesk — POS & IT support.",
+          description: "PYEKMAIL — PYEK Group internal support portal.",
           icons: [
             {
               src: "/assets/helpdesk/desk/manifest/pyek-icon-192.png",
