@@ -1,5 +1,13 @@
 <template>
-  <div class="flex border-b h-12 items-center">
+  <!-- height = the 48px bar + the iOS status-bar/notch inset (needed because
+       the viewport is now viewport-fit=cover, so content fills to the edges). -->
+  <div
+    class="flex border-b items-center"
+    style="
+      height: calc(3rem + env(safe-area-inset-top));
+      padding-top: env(safe-area-inset-top);
+    "
+  >
     <div class="z-20 -mr-4 ml-1 flex items-center justify-center">
       <Button variant="ghosted" @click="sidebarOpened = !sidebarOpened">
         <FeatherIcon name="menu" class="size-4" />
