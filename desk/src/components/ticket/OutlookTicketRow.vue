@@ -14,26 +14,29 @@
       :title="park"
     />
 
-    <!-- Select checkbox (tap to select without opening the ticket) -->
+    <!-- Select checkbox (tap to select without opening the ticket). Wide,
+         full-height tap target so it's easy to hit and won't open the ticket. -->
     <button
       type="button"
-      class="grid shrink-0 place-items-center pl-2.5 pr-0.5"
-      :aria-pressed="selected"
+      role="checkbox"
+      class="grid shrink-0 place-items-center px-3"
+      :aria-label="selected ? 'Deselect ticket' : 'Select ticket'"
+      :aria-checked="selected"
       @click.stop="$emit('toggle')"
     >
       <span
-        class="grid size-4 place-items-center rounded border transition"
+        class="grid size-5 place-items-center rounded-md border transition"
         :class="
           selected
             ? 'border-transparent bg-surface-blue-5 text-white'
             : 'border-outline-gray-4'
         "
       >
-        <LucideCheck v-if="selected" class="size-3" />
+        <LucideCheck v-if="selected" class="size-3.5" />
       </span>
     </button>
 
-    <div class="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-2 pr-4">
+    <div class="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-1 pr-4">
       <!-- Line 1: requester + date -->
       <div class="flex items-center gap-2">
         <span
