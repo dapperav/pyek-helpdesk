@@ -1,27 +1,34 @@
 <template>
-  <!-- height = the 48px bar + the iOS status-bar/notch inset (needed because
-       the viewport is now viewport-fit=cover, so content fills to the edges). -->
+  <!-- Navy brand bar — bookends the navy footer. It extends up behind the
+       status bar (padding-top = the notch/status inset, needed since the
+       viewport is viewport-fit=cover); status text is white via
+       apple-mobile-web-app-status-bar-style=black-translucent. Brand + menu
+       only — the page controls live on the white row below, so nothing here
+       needs light-on-navy restyling. -->
   <div
-    class="flex border-b items-center"
+    class="flex items-center gap-2 px-3"
     style="
+      background-color: #1b2a4a;
       height: calc(3rem + env(safe-area-inset-top));
       padding-top: env(safe-area-inset-top);
     "
   >
-    <div class="z-20 -mr-4 ml-1 flex items-center justify-center">
-      <Button variant="ghosted" @click="sidebarOpened = !sidebarOpened">
-        <FeatherIcon name="menu" class="size-4" />
-      </Button>
-    </div>
-    <!-- PYEK: brand lockup so the PYEKMAIL identity shows on mobile / the
-         installed PWA — the navy sidebar that carries the brand on desktop is
-         drawer-only on mobile, so without this the top bar is unbranded. -->
-    <div class="flex shrink-0 items-center gap-1.5 pl-5 pr-2">
-      <PyekMark class="h-5 w-auto shrink-0" />
-      <span class="text-base font-semibold tracking-wide text-ink-gray-9">
-        PYEKMAIL
-      </span>
-    </div>
+    <button
+      type="button"
+      class="grid size-8 shrink-0 place-items-center rounded text-white/90 transition active:bg-white/10"
+      aria-label="Open menu"
+      @click="sidebarOpened = !sidebarOpened"
+    >
+      <FeatherIcon name="menu" class="size-5" />
+    </button>
+    <PyekMark class="h-5 w-auto shrink-0" />
+    <span class="text-base font-semibold tracking-wide text-white">
+      PYEKMAIL
+    </span>
+  </div>
+  <!-- White controls row: the page title / breadcrumb / view switcher /
+       Create button teleport into #app-header here, on white as designed. -->
+  <div class="flex h-12 items-center border-b border-outline-gray-2 pl-1 pr-2">
     <header id="app-header" class="w-full min-w-0"></header>
   </div>
   <CallUI class="mr-3 mt-2" :userEmail="user" />
