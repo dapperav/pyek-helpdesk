@@ -1,70 +1,92 @@
 <template>
   <!-- PYEK: persistent bottom tab bar for phones. Rendered only inside
-       MobileLayout, so desktop is untouched. The hamburger drawer stays for
-       everything else (saved views, profile, settings, logout, search). -->
+       MobileLayout, so desktop is untouched. Big touch targets; POS / IT jump
+       straight to those saved ticket queues. The hamburger drawer stays for
+       everything else (all tickets, views, profile, settings, logout, search). -->
   <nav
     class="flex shrink-0 items-stretch border-t border-outline-gray-2 bg-surface-white"
     :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
   >
     <button
       v-for="item in items"
-      :key="item.to"
-      class="flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5"
-      :class="isActive(item.to) ? 'text-ink-blue-5' : 'text-ink-gray-5'"
-      @click="go(item.to)"
+      :key="item.key"
+      class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 py-2 active:bg-surface-gray-2"
+      :class="isActive(item) ? 'text-ink-blue-5' : 'text-ink-gray-6'"
+      @click="go(item)"
     >
-      <span class="relative grid size-5 place-items-center">
-        <component :is="item.icon" class="size-5" />
+      <span class="relative grid size-6 place-items-center">
+        <component :is="item.icon" class="size-6" />
         <span
           v-if="item.badge"
-          class="absolute -right-1 -top-1 min-w-3 rounded-full bg-surface-blue-5 px-1 text-center text-[9px] font-medium leading-3 text-white"
+          class="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-surface-blue-5 px-1 text-center text-[10px] font-semibold leading-4 text-white"
         >
           {{ item.badge > 9 ? "9+" : item.badge }}
         </span>
       </span>
-      <span class="text-[10px] font-medium leading-none">{{
-        __(item.label)
-      }}</span>
+      <span class="text-xs font-medium leading-none">{{ item.label }}</span>
     </button>
   </nav>
 </template>
 
 <script setup lang="ts">
+import { useView } from "@/composables/useView";
 import { useNotificationStore } from "@/stores/notification";
-import { useTelephonyStore } from "@/stores/telephony";
 import { __ } from "@/translation";
-import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LucideBell from "~icons/lucide/bell";
-import { agentPortalSidebarOptions } from "./layoutSettings";
+import LucideHome from "~icons/lucide/home";
+import LucideMonitor from "~icons/lucide/monitor";
+import LucideStore from "~icons/lucide/store";
 
 const route = useRoute();
 const router = useRouter();
-const { isCallingEnabled } = storeToRefs(useTelephonyStore());
 const notificationStore = useNotificationStore();
+const { publicViews } = useView();
 
-// Primary destinations from the shared nav config (kept in sync with the
-// sidebar) plus Notifications, which on mobile is its own page.
-const items = computed(() => {
-  const nav = agentPortalSidebarOptions
-    .filter((i) => isCallingEnabled.value || i.label !== __("Call Logs"))
-    .map((i) => ({ label: i.label, icon: i.icon, to: i.to, badge: 0 }));
-  return [
-    ...nav,
-    {
-      label: __("Alerts"),
-      icon: LucideBell,
-      to: "Notifications",
-      badge: notificationStore.unread,
-    },
-  ];
-});
-
-function isActive(name: string) {
-  return route.name === name;
+// Resolve a saved HD View id from its label (POS Tickets / IT Tickets), so the
+// POS/IT tabs open those exact queues. Falls back to the plain ticket list.
+function viewId(label: string): string | undefined {
+  return (publicViews.value || []).find((v: any) => v.label === label)?.name;
 }
-function go(name: string) {
-  if (route.name !== name) router.push({ name });
+
+type Item = {
+  key: string;
+  label: string;
+  icon: any;
+  route?: string;
+  view?: string;
+  badge?: number;
+};
+
+const items = computed<Item[]>(() => [
+  { key: "home", label: __("Home"), icon: LucideHome, route: "Home" },
+  { key: "pos", label: __("POS"), icon: LucideStore, view: "POS Tickets" },
+  { key: "it", label: __("IT"), icon: LucideMonitor, view: "IT Tickets" },
+  {
+    key: "alerts",
+    label: __("Alerts"),
+    icon: LucideBell,
+    route: "Notifications",
+    badge: notificationStore.unread,
+  },
+]);
+
+function isActive(item: Item): boolean {
+  if (item.view) {
+    return (
+      route.name === "TicketsAgent" && route.query.view === viewId(item.view)
+    );
+  }
+  return route.name === item.route;
+}
+
+function go(item: Item) {
+  if (item.view) {
+    const vn = viewId(item.view);
+    router.push({ name: "TicketsAgent", query: vn ? { view: vn } : {} });
+  } else if (route.name !== item.route) {
+    router.push({ name: item.route as string });
+  }
 }
 </script>
