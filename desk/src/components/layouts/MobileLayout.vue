@@ -1,5 +1,9 @@
 <template>
-  <div class="flex h-screen w-screen">
+  <!-- Use dynamic viewport height (100dvh), not 100vh. With viewport-fit=cover,
+       100vh on iOS extends past the visible area and pushes the bottom nav
+       (labels + safe-area padding) off-screen. 100dvh matches what's actually
+       visible; the vh line is the fallback for browsers without dvh. -->
+  <div class="flex w-screen" style="height: 100vh; height: 100dvh">
     <MobileSidebar />
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <MobileAppHeader />
