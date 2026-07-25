@@ -440,13 +440,10 @@ const dropdownOptions = computed(() =>
 );
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
+  // PYEK: Activity (the email/conversation thread) is first so tapping a ticket
+  // opens on the thread, matching desktop. Details is moved to the end (still a
+  // tab, just not the landing).
   const _tabs = [
-    {
-      name: "details",
-      label: __("Details"),
-      icon: DetailsIcon,
-      condition: () => isMobileView.value,
-    },
     {
       name: "activity",
       label: __("Activity"),
@@ -461,6 +458,12 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       name: "comment",
       label: __("Comments"),
       icon: CommentIcon,
+    },
+    {
+      name: "details",
+      label: __("Details"),
+      icon: DetailsIcon,
+      condition: () => isMobileView.value,
     },
   ];
 
