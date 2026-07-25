@@ -4,18 +4,56 @@
        no-reply/notification mail, none = we've replied & are waiting). Then a
        3-line block (requester + date / priority + subject + status / preview
        snippet + due date + assignee). Bold when unread for the current agent. -->
-  <div
-    class="relative flex cursor-pointer items-stretch border-b border-outline-gray-1 transition"
-    :class="selected ? 'bg-surface-blue-1' : 'hover:bg-surface-gray-2'"
-    @click="$emit('click')"
-  >
-    <!-- Status line (Outlook-style; transparent when no action is pending so
-         the row stays aligned but shows no bar). -->
+  <div class="relative overflow-hidden border-b border-outline-gray-1">
+    <!-- Swipe-action panels (mobile only), behind the sliding row. Swipe RIGHT
+         reveals Assign-to-me (blue, left); swipe LEFT reveals Resolve (green,
+         right). Tap the revealed button to act; tap the row again to close. -->
+    <template v-if="isMobileView">
+      <button
+        type="button"
+        class="absolute inset-y-0 left-0 flex items-center gap-1.5 pl-4 text-sm font-medium text-white"
+        :style="{ backgroundColor: '#2563EB', width: PANEL + 'px' }"
+        aria-label="Assign to me"
+        @click.stop="onAssignToMe"
+      >
+        <LucideUserPlus class="size-5 shrink-0" />
+        Me
+      </button>
+      <button
+        type="button"
+        class="absolute inset-y-0 right-0 flex items-center justify-end gap-1.5 pr-4 text-sm font-medium text-white"
+        :style="{ backgroundColor: '#16A34A', width: PANEL + 'px' }"
+        aria-label="Resolve"
+        @click.stop="onResolve"
+      >
+        <LucideCheck class="size-5 shrink-0" />
+        Resolve
+      </button>
+    </template>
+
+    <!-- Sliding foreground = the ticket row (opaque so it covers the panels
+         when closed). -->
     <div
-      class="w-1 shrink-0"
-      :style="{ backgroundColor: stripColor }"
-      :title="stripTitle"
-    />
+      class="relative flex cursor-pointer items-stretch"
+      :class="
+        selected
+          ? 'bg-surface-blue-1'
+          : 'bg-surface-white hover:bg-surface-gray-2'
+      "
+      :style="foregroundStyle"
+      @click="onRowClick"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerEnd"
+      @pointercancel="onPointerEnd"
+    >
+      <!-- Status line (Outlook-style; transparent when no action is pending so
+           the row stays aligned but shows no bar). -->
+      <div
+        class="w-1 shrink-0"
+        :style="{ backgroundColor: stripColor }"
+        :title="stripTitle"
+      />
 
     <!-- Select checkbox (tap to select without opening the ticket). Wide,
          full-height tap target so it's easy to hit and won't open the ticket. -->
@@ -94,6 +132,7 @@
         />
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -103,16 +142,136 @@ import { useScreenSize } from "@/composables/screen";
 import { useAuthStore } from "@/stores/auth";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
-import { Badge, dayjs } from "frappe-ui";
-import { computed } from "vue";
+import { Badge, createResource, dayjs } from "frappe-ui";
+import { computed, ref } from "vue";
 import LucideCheck from "~icons/lucide/check";
+import LucideUserPlus from "~icons/lucide/user-plus";
 
 const props = defineProps<{ row: Record<string, any>; selected?: boolean }>();
-defineEmits<{ (e: "click"): void; (e: "toggle"): void }>();
+const emit = defineEmits<{
+  (e: "click"): void;
+  (e: "toggle"): void;
+  (e: "refresh"): void;
+}>();
 
 const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
 const { isMobileView } = useScreenSize();
+
+// --- Swipe actions (mobile only) ------------------------------------------
+// Swipe right → Assign to me; swipe left → Resolve. touch-action:pan-y + a
+// horizontal/vertical direction lock so it never fights vertical scrolling,
+// and it reveals a button to TAP (no swipe-past-to-fire) so nothing resolves
+// by accident. Desktop is untouched — every handler early-returns off mobile.
+const PANEL = 104;
+const offset = ref(0);
+const dragging = ref(false);
+let startX = 0;
+let startY = 0;
+let base = 0;
+let active = false;
+let decided = false;
+let horizontal = false;
+let moved = false;
+
+const foregroundStyle = computed(() =>
+  isMobileView.value
+    ? {
+        transform: `translateX(${offset.value}px)`,
+        transition: dragging.value ? "none" : "transform 0.2s ease",
+        touchAction: "pan-y",
+      }
+    : {}
+);
+
+function onPointerDown(e: PointerEvent) {
+  if (!isMobileView.value) return;
+  active = true;
+  decided = false;
+  horizontal = false;
+  moved = false;
+  startX = e.clientX;
+  startY = e.clientY;
+  base = offset.value;
+}
+function onPointerMove(e: PointerEvent) {
+  if (!active) return;
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+  if (!decided) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    decided = true;
+    horizontal = Math.abs(dx) > Math.abs(dy);
+    if (horizontal) {
+      dragging.value = true;
+      try {
+        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      } catch {
+        /* noop */
+      }
+    } else {
+      active = false; // vertical intent → let the list scroll natively
+      return;
+    }
+  }
+  if (horizontal) {
+    moved = true;
+    offset.value = Math.max(-PANEL, Math.min(PANEL, base + dx));
+  }
+}
+function onPointerEnd() {
+  const wasHorizontal = horizontal;
+  active = false;
+  dragging.value = false;
+  decided = false;
+  horizontal = false;
+  if (!wasHorizontal) return;
+  if (offset.value > PANEL / 2) offset.value = PANEL;
+  else if (offset.value < -PANEL / 2) offset.value = -PANEL;
+  else offset.value = 0;
+}
+function onRowClick() {
+  if (moved) {
+    moved = false;
+    return; // swallow the click that follows a swipe
+  }
+  if (offset.value !== 0) {
+    offset.value = 0; // tap on an open row just closes it
+    return;
+  }
+  emit("click");
+}
+
+const statusResource = createResource({
+  url: "helpdesk.api.ticket.bulk_set_status",
+});
+const assignResource = createResource({ url: "frappe.desk.form.assign_to.add" });
+
+async function onResolve() {
+  offset.value = 0;
+  try {
+    await statusResource.submit({
+      ticket_ids: [props.row.name],
+      status: "Resolved",
+    });
+    emit("refresh");
+  } catch {
+    /* error surfaced by frappe-ui */
+  }
+}
+async function onAssignToMe() {
+  offset.value = 0;
+  try {
+    await assignResource.submit({
+      doctype: "HD Ticket",
+      name: props.row.name,
+      assign_to: [userId],
+    });
+    emit("refresh");
+  } catch {
+    /* error surfaced by frappe-ui */
+  }
+}
 
 // --- Outlook-style left status line ---------------------------------------
 // Precedence (Mark's spec, 2026-07-25):

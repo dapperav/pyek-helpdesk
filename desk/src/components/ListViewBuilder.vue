@@ -55,6 +55,7 @@
       :selected="outlookSelected.has(row.name)"
       @click="openOutlookRow(row)"
       @toggle="toggleOutlookSelect(row.name)"
+      @refresh="handleReload"
     />
     <!-- Bulk action bar (PYEK): sticky at the bottom of the list whenever rows
          are selected, so the status control is always visible. -->
