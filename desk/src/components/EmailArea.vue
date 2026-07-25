@@ -116,6 +116,7 @@
 <script setup lang="ts">
 import { AttachmentItem } from "@/components";
 import { useScreenSize } from "@/composables/screen";
+import { getUserEmailInfo } from "@/composables/useUserEmailInfo";
 import { useAuthStore } from "@/stores/auth";
 import { TicketSymbol } from "@/types";
 import { dateFormat, dateTooltipFormat, timeAgo } from "@/utils";
@@ -208,12 +209,29 @@ const reply = () => {
   });
 };
 
+// PYEK: the helpdesk's own send addresses (help.pyek@/pos.pyek@ ...). Reply All
+// otherwise carries the shared inbox the customer emailed into CC, which copies
+// the helpdesk on itself. Strip them (case-insensitive; handles "Name <email>").
+const userEmailInfo = getUserEmailInfo();
+const supportEmails = computed(() =>
+  (userEmailInfo.data?.outgoing_emails ?? [])
+    .map((e: { email_id?: string }) => (e.email_id || "").toLowerCase())
+    .filter(Boolean)
+);
+const stripSupport = (list: string[]) => {
+  if (!supportEmails.value.length) return list;
+  return list.filter((item) => {
+    const s = String(item).toLowerCase();
+    return !supportEmails.value.some((addr) => s.includes(addr));
+  });
+};
+
 const replyAll = () => {
   const user = auth.user.value;
   const exclude = [user, sender.name];
-  const filteredTo = normalizeAndFilter(to, exclude);
-  const filteredCc = normalizeAndFilter(cc, exclude);
-  const filteredBcc = normalizeAndFilter(bcc, exclude);
+  const filteredTo = stripSupport(normalizeAndFilter(to, exclude));
+  const filteredCc = stripSupport(normalizeAndFilter(cc, exclude));
+  const filteredBcc = stripSupport(normalizeAndFilter(bcc, exclude));
 
   let _to, _cc, _bcc;
 

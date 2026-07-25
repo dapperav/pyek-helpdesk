@@ -39,6 +39,7 @@
       </div>
       <!-- right side -->
       <div class="flex items-center gap-2">
+        <MoveTeamButton compact />
         <CustomActions
           v-if="mobileCustomActions.length"
           :actions="mobileCustomActions"
@@ -203,6 +204,7 @@ import { TicketAgentActivities } from "@/components/ticket";
 
 import CustomActions from "@/components/CustomActions.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
+import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";
 import TicketAgentDetails from "@/components/ticket/TicketAgentDetails.vue";
 import TicketAgentFields from "@/components/ticket/TicketAgentFields.vue";

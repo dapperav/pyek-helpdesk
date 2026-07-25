@@ -45,6 +45,8 @@
             </Dropdown>
           </div>
         </div>
+        <!-- Move POS <-> IT -->
+        <MoveTeamButton />
         <!-- Status -->
         <Dropdown :options="statusDropdown" placement="right">
           <template #default="{ open }">
@@ -121,6 +123,7 @@ import {
 import { useRoute, useRouter } from "vue-router";
 import LucideMerge from "~icons/lucide/merge";
 import { IndicatorIcon } from "../icons";
+import MoveTeamButton from "./MoveTeamButton.vue";
 import TicketNavigation from "./TicketNavigation.vue";
 import TicketSLA from "./TicketSLA.vue";
 import TicketSubjectModal from "./TicketSubjectModal.vue";
