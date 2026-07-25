@@ -220,7 +220,22 @@ def get_list_data(
     # the original description. Falls back to the description when a ticket has
     # no email communications yet (e.g. portal/Wrike-created). Agent portal only.
     if doctype == "HD Ticket" and not show_customer_portal_fields and data:
+        import re
+
         from frappe.utils import strip_html_tags
+
+        # Outlook / HTML emails embed <style>/<script>/<head> blocks (and MSO
+        # conditional comments) whose TEXT survives strip_html_tags — that's the
+        # "v\:* {behavior:url(#default#VML)} …" junk that was leaking into the
+        # preview. Drop those blocks + comments before stripping the tags.
+        _noise_re = re.compile(
+            r"<(style|script|head)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+        )
+
+        def _preview(_html):
+            _html = _noise_re.sub(" ", _html or "")
+            _html = re.sub(r"<!--.*?-->", " ", _html, flags=re.DOTALL)
+            return " ".join(strip_html_tags(_html).split())[:200]
 
         _names = [d.get("name") for d in data if d.get("name")]
         if _names:
@@ -241,7 +256,7 @@ def get_list_data(
                     _latest[_rn] = _c.get("content")
             for _d in data:
                 _html = _latest.get(_d.get("name")) or _d.get("description") or ""
-                _d["_last_message"] = " ".join(strip_html_tags(_html).split())[:200]
+                _d["_last_message"] = _preview(_html)
 
     fields = frappe.get_meta(doctype).fields
     fields = [field for field in fields if field.fieldtype not in no_value_fields]

@@ -250,6 +250,9 @@ const snippet = computed(() => {
   if (!html) return "";
   const el = document.createElement("div");
   el.innerHTML = html;
+  // Drop <style>/<script> so their CSS/JS text (e.g. Outlook VML) doesn't leak
+  // into the preview — textContent would otherwise include it.
+  el.querySelectorAll("style, script").forEach((n) => n.remove());
   return (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
 });
 </script>
