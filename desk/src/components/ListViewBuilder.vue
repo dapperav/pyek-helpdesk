@@ -46,14 +46,41 @@
        and the footer below stay intact. -->
   <div
     v-else-if="options.outlookRows && list.data?.data.length > 0"
-    class="flex-1 overflow-y-auto"
+    class="relative flex flex-1 flex-col overflow-hidden"
   >
-    <OutlookTicketRow
-      v-for="row in list.data.data"
-      :key="row.name"
-      :row="row"
-      @click="openOutlookRow(row)"
-    />
+    <div class="flex-1 overflow-y-auto">
+      <OutlookTicketRow
+        v-for="row in list.data.data"
+        :key="row.name"
+        :row="row"
+        :selected="outlookSelected.has(row.name)"
+        @click="openOutlookRow(row)"
+        @toggle="toggleOutlookSelect(row.name)"
+      />
+    </div>
+    <!-- Bulk action bar (PYEK): appears when rows are selected -->
+    <div
+      v-if="outlookSelected.size"
+      class="flex items-center justify-between gap-3 border-t bg-surface-white px-4 py-2.5"
+    >
+      <span class="text-sm font-medium text-ink-gray-7">
+        {{ outlookSelected.size }} {{ __("selected") }}
+      </span>
+      <div class="flex items-center gap-2">
+        <Dropdown :options="bulkStatusOptions" placement="top">
+          <Button :label="__('Set status')" :loading="bulkUpdating">
+            <template #suffix>
+              <FeatherIcon name="chevron-down" class="h-4 w-4" />
+            </template>
+          </Button>
+        </Dropdown>
+        <Button
+          variant="ghost"
+          :label="__('Clear')"
+          @click="clearOutlookSelection"
+        />
+      </div>
+    </div>
   </div>
 
   <!-- List View -->
@@ -160,6 +187,7 @@ import { useStorage } from "@vueuse/core";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import {
+  call,
   createResource,
   Dropdown,
   FeatherIcon,
@@ -226,7 +254,7 @@ const route = useRoute();
 const router = useRouter();
 const { isManager } = useAuthStore();
 const { $dialog, $socket } = globalStore();
-const { getStatus } = useTicketStatusStore();
+const { getStatus, statuses } = useTicketStatusStore();
 
 const listSelections = ref(new Set());
 const defaultOptions = reactive({
@@ -363,6 +391,45 @@ function openOutlookRow(row: any) {
     params: { [options.value.rowRoute?.prop as string]: row.name },
     query: { view: route.query?.view },
   });
+}
+
+// PYEK: multi-select + bulk status change for the Outlook list (e.g. bulk-close
+// notification alerts without opening each one).
+const outlookSelected = ref<Set<string>>(new Set());
+function toggleOutlookSelect(name: string) {
+  const s = new Set(outlookSelected.value);
+  s.has(name) ? s.delete(name) : s.add(name);
+  outlookSelected.value = s;
+}
+function clearOutlookSelection() {
+  outlookSelected.value = new Set();
+}
+const bulkUpdating = ref(false);
+const bulkStatusOptions = computed(() =>
+  (statuses.data || [])
+    .filter((s: any) => s.enabled)
+    .map((s: any) => ({
+      label: s.label_agent,
+      onClick: () => applyBulkStatus(s.label_agent),
+    }))
+);
+async function applyBulkStatus(status: string) {
+  const ids = Array.from(outlookSelected.value);
+  if (!ids.length) return;
+  bulkUpdating.value = true;
+  try {
+    const res = await call("helpdesk.api.ticket.bulk_set_status", {
+      ticket_ids: ids,
+      status,
+    });
+    toast.success(__("Updated {0} ticket(s)", [res?.updated ?? ids.length]));
+    clearOutlookSelection();
+    list.reload();
+  } catch (e) {
+    toast.error(__("Failed to update tickets"));
+  } finally {
+    bulkUpdating.value = false;
+  }
 }
 
 const { isMobileView } = useScreenSize();

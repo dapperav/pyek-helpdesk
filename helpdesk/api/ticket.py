@@ -29,6 +29,33 @@ def bulk_reply(ticket_ids: list, message: str, attachments: list | None = None):
             )
 
 
+@frappe.whitelist()
+@agent_only
+def bulk_set_status(ticket_ids: list, status: str):
+    """PYEK: set the same status on many tickets at once (e.g. bulk-close
+    notification alerts) so agents don't open each one."""
+    if not ticket_ids or not status:
+        return {"updated": 0}
+
+    ticket_ids = list(set(ticket_ids))  # Remove duplicates
+    updated = 0
+    for ticket_id in ticket_ids:
+        frappe.has_permission("HD Ticket", "write", doc=ticket_id, throw=True)
+        doc = frappe.get_doc("HD Ticket", ticket_id)
+        if doc.status == status:
+            continue
+        doc.status = status
+        try:
+            doc.save()
+            updated += 1
+        except Exception as e:
+            frappe.log_error(
+                title=f"Bulk status change failed for ticket {ticket_id}",
+                message=str(e),
+            )
+    return {"updated": updated}
+
+
 def link_attachments_to_tickets(attachments: list | None, ticket_ids: list):
     if not attachments:
         return

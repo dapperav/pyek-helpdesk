@@ -3,17 +3,37 @@
        3-line block (requester + date / priority + subject + status / preview
        snippet + SLA + assignee). Bold when unread for the current agent. -->
   <div
-    class="relative flex cursor-pointer items-stretch border-b border-outline-gray-1 transition hover:bg-surface-gray-2"
+    class="relative flex cursor-pointer items-stretch border-b border-outline-gray-1 transition"
+    :class="selected ? 'bg-surface-blue-1' : 'hover:bg-surface-gray-2'"
     @click="$emit('click')"
   >
-    <!-- Park color strip -->
+    <!-- Park color strip (stays at the very left edge) -->
     <div
       class="w-1 shrink-0"
       :style="{ backgroundColor: stripColor }"
       :title="park"
     />
 
-    <div class="flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-2.5">
+    <!-- Select checkbox (tap to select without opening the ticket) -->
+    <button
+      type="button"
+      class="grid shrink-0 place-items-center pl-2.5 pr-0.5"
+      :aria-pressed="selected"
+      @click.stop="$emit('toggle')"
+    >
+      <span
+        class="grid size-4 place-items-center rounded border transition"
+        :class="
+          selected
+            ? 'border-transparent bg-surface-blue-5 text-white'
+            : 'border-outline-gray-4'
+        "
+      >
+        <LucideCheck v-if="selected" class="size-3" />
+      </span>
+    </button>
+
+    <div class="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-2 pr-4">
       <!-- Line 1: requester + date -->
       <div class="flex items-center gap-2">
         <span
@@ -90,9 +110,10 @@ import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import { Badge, dayjs } from "frappe-ui";
 import { computed } from "vue";
+import LucideCheck from "~icons/lucide/check";
 
-const props = defineProps<{ row: Record<string, any> }>();
-defineEmits<{ (e: "click"): void }>();
+const props = defineProps<{ row: Record<string, any>; selected?: boolean }>();
+defineEmits<{ (e: "click"): void; (e: "toggle"): void }>();
 
 const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
