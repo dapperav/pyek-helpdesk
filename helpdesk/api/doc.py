@@ -128,6 +128,7 @@ def get_list_data(
                 "agreement_status",
                 "status_category",
                 "pyek_property",
+                "pyek_requested_due_date",
                 "description",
                 "modified",
                 "creation",

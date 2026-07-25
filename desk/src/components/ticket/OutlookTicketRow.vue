@@ -1,17 +1,20 @@
 <template>
-  <!-- Outlook-inbox style row: park color strip on the left edge, then a
+  <!-- Outlook-inbox style row. The left line is an Outlook-style status
+       indicator (blue = open/needs our reply, red = urgent, grey = automated
+       no-reply/notification mail, none = we've replied & are waiting). Then a
        3-line block (requester + date / priority + subject + status / preview
-       snippet + SLA + assignee). Bold when unread for the current agent. -->
+       snippet + due date + assignee). Bold when unread for the current agent. -->
   <div
     class="relative flex cursor-pointer items-stretch border-b border-outline-gray-1 transition"
     :class="selected ? 'bg-surface-blue-1' : 'hover:bg-surface-gray-2'"
     @click="$emit('click')"
   >
-    <!-- Park color strip (stays at the very left edge) -->
+    <!-- Status line (Outlook-style; transparent when no action is pending so
+         the row stays aligned but shows no bar). -->
     <div
       class="w-1 shrink-0"
       :style="{ backgroundColor: stripColor }"
-      :title="park"
+      :title="stripTitle"
     />
 
     <!-- Select checkbox (tap to select without opening the ticket). Wide,
@@ -81,16 +84,16 @@
         />
       </div>
 
-      <!-- Line 3: preview snippet + SLA badge + assignee avatar -->
+      <!-- Line 3: preview snippet + due date + assignee avatar -->
       <div class="flex items-center gap-2">
         <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">
           {{ snippet }}
         </span>
         <Badge
-          v-if="slaTheme && !isMobileView"
+          v-if="dueLabel && !isMobileView"
           class="shrink-0"
-          :label="__(row.agreement_status)"
-          :theme="slaTheme"
+          :label="dueLabel"
+          :theme="dueTheme"
           variant="subtle"
         />
         <MultipleAvatar
@@ -107,7 +110,6 @@
 <script setup lang="ts">
 import { MultipleAvatar } from "@/components";
 import { useScreenSize } from "@/composables/screen";
-import { parkColor, parkLabel } from "@/config/parks";
 import { useAuthStore } from "@/stores/auth";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
@@ -122,9 +124,53 @@ const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
 const { isMobileView } = useScreenSize();
 
-// --- Park strip ---
-const park = computed(() => parkLabel(props.row.pyek_property));
-const stripColor = computed(() => parkColor(park.value));
+// --- Outlook-style left status line ---------------------------------------
+// Precedence (Mark's spec, 2026-07-25):
+//   grey  = automated / no-reply / notification sender (de-emphasized; WINS
+//           even when the sender's mail is auto-flagged Urgent, e.g. the UniFi
+//           camera "gone offline" alerts)
+//   red   = Urgent (from a real sender)
+//   blue  = Open / needs our first response (ball in our court)
+//   none  = we've replied & are waiting on the customer, or the ticket is
+//           resolved / closed / on hold (no bar, Outlook-style)
+// Notification sender detection mirrors the enricher's is_ai_excluded
+// substring match (config.py) so the UI and the AI-exclusion logic agree.
+const NOTIFICATION_SENDER_PATTERNS = [
+  "noreply",
+  "no-reply",
+  "no_reply",
+  "donotreply",
+  "do-not-reply",
+  "do_not_reply",
+  "notification",
+  "notifications",
+  "mailer-daemon",
+  "postmaster",
+  "bounce",
+];
+const isNotificationSender = computed(() => {
+  const from = (props.row.raised_by || "").toLowerCase();
+  return !!from && NOTIFICATION_SENDER_PATTERNS.some((p) => from.includes(p));
+});
+const isUrgent = computed(() => props.row.priority === "Urgent");
+// Statuses where the ball is in OUR court (unreplied / needs a response).
+const NEEDS_ACTION_STATUSES = new Set(["Open", "Escalated"]);
+const needsAction = computed(() =>
+  NEEDS_ACTION_STATUSES.has(props.row.status)
+);
+
+const stripColor = computed(() => {
+  if (isNotificationSender.value) return "#94A3B8"; // grey
+  if (isUrgent.value) return "#E03434"; // red
+  if (needsAction.value) return "#2563EB"; // blue
+  return "transparent"; // replied / waiting / done → no bar
+});
+const stripTitle = computed(() => {
+  if (isNotificationSender.value) return "Automated / no-reply";
+  if (isUrgent.value) return "Urgent";
+  if (needsAction.value) return "Open — needs a response";
+  return "Waiting on customer / no action needed";
+});
 
 // --- Unread (per-agent, from the framework-maintained _seen array) ---
 const unread = computed(() => {
@@ -191,13 +237,28 @@ const statusDotColor = computed(
   () => STATUS_DOT[props.row.status] || "#94A3B8"
 );
 
-// --- SLA badge (only the actionable states; hide Fulfilled/Paused/empty) ---
-const SLA_THEME: Record<string, string> = {
-  Failed: "red",
-  "First Response Due": "orange",
-  "Resolution Due": "orange",
-};
-const slaTheme = computed(() => SLA_THEME[props.row.agreement_status] || null);
+// --- Due date (AI-enriched `pyek_requested_due_date`; replaces the old SLA
+// badge). Shown only when a due date is set; turns red once overdue and
+// orange when due today/tomorrow, so the deadline still reads at a glance. ---
+const dueLabel = computed(() => {
+  if (!props.row.pyek_requested_due_date) return "";
+  const d = dayjs(props.row.pyek_requested_due_date);
+  const now = dayjs();
+  let when: string;
+  if (d.isSame(now, "day")) when = "Today";
+  else if (d.isSame(now.add(1, "day"), "day")) when = "Tomorrow";
+  else if (d.isSame(now, "year")) when = d.format("MMM D");
+  else when = d.format("M/D/YY");
+  return `Due ${when}`;
+});
+const dueTheme = computed(() => {
+  if (!props.row.pyek_requested_due_date) return "gray";
+  const d = dayjs(props.row.pyek_requested_due_date).startOf("day");
+  const today = dayjs().startOf("day");
+  if (d.isBefore(today)) return "red"; // overdue
+  if (d.diff(today, "day") <= 1) return "orange"; // due today/tomorrow
+  return "gray";
+});
 
 // --- Preview snippet: the latest email in the thread (Outlook-style), provided
 // pre-stripped by the backend as `_last_message`; falls back to the ticket
