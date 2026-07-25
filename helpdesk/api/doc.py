@@ -135,16 +135,68 @@ def get_list_data(
             ):
                 if _pyek_field not in rows:
                     rows.append(_pyek_field)
-    data = (
-        frappe.get_list(
-            doctype,
-            fields=rows,
-            filters=filters,
-            order_by=order_by,
-            page_length=page_length,
-        )
-        or []
+    # PYEK: two-tier ordering for the agent ticket list — float tickets that are
+    # due soon (overdue / today / within the next 7 days, by pyek_requested_due_date)
+    # to the TOP so agents can prioritise by due date, then fall back to the
+    # requested order for everything else. Agent portal, non-group-by only. The
+    # frontend paginates by growing page_length from the top (no offset), so a
+    # top-down order is sufficient. A `<=` date filter excludes NULLs, so the two
+    # buckets are disjoint (no dedup needed).
+    _pyek_due_sort = (
+        doctype == "HD Ticket"
+        and not show_customer_portal_fields
+        and view_type != "group_by"
     )
+    if _pyek_due_sort:
+        from frappe.utils import add_days, today
+
+        _cutoff = add_days(today(), 7)
+
+        def _with_condition(base, field, op, value):
+            if isinstance(base, dict):
+                merged = dict(base)
+                merged[field] = [op, value]
+                return merged
+            return list(base) + [[field, op, value]]
+
+        _due_soon = (
+            frappe.get_list(
+                doctype,
+                fields=rows,
+                filters=_with_condition(
+                    filters, "pyek_requested_due_date", "<=", _cutoff
+                ),
+                order_by="pyek_requested_due_date asc",
+                page_length=page_length,
+            )
+            or []
+        )
+        _rest = (
+            frappe.get_list(
+                doctype,
+                fields=rows,
+                filters=filters,
+                or_filters=[
+                    ["pyek_requested_due_date", "is", "not set"],
+                    ["pyek_requested_due_date", ">", _cutoff],
+                ],
+                order_by=order_by,
+                page_length=page_length,
+            )
+            or []
+        )
+        data = (_due_soon + _rest)[:page_length]
+    else:
+        data = (
+            frappe.get_list(
+                doctype,
+                fields=rows,
+                filters=filters,
+                order_by=order_by,
+                page_length=page_length,
+            )
+            or []
+        )
 
     if doctype == "TP Call Log":
         data = parse_call_logs(data)
