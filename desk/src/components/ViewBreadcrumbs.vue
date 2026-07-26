@@ -1,12 +1,19 @@
 <template>
   <div class="flex items-center">
     <router-link
+      v-if="!isMobileView"
       :to="{ name: routeName }"
       class="px-0.5 pl-0 py-1 text-lg-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-outline-gray-3 text-ink-gray-5 hover:text-ink-gray-7 flex items-center justify-center"
     >
-      {{ isMobileView ? "..." : label }}
+      {{ label }}
     </router-link>
-    <span class="mx-0.5 text-base text-ink-gray-4" aria-hidden="true"> / </span>
+    <span
+      v-if="!isMobileView"
+      class="mx-0.5 text-base text-ink-gray-4"
+      aria-hidden="true"
+    >
+      /
+    </span>
     <Dropdown :options="options">
       <template #default="{ open }">
         <Button

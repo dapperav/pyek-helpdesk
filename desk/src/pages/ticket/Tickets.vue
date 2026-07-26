@@ -12,6 +12,7 @@
       </template>
       <template #right-header>
         <RouterLink
+          v-if="!isMobileView || isCustomerPortal"
           class="inline-flex"
           :to="{ name: isCustomerPortal ? 'TicketNew' : 'TicketAgentNew' }"
         >
@@ -28,6 +29,18 @@
         </RouterLink>
       </template>
     </LayoutHeader>
+    <!-- Mobile: the Create action lives in the navy brand bar (teleported),
+         not the controls row. White-on-navy for contrast. -->
+    <Teleport v-if="isMobileView && !isCustomerPortal" to="#mobile-header-action">
+      <RouterLink
+        :to="{ name: isCustomerPortal ? 'TicketNew' : 'TicketAgentNew' }"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium active:opacity-80"
+        style="color: #1b2a4a"
+      >
+        <LucidePlus class="size-4" />
+        {{ __("Create") }}
+      </RouterLink>
+    </Teleport>
     <ListViewBuilder
       ref="listViewRef"
       :options="options"
@@ -68,6 +81,7 @@ import ExportModal from "@/components/ticket/ExportModal.vue";
 import ViewBreadcrumbs from "@/components/ViewBreadcrumbs.vue";
 import { normalizeFilters } from "@/components/view-controls/filter";
 import ViewModal from "@/components/ViewModal.vue";
+import { useScreenSize } from "@/composables/screen";
 import { currentView, useView } from "@/composables/useView";
 import { useAuthStore } from "@/stores/auth";
 import { globalStore } from "@/stores/globalStore";
@@ -81,6 +95,7 @@ import { useRoute, useRouter } from "vue-router";
 
 const router = useRouter();
 const route = useRoute();
+const { isMobileView } = useScreenSize();
 
 const {
   getCurrentUserViews,

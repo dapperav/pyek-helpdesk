@@ -25,6 +25,9 @@
     <span class="text-base font-semibold tracking-wide text-white">
       PYEKMAIL
     </span>
+    <!-- Right-aligned zone for the page's primary action (e.g. Create),
+         teleported here on mobile so it sits in the navy bar. -->
+    <div id="mobile-header-action" class="ms-auto flex items-center"></div>
   </div>
   <!-- White controls row: the page title / breadcrumb / view switcher /
        Create button teleport into #app-header here, on white as designed. -->
