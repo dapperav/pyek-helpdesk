@@ -12,6 +12,16 @@
       >
         <div class="relative z-10 h-full">
           <AppSidebar mobile :profile-settings="profileSettings" />
+          <!-- Explicit close (the collapse toggle is hidden on mobile, and the
+               drawer can cover the overlay — without this you can get stuck). -->
+          <button
+            type="button"
+            class="absolute right-2 top-2 z-20 grid size-9 place-items-center rounded-lg text-ink-gray-7 active:bg-surface-gray-3"
+            aria-label="Close menu"
+            @click="sidebarOpened = false"
+          >
+            <LucideX class="size-5" />
+          </button>
         </div>
       </TransitionChild>
       <TransitionChild
@@ -44,6 +54,7 @@ import { isCustomerPortal } from "@/utils";
 import { useTheme } from "frappe-ui";
 import LucideMoon from "~icons/lucide/moon";
 import LucideSun from "~icons/lucide/sun";
+import LucideX from "~icons/lucide/x";
 
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import { useApps } from "@/composables/useApps";

@@ -25,9 +25,17 @@
     <span class="text-base font-semibold tracking-wide text-white">
       PYEKMAIL
     </span>
-    <!-- Right-aligned zone for the page's primary action (e.g. Create),
-         teleported here on mobile so it sits in the navy bar. -->
-    <div id="mobile-header-action" class="ms-auto flex items-center"></div>
+    <!-- Create lives here on the tickets list (route-aware, reliable — no
+         teleport). White-on-navy for contrast. -->
+    <RouterLink
+      v-if="showCreate"
+      :to="{ name: 'TicketAgentNew' }"
+      class="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium active:opacity-80"
+      style="color: #1b2a4a"
+    >
+      <FeatherIcon name="plus" class="size-4" />
+      {{ __("Create") }}
+    </RouterLink>
   </div>
   <!-- White controls row: the page title / breadcrumb / view switcher /
        Create button teleport into #app-header here, on white as designed. -->
@@ -40,12 +48,18 @@
 <script setup>
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import PyekMark from "@/components/PyekMark.vue";
+import { __ } from "@/translation";
 import CallUI from "../telephony/CallUI.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTelephonyStore } from "@/stores/telephony";
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
 
 const { user } = useAuthStore();
+
+// Show Create in the navy bar only on the tickets list (its create route).
+const route = useRoute();
+const showCreate = computed(() => route.name === "TicketsAgent");
 
 const telephonyStore = useTelephonyStore();
 

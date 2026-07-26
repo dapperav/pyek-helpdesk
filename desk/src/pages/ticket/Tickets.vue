@@ -29,18 +29,6 @@
         </RouterLink>
       </template>
     </LayoutHeader>
-    <!-- Mobile: the Create action lives in the navy brand bar (teleported),
-         not the controls row. White-on-navy for contrast. -->
-    <Teleport v-if="isMobileView && !isCustomerPortal" to="#mobile-header-action">
-      <RouterLink
-        :to="{ name: isCustomerPortal ? 'TicketNew' : 'TicketAgentNew' }"
-        class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium active:opacity-80"
-        style="color: #1b2a4a"
-      >
-        <LucidePlus class="size-4" />
-        {{ __("Create") }}
-      </RouterLink>
-    </Teleport>
     <ListViewBuilder
       ref="listViewRef"
       :options="options"
