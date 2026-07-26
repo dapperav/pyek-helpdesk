@@ -10,6 +10,7 @@
          right). Tap the revealed button to act; tap the row again to close. -->
     <template v-if="isMobileView">
       <button
+        v-show="offset > 0"
         type="button"
         class="absolute inset-y-0 left-0 flex items-center gap-1.5 pl-4 text-sm font-medium text-white"
         :style="{ backgroundColor: '#2563EB', width: PANEL + 'px' }"
@@ -20,6 +21,7 @@
         Me
       </button>
       <button
+        v-show="offset < 0"
         type="button"
         class="absolute inset-y-0 right-0 flex items-center justify-end gap-1.5 pr-4 text-sm font-medium text-white"
         :style="{ backgroundColor: '#16A34A', width: PANEL + 'px' }"
@@ -180,6 +182,13 @@ const foregroundStyle = computed(() =>
         transform: `translateX(${offset.value}px)`,
         transition: dragging.value ? "none" : "transform 0.2s ease",
         touchAction: "pan-y",
+        // Opaque + stacked ABOVE the action panels, so at rest (offset 0) the
+        // panels are fully covered and the row looks normal.
+        position: "relative",
+        zIndex: 1,
+        backgroundColor: props.selected
+          ? "var(--surface-blue-1)"
+          : "var(--surface-white)",
       }
     : {}
 );
