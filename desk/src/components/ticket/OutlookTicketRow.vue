@@ -8,15 +8,18 @@
     <!-- Swipe hint (mobile only), behind the sliding row on the right. Swiping
          the row left reveals it; releasing past the threshold opens the action
          sheet (Assign / Resolve / Close / On hold). -->
-    <div
+    <button
       v-if="isMobileView"
       v-show="offset < 0"
-      class="absolute inset-y-0 right-0 flex items-center justify-end gap-1.5 pr-5 text-sm font-medium text-white"
-      :style="{ backgroundColor: '#1B2A4A', width: MAX_DRAG + 'px' }"
+      type="button"
+      class="absolute inset-y-0 right-0 flex items-center justify-center gap-1.5 text-sm font-medium text-white"
+      :style="{ backgroundColor: '#1B2A4A', width: REVEAL + 'px' }"
+      aria-label="Ticket actions"
+      @click.stop="openSheet"
     >
       <LucideMoreHorizontal class="size-5 shrink-0" />
       Actions
-    </div>
+    </button>
 
     <!-- Sliding foreground = the ticket row (opaque so it covers the panels
          when closed). -->
@@ -145,19 +148,19 @@ const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
 const { isMobileView } = useScreenSize();
 
-// --- Swipe-left to open the action sheet (mobile only) --------------------
-// Left-drag reveals the "Actions" hint; releasing past OPEN_AT opens the
-// bottom action sheet (rendered by the parent list). touch-action:pan-y + a
-// horizontal/vertical direction lock so it never fights vertical scrolling.
-// Sensitivity: needs DECIDE_AT px of clearly-horizontal, leftward movement to
-// engage and OPEN_AT px of travel to fire. Desktop untouched (off mobile).
-const MAX_DRAG = 120;
-const OPEN_AT = 70;
-const DECIDE_AT = 20;
+// --- Swipe-left to REVEAL an "Actions" button (mobile only) ----------------
+// Left-drag reveals the "Actions" button and HOLDS it open — it does NOT open
+// the sheet on its own. Tapping the revealed button opens the action sheet;
+// tapping the row closes it. touch-action:pan-y + a horizontal/vertical
+// direction lock so it never fights vertical scroll. Desktop untouched.
+const REVEAL = 112; // held-open offset + width of the Actions button
+const OPEN_AT = 56; // release past this (left) snaps to held-open
+const DECIDE_AT = 20; // clearly-horizontal travel before the drag engages
 const offset = ref(0);
 const dragging = ref(false);
 let startX = 0;
 let startY = 0;
+let base = 0;
 let active = false;
 let decided = false;
 let horizontal = false;
@@ -172,9 +175,7 @@ const foregroundStyle = computed(() =>
         // Opaque + stacked ABOVE the hint, so at rest the row looks normal.
         position: "relative",
         zIndex: 1,
-        backgroundColor: props.selected
-          ? "var(--surface-blue-1)"
-          : "var(--surface-white)",
+        backgroundColor: props.selected ? "var(--surface-blue-1)" : "#ffffff",
       }
     : {}
 );
@@ -187,6 +188,7 @@ function onPointerDown(e: PointerEvent) {
   moved = false;
   startX = e.clientX;
   startY = e.clientY;
+  base = offset.value; // start from the current (possibly held-open) position
 }
 function onPointerMove(e: PointerEvent) {
   if (!active) return;
@@ -194,9 +196,9 @@ function onPointerMove(e: PointerEvent) {
   const dy = e.clientY - startY;
   if (!decided) {
     if (Math.abs(dx) < DECIDE_AT && Math.abs(dy) < DECIDE_AT) return;
-    // Only engage on a clearly-horizontal, LEFTWARD drag; otherwise release so
-    // the list scrolls vertically as normal.
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
+    // Engage only on a clearly-horizontal drag; otherwise release so the list
+    // scrolls vertically as normal.
+    if (Math.abs(dx) > Math.abs(dy)) {
       decided = true;
       horizontal = true;
       dragging.value = true;
@@ -211,24 +213,32 @@ function onPointerMove(e: PointerEvent) {
     }
   }
   moved = true;
-  offset.value = Math.max(-MAX_DRAG, Math.min(0, dx)); // left only
+  offset.value = Math.max(-REVEAL, Math.min(0, base + dx)); // clamp to reveal
 }
 function onPointerEnd() {
   const wasHorizontal = horizontal;
-  const traveled = offset.value;
   active = false;
   dragging.value = false;
   decided = false;
   horizontal = false;
-  offset.value = 0; // always snap back; the sheet is the "open" state
-  if (wasHorizontal && traveled <= -OPEN_AT) emit("actions");
+  if (!wasHorizontal) return;
+  // Snap to held-open (showing the Actions button) or fully closed.
+  offset.value = offset.value <= -OPEN_AT ? -REVEAL : 0;
 }
 function onRowClick() {
   if (moved) {
     moved = false;
     return; // swallow the click that follows a swipe
   }
+  if (offset.value !== 0) {
+    offset.value = 0; // tap on an open row just closes it
+    return;
+  }
   emit("click");
+}
+function openSheet() {
+  offset.value = 0;
+  emit("actions");
 }
 
 // --- Outlook-style left status line ---------------------------------------

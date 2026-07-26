@@ -8,7 +8,7 @@
       class="absolute inset-x-0 bottom-0 rounded-t-2xl shadow-2xl"
       style="
         padding-bottom: env(safe-area-inset-bottom);
-        background: var(--surface-white);
+        background-color: #ffffff;
       "
     >
       <div class="mx-auto mb-1 mt-2.5 h-1 w-9 rounded-full bg-surface-gray-4" />
