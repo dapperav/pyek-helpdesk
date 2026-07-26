@@ -55,7 +55,7 @@
       :selected="outlookSelected.has(row.name)"
       @click="openOutlookRow(row)"
       @toggle="toggleOutlookSelect(row.name)"
-      @refresh="handleReload"
+      @actions="actionTicket = row"
     />
     <!-- Bulk action bar (PYEK): sticky at the bottom of the list whenever rows
          are selected, so the status control is always visible. -->
@@ -81,6 +81,17 @@
         />
       </div>
     </div>
+    <!-- Swipe-left action sheet (PYEK): opened from a row's swipe. -->
+    <TicketActionSheet
+      v-if="actionTicket"
+      :ticket="actionTicket.name"
+      :subject="actionTicket.subject"
+      @done="
+        actionTicket = null;
+        handleReload();
+      "
+      @close="actionTicket = null"
+    />
   </div>
 
   <!-- List View -->
@@ -217,6 +228,7 @@ import { useRoute, useRouter } from "vue-router";
 import EmptyState from "./EmptyState.vue";
 import ListRows from "./ListRows.vue";
 import OutlookTicketRow from "./ticket/OutlookTicketRow.vue";
+import TicketActionSheet from "./ticket/TicketActionSheet.vue";
 
 interface P {
   options: {
@@ -396,6 +408,8 @@ function openOutlookRow(row: any) {
 // PYEK: multi-select + bulk status change for the Outlook list (e.g. bulk-close
 // notification alerts without opening each one).
 const outlookSelected = ref<Set<string>>(new Set());
+// PYEK: the ticket whose swipe-left action sheet is open (null = closed).
+const actionTicket = ref<Record<string, any> | null>(null);
 function toggleOutlookSelect(name: string) {
   const s = new Set(outlookSelected.value);
   s.has(name) ? s.delete(name) : s.add(name);
