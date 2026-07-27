@@ -69,7 +69,7 @@ export default defineConfig(async ({ mode }) => {
               purpose: "any",
             },
             {
-              src: "/assets/helpdesk/desk/manifest/pyek-icon-192.png",
+              src: "/assets/helpdesk/desk/manifest/pyek-maskable-192.png",
               sizes: "192x192",
               type: "image/png",
               purpose: "maskable",
@@ -81,7 +81,7 @@ export default defineConfig(async ({ mode }) => {
               purpose: "any",
             },
             {
-              src: "/assets/helpdesk/desk/manifest/pyek-icon-512.png",
+              src: "/assets/helpdesk/desk/manifest/pyek-maskable-512.png",
               sizes: "512x512",
               type: "image/png",
               purpose: "maskable",

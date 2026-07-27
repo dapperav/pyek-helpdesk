@@ -1,4 +1,16 @@
-<svg width="118" height="118" viewBox="0 0 118 118" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M93.9278 0H23.1013C10.3428 0 0 10.3428 0 23.1013V93.9278C0 106.686 10.3428 117.029 23.1013 117.029H93.9278C106.686 117.029 117.029 106.686 117.029 93.9278V23.1013C117.029 10.3428 106.686 0 93.9278 0Z" fill="#7D42FB"/>
-<path d="M95.9759 50.8753V27.8265L21 27.8265V38.3271H85.5278V48.3027C81.3275 49.5103 78.2824 53.3955 78.2824 57.9632C78.2824 62.531 81.3275 66.3637 85.5278 67.5713V77.5468H31.5006V50.1403H21V88.0474H96.0284V64.9986L89.7805 60.5359V55.3906L96.0284 50.9278L95.9759 50.8753Z" fill="#EDF7FF"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gPeak" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="gLight" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9eff8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="115" fill="url(#gLight)"/>
+  <g transform="translate(-4,-41)" fill="none" stroke-width="21" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M120,300 L172,222 L206,256 L256,182 L302,252 L336,220 L400,300" stroke="url(#gPeak)"/>
+    <path d="M120,300 L120,392 Q120,412 140,412 L380,412 Q400,412 400,392 L400,300" stroke="#1e3a8a"/>
+    <path d="M120,300 L256,368 L400,300" stroke="#1e3a8a" opacity="0.5"/>
+  </g>
 </svg>
