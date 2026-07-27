@@ -20,8 +20,9 @@
               : 'ms-2 w-auto opacity-100'
           "
         >
-          <div class="text-base-medium leading-none text-ink-gray-9 truncate">
-            PYEKMAIL
+          <div class="text-base leading-none truncate tracking-tight">
+            <span class="font-bold text-ink-gray-9">PYEK</span
+            ><span class="font-medium" style="color: #67e8f9">MAIL</span>
           </div>
           <div class="mt-1 text-sm text-ink-gray-7">
             {{ authStore.userName }}

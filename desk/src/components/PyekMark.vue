@@ -1,17 +1,34 @@
 <template>
-  <!-- PYEK peak mark, reused verbatim from the Barcuda app so the two tools
-       share one visual identity. viewBox is 120x84 (landscape); render at a
-       fixed height and let the width follow the aspect ratio. -->
+  <!-- PYEKMAIL brand mark: gradient peaks (that double as an envelope flap)
+       over a white envelope outline. Designed for the navy sidebar / mobile
+       brand bar (white envelope + bright peaks read on #1B2A4A). Matches the
+       favicon / PWA icon, which uses the same geometry with a navy envelope
+       on a light tile. -->
   <svg
+    viewBox="106 168 310 258"
+    fill="none"
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 120 84"
     role="img"
-    aria-label="PYEK logo mark"
+    aria-label="PYEKMAIL logo mark"
   >
-    <polygon points="4,70 26,18 42,70" fill="#1E40AF" />
-    <polygon points="22,72 56,8 76,72" fill="#2563EB" />
-    <polygon points="48,72 82,12 100,72" fill="#1D4ED8" />
-    <polygon points="76,72 110,26 118,72" fill="#67E8F9" />
-    <polygon points="30,44 48,18 58,42" fill="#38BDF8" opacity="0.7" />
+    <defs>
+      <linearGradient id="pyekMailPeak" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#3B82F6" />
+        <stop offset="1" stop-color="#67E8F9" />
+      </linearGradient>
+    </defs>
+    <g stroke-width="22" stroke-linejoin="round" stroke-linecap="round">
+      <path
+        d="M120,300 L172,222 L206,256 L256,182 L302,252 L336,220 L400,300"
+        stroke="url(#pyekMailPeak)"
+      />
+      <path
+        d="M120,300 L120,392 Q120,412 140,412 L380,412 Q400,412 400,392 L400,300"
+        stroke="#ffffff"
+      />
+      <path d="M120,300 L256,368 L400,300" stroke="#ffffff" opacity="0.5" />
+    </g>
   </svg>
 </template>
+
+<script setup lang="ts"></script>

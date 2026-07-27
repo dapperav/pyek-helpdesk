@@ -22,8 +22,9 @@
       <FeatherIcon name="menu" class="size-5" />
     </button>
     <PyekMark class="h-5 w-auto shrink-0" />
-    <span class="text-base font-semibold tracking-wide text-white">
-      PYEKMAIL
+    <span class="text-base tracking-tight">
+      <span class="font-bold text-white">PYEK</span
+      ><span class="font-medium" style="color: #67e8f9">MAIL</span>
     </span>
     <!-- Create lives here on the tickets list (route-aware, reliable — no
          teleport). White-on-navy for contrast. -->
