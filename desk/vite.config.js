@@ -57,7 +57,12 @@ export default defineConfig(async ({ mode }) => {
           display: "standalone",
           name: "PYEKMAIL",
           short_name: "PYEKMAIL",
+          id: "/helpdesk",
           start_url: "/helpdesk",
+          // scope must contain start_url; vite-plugin-pwa otherwise defaults it
+          // to the build base (/assets/helpdesk/desk/), which excludes /helpdesk
+          // and makes browsers reject the install metadata.
+          scope: "/helpdesk",
           theme_color: "#1B2A4A",
           background_color: "#1B2A4A",
           description: "PYEKMAIL — PYEK Group internal support portal.",
