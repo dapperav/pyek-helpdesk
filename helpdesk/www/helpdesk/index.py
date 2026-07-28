@@ -14,10 +14,35 @@ def get_context(context):
     frappe.db.commit()
     context.boot = get_boot()
 
+    # Per-site PYEKMAIL app identity (home-screen icon + title). Sites share one
+    # fork build, so the department icon is chosen at render time: site_config
+    # key `pyek_app` wins, else the host prefix (it./ap./hr.), else PMIT.
+    slug = _pyek_app_slug()
+    context.pyek_icon_file = f"{slug}-touch.png"
+    context.pyek_app_title = {"pmit": "PMIT", "pmap": "PMAP", "pmhr": "PMHR"}.get(
+        slug, "PYEKMAIL"
+    )
+
     # telemetry
     if frappe.session.user != "Guest":
         capture("active_site", "helpdesk")
     return context
+
+
+def _pyek_app_slug():
+    slug = (frappe.conf.get("pyek_app") or "").strip().lower()
+    if slug in ("pmit", "pmap", "pmhr"):
+        return slug
+    host = ""
+    try:
+        host = (frappe.local.request.host or "").lower()
+    except Exception:
+        host = (frappe.local.site or "").lower()
+    if host.startswith("ap."):
+        return "pmap"
+    if host.startswith("hr."):
+        return "pmhr"
+    return "pmit"
 
 
 @frappe.whitelist(methods=["POST"], allow_guest=True)

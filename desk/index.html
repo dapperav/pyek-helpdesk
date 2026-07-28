@@ -9,7 +9,10 @@
     <title>Helpdesk</title>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="PYEKMAIL" />
+    <meta
+      name="apple-mobile-web-app-title"
+      content="{{ pyek_app_title or 'PYEKMAIL' }}"
+    />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
@@ -36,7 +39,7 @@
 
     <link
       rel="apple-touch-icon"
-      href="/assets/helpdesk/desk/manifest/apple-icon-180.png"
+      href="/assets/helpdesk/desk/manifest/{{ pyek_icon_file or 'apple-icon-180.png' }}"
     />
 
     <link
