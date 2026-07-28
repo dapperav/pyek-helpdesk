@@ -10,13 +10,18 @@
         leave-from="translate-x-0"
         leave-to="-translate-x-full"
       >
-        <div class="relative z-10 h-full">
+        <!-- Full-width layer over the overlay; @click.self closes when the
+             empty area beside the drawer is tapped (the drawer itself and the
+             close button are children, so they don't trigger it). -->
+        <div class="relative z-10 h-full" @click.self="sidebarOpened = false">
           <AppSidebar mobile :profile-settings="profileSettings" />
           <!-- Explicit close (the collapse toggle is hidden on mobile, and the
-               drawer can cover the overlay — without this you can get stuck). -->
+               drawer can cover the overlay — without this you can get stuck).
+               Pushed below the status-bar inset so it clears the notch. -->
           <button
             type="button"
-            class="absolute right-2 top-2 z-20 grid size-9 place-items-center rounded-lg text-ink-gray-7 active:bg-surface-gray-3"
+            class="absolute right-2 z-20 grid size-9 place-items-center rounded-lg text-ink-gray-7 active:bg-surface-gray-3"
+            style="top: calc(0.5rem + env(safe-area-inset-top))"
             aria-label="Close menu"
             @click="sidebarOpened = false"
           >
