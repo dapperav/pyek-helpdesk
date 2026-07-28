@@ -64,6 +64,9 @@
                   :ticketId="ticket.doc?.name"
                   @email:open="communicationAreaRef.toggleEmailBox()"
                 />
+                <!-- AP invoice card: From/sender, Intacct filename (copy) + dup
+                     warning. AP instance only — renders nothing without AP fields. -->
+                <ApInvoiceCard :ticket="ticket.doc" />
                 <!-- feedback component -->
                 <TicketFeedback
                   v-if="ticket.doc?.feedback_rating"
@@ -206,6 +209,7 @@ import CustomActions from "@/components/CustomActions.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";
+import ApInvoiceCard from "@/components/ticket/ApInvoiceCard.vue";
 import TicketAgentDetails from "@/components/ticket/TicketAgentDetails.vue";
 import TicketAgentFields from "@/components/ticket/TicketAgentFields.vue";
 import {
