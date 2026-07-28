@@ -93,13 +93,10 @@
                 :class="unread ? 'font-semibold' : 'font-medium'"
               >{{ senderName }}</div>
               <div class="truncate text-xs text-ink-gray-5">{{ senderEmail }}</div>
-              <span
-                v-if="park"
-                class="mt-0.5 inline-block rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
-              >{{ park }}</span>
+              <div class="truncate text-xs text-ink-gray-5">{{ row.subject || __("(No subject)") }}</div>
             </div>
           </div>
-          <!-- Subject + status / due / flags -->
+          <!-- Park + amount, then status / due / flags -->
           <div class="flex min-w-0 flex-col gap-1 sm:flex-1">
             <div class="flex items-center gap-2">
               <span
@@ -109,9 +106,14 @@
                 :title="row.priority"
               />
               <span
-                class="min-w-0 flex-1 truncate text-sm"
-                :class="unread ? 'font-semibold text-ink-gray-9' : 'text-ink-gray-7'"
-              >{{ row.subject || __("(No subject)") }}</span>
+                v-if="park"
+                class="shrink-0 rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
+              >{{ park }}</span>
+              <span
+                v-if="amountLabel !== '—'"
+                class="min-w-0 flex-1 truncate text-sm font-medium text-ink-gray-8"
+                :class="unread ? 'font-semibold' : ''"
+              >{{ amountLabel }}</span>
             </div>
             <div class="flex flex-wrap items-center gap-1.5">
               <Badge
@@ -469,6 +471,14 @@ const isAP = computed(
   () => "ap_vendor" in props.row || "ap_doc_type" in props.row
 );
 const park = computed(() => props.row.pyek_property || "");
+const amountLabel = computed(() => {
+  const a = props.row.ap_amount;
+  if (a === null || a === undefined || a === "" || Number(a) === 0) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(a));
+});
 const senderEmail = computed(() => props.row.raised_by || "");
 // M365 profile photo for internal (@pyek) senders — populated by the enricher
 // into ap_sender_photo. Empty for external vendors → initials fallback.
