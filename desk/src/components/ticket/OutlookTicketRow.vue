@@ -68,77 +68,134 @@
     </button>
 
     <div class="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-1 pr-4">
-      <!-- Line 1: AP instance -> park chip + vendor + amount; else requester + date -->
-      <div class="flex items-center gap-2">
-        <span
-          v-if="isAP && park"
-          class="shrink-0 rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
-        >{{ park }}</span>
-        <span
-          class="min-w-0 flex-1 truncate text-sm text-ink-gray-8"
-          :class="unread ? 'font-semibold' : 'font-medium'"
-        >
-          {{ isAP ? vendor : requester }}
-        </span>
-        <span
-          v-if="isAP"
-          class="shrink-0 text-sm"
-          :class="amountLabel !== '—' ? 'font-medium text-ink-gray-8' : 'text-ink-gray-5'"
-        >{{ amountLabel }}</span>
-        <span v-else class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
-      </div>
+      <!-- PYEK-AP: each row leads with a small CONTACT CARD (avatar/photo +
+           sender name + email + park), then subject + status/flags on the
+           right. Internal (@pyek) senders show their M365 profile photo when
+           the enricher has populated ap_sender_photo; everyone else = initials.
+           Non-AP (IT/HR) keeps the original 3-line Outlook layout below. -->
+      <template v-if="isAP">
+        <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <!-- Contact card -->
+          <div class="flex min-w-0 items-center gap-2.5 sm:flex-1">
+            <img
+              v-if="senderPhoto"
+              :src="senderPhoto"
+              :alt="senderName"
+              class="size-9 shrink-0 rounded-full object-cover"
+            />
+            <div
+              v-else
+              class="grid size-9 shrink-0 place-items-center rounded-full bg-surface-gray-3 text-xs font-medium text-ink-gray-7"
+            >{{ initials }}</div>
+            <div class="min-w-0">
+              <div
+                class="truncate text-sm text-ink-gray-8"
+                :class="unread ? 'font-semibold' : 'font-medium'"
+              >{{ senderName }}</div>
+              <div class="truncate text-xs text-ink-gray-5">{{ senderEmail }}</div>
+              <span
+                v-if="park"
+                class="mt-0.5 inline-block rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
+              >{{ park }}</span>
+            </div>
+          </div>
+          <!-- Subject + status / due / flags -->
+          <div class="flex min-w-0 flex-col gap-1 sm:flex-1">
+            <div class="flex items-center gap-2">
+              <span
+                v-if="isHighPriority"
+                class="size-2 shrink-0 rounded-full"
+                :style="{ backgroundColor: priorityColor }"
+                :title="row.priority"
+              />
+              <span
+                class="min-w-0 flex-1 truncate text-sm"
+                :class="unread ? 'font-semibold text-ink-gray-9' : 'text-ink-gray-7'"
+              >{{ row.subject || __("(No subject)") }}</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <Badge
+                v-if="statusLabel"
+                class="shrink-0"
+                :label="statusLabel"
+                :theme="statusTheme"
+                variant="subtle"
+              />
+              <Badge
+                v-if="dueLabel"
+                class="shrink-0"
+                :label="dueLabel"
+                :theme="dueTheme"
+                variant="subtle"
+              />
+              <Badge
+                v-for="f in apFlags"
+                :key="f.label"
+                class="shrink-0"
+                :label="f.label"
+                :theme="f.theme"
+                variant="subtle"
+              />
+              <MultipleAvatar
+                v-if="row._assign"
+                class="shrink-0"
+                :avatars="row._assign"
+                :hide-name="true"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
 
-      <!-- Line 2: priority indicator + subject + status pill -->
-      <div class="flex items-center gap-2">
-        <span
-          v-if="isHighPriority"
-          class="size-2 shrink-0 rounded-full"
-          :style="{ backgroundColor: priorityColor }"
-          :title="row.priority"
-        />
-        <span
-          class="min-w-0 flex-1 truncate text-sm"
-          :class="unread ? 'font-semibold text-ink-gray-9' : 'text-ink-gray-7'"
-        >
-          {{ row.subject || __("(No subject)") }}
-        </span>
-        <Badge
-          v-if="statusLabel && !isMobileView"
-          class="shrink-0"
-          :label="statusLabel"
-          :theme="statusTheme"
-          variant="subtle"
-        />
-      </div>
+      <template v-else>
+        <!-- Line 1: requester + date -->
+        <div class="flex items-center gap-2">
+          <span
+            class="min-w-0 flex-1 truncate text-sm text-ink-gray-8"
+            :class="unread ? 'font-semibold' : 'font-medium'"
+          >{{ requester }}</span>
+          <span class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
+        </div>
 
-      <!-- Line 3: AP -> invoice # + doc-type/flag badges; else preview snippet.
-           Then the due badge + assignee (shared). -->
-      <div class="flex items-center gap-2">
-        <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">
-          {{ isAP ? apSubline : snippet }}
-        </span>
-        <Badge
-          v-for="f in apFlags"
-          :key="f.label"
-          class="shrink-0"
-          :label="f.label"
-          :theme="f.theme"
-          variant="subtle"
-        />
-        <Badge
-          v-if="dueLabel && !isMobileView"
-          class="shrink-0"
-          :label="dueLabel"
-          :theme="dueTheme"
-          variant="subtle"
-        />
-        <MultipleAvatar
-          v-if="row._assign"
-          class="shrink-0"
-          :avatars="row._assign"
-          :hide-name="true"
-        />
-      </div>
+        <!-- Line 2: priority indicator + subject + status pill -->
+        <div class="flex items-center gap-2">
+          <span
+            v-if="isHighPriority"
+            class="size-2 shrink-0 rounded-full"
+            :style="{ backgroundColor: priorityColor }"
+            :title="row.priority"
+          />
+          <span
+            class="min-w-0 flex-1 truncate text-sm"
+            :class="unread ? 'font-semibold text-ink-gray-9' : 'text-ink-gray-7'"
+          >{{ row.subject || __("(No subject)") }}</span>
+          <Badge
+            v-if="statusLabel && !isMobileView"
+            class="shrink-0"
+            :label="statusLabel"
+            :theme="statusTheme"
+            variant="subtle"
+          />
+        </div>
+
+        <!-- Line 3: preview snippet + due badge + assignee -->
+        <div class="flex items-center gap-2">
+          <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">{{ snippet }}</span>
+          <Badge
+            v-if="dueLabel && !isMobileView"
+            class="shrink-0"
+            :label="dueLabel"
+            :theme="dueTheme"
+            variant="subtle"
+          />
+          <MultipleAvatar
+            v-if="row._assign"
+            class="shrink-0"
+            :avatars="row._assign"
+            :hide-name="true"
+          />
+        </div>
+      </template>
     </div>
     </div>
   </div>
@@ -403,31 +460,35 @@ const snippet = computed(() => {
 
 // --- PYEK-AP invoice row -----------------------------------------------------
 // On the AP instance the backend injects ap_* keys into each row (guarded by
-// has_field, so IT/HR rows never carry them). When present, the row reads as an
-// invoice — park chip + vendor + amount on line 1, invoice # + flags on line 3 —
-// instead of the requester/preview layout. Keyed off the KEY being present (not
-// its value), so portal-link tickets with no vendor still render AP-style.
+// has_field, so IT/HR rows never carry them). When present, the row leads with a
+// contact card — avatar/photo + sender name + email + park — then subject +
+// status/flags, instead of the requester/preview layout. Keyed off the KEY being
+// present (not its value), so portal-link tickets with no vendor still render
+// AP-style.
 const isAP = computed(
   () => "ap_vendor" in props.row || "ap_doc_type" in props.row
 );
 const park = computed(() => props.row.pyek_property || "");
-const vendor = computed(
-  () => props.row.ap_vendor || props.row.contact || props.row.raised_by || "—"
-);
-const amountLabel = computed(() => {
-  const a = props.row.ap_amount;
-  if (a === null || a === undefined || a === "" || Number(a) === 0) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(a));
+const senderEmail = computed(() => props.row.raised_by || "");
+// M365 profile photo for internal (@pyek) senders — populated by the enricher
+// into ap_sender_photo. Empty for external vendors → initials fallback.
+const senderPhoto = computed(() => props.row.ap_sender_photo || "");
+// Card name line: the extracted vendor (title-cased) reads best on an invoice
+// queue; fall back to the contact / email local-part when there's no vendor.
+const senderName = computed(() => {
+  const v = props.row.ap_vendor;
+  if (v) return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+  return props.row.contact || (props.row.raised_by || "").split("@")[0] || "—";
 });
-const apSubline = computed(() => {
-  const parts: string[] = [];
-  if (props.row.ap_invoice_number) parts.push("#" + props.row.ap_invoice_number);
-  const dt = props.row.ap_doc_type;
-  if (dt && dt !== "Invoice") parts.push(dt);
-  return parts.join("  ·  ") || snippet.value;
+const initials = computed(() => {
+  const parts = senderName.value
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 });
 const apFlags = computed(() => {
   const flags: { label: string; theme: string }[] = [];

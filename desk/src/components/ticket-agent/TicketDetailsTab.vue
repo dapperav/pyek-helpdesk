@@ -1,9 +1,5 @@
 <template>
   <div class="flex h-full flex-col">
-    <!-- AP invoice card: From/sender, Intacct filename (one-click copy) + duplicate
-         warning. AP instance only — renders nothing when the ticket has no AP
-         fields (e.g. IT/HR), so it is safe on every site on this fork. -->
-    <ApInvoiceCard :ticket="ticket.doc" />
     <div class="shrink-0 px-4 pb-4 flex flex-col">
       <!-- User avatar with buttons -->
       <TicketContact />
@@ -162,7 +158,6 @@ import { computed, inject, ref } from "vue";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
-import ApInvoiceCard from "../ticket/ApInvoiceCard.vue";
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
 

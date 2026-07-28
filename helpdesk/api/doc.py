@@ -148,6 +148,14 @@ def get_list_data(
                     "ap_invoice_number",
                     "ap_missing_invoice",
                     "ap_duplicate",
+                    # M365 profile photo for internal senders (populated by the
+                    # enricher). Own has_field guard so it flows only once the
+                    # field exists; harmless no-op until the photo pipeline adds it.
+                    *(
+                        ("ap_sender_photo",)
+                        if frappe.get_meta("HD Ticket").has_field("ap_sender_photo")
+                        else ()
+                    ),
                 ):
                     if _ap_field not in rows:
                         rows.append(_ap_field)
