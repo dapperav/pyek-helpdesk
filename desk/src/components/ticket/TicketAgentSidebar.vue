@@ -42,6 +42,9 @@
     />
     <!-- ticket details -->
     <TicketAgentDetails :ticket="ticket" />
+    <!-- AP invoice card: Intacct filename + duplicate warning (AP instance only;
+         renders nothing when the ticket has no AP fields, e.g. IT/HR) -->
+    <ApInvoiceCard :ticket="ticket" />
     <!-- fields -->
     <TicketAgentFields :ticket="ticket" @update="update" />
     <TicketMergeModal
@@ -61,6 +64,7 @@ import LucideMerge from "~icons/lucide/merge";
 import { __ } from "@/translation";
 import TicketAgentContact from "./TicketAgentContact.vue";
 import TicketAgentDetails from "./TicketAgentDetails.vue";
+import ApInvoiceCard from "./ApInvoiceCard.vue";
 import TicketAgentFields from "./TicketAgentFields.vue";
 import TicketMergeModal from "./TicketMergeModal.vue";
 
