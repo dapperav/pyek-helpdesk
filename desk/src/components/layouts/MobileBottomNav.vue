@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { useView } from "@/composables/useView";
 import { useNotificationStore } from "@/stores/notification";
+import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import { __ } from "@/translation";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -46,6 +47,7 @@ import LucideBell from "~icons/lucide/bell";
 import LucideHome from "~icons/lucide/home";
 import LucideHeadset from "~icons/lucide/headset";
 import LucideScanBarcode from "~icons/lucide/scan-barcode";
+import LucideMenu from "~icons/lucide/menu";
 
 const route = useRoute();
 const router = useRouter();
@@ -65,6 +67,7 @@ type Item = {
   route?: string;
   view?: string;
   badge?: number;
+  action?: () => void;
 };
 
 const items = computed<Item[]>(() => [
@@ -78,9 +81,18 @@ const items = computed<Item[]>(() => [
     route: "Notifications",
     badge: notificationStore.unread,
   },
+  // Opens the nav drawer (Dashboard, all saved views, availability, log out) —
+  // relocated here from the old top-left hamburger.
+  {
+    key: "menu",
+    label: __("Menu"),
+    icon: LucideMenu,
+    action: () => (sidebarOpened.value = true),
+  },
 ]);
 
 function isActive(item: Item): boolean {
+  if (item.action) return false;
   if (item.view) {
     return (
       route.name === "TicketsAgent" && route.query.view === viewId(item.view)
@@ -90,7 +102,9 @@ function isActive(item: Item): boolean {
 }
 
 function go(item: Item) {
-  if (item.view) {
+  if (item.action) {
+    item.action();
+  } else if (item.view) {
     const vn = viewId(item.view);
     router.push({ name: "TicketsAgent", query: vn ? { view: vn } : {} });
   } else if (route.name !== item.route) {

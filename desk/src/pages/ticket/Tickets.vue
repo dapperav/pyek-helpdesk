@@ -1,6 +1,9 @@
 <template>
   <div>
-    <LayoutHeader>
+    <!-- Agent + mobile: the view switcher goes into the navy brand bar (see
+         MobileAppHeader) and its old white row is dropped. Everyone else keeps
+         the standard LayoutHeader row. -->
+    <LayoutHeader v-if="!isMobileView || isCustomerPortal">
       <template #left-header>
         <ViewBreadcrumbs
           :label="__('Tickets')"
@@ -29,6 +32,16 @@
         </RouterLink>
       </template>
     </LayoutHeader>
+    <Teleport v-else to="#mobile-header-view">
+      <ViewBreadcrumbs
+        :label="__('Tickets')"
+        route-name="TicketsAgent"
+        :options="dropdownOptions"
+        :dropdown-actions="(view) => viewActions(view, viewDialogConfig)"
+        :current-view="currentView"
+        on-dark
+      />
+    </Teleport>
     <ListViewBuilder
       ref="listViewRef"
       :options="options"

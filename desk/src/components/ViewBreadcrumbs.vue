@@ -18,22 +18,33 @@
       <template #default="{ open }">
         <Button
           variant="ghost"
-          class="max-w-[200px] sm:max-w-none !bg-transparent hover:!bg-surface-gray-3 focus-visible:!ring-0"
-          :class="open && '!bg-surface-gray-3'"
+          class="max-w-[200px] sm:max-w-none !bg-transparent focus-visible:!ring-0"
+          :class="[
+            onDark
+              ? 'text-white hover:!bg-white/10'
+              : 'hover:!bg-surface-gray-3',
+            open && (onDark ? '!bg-white/10' : '!bg-surface-gray-3'),
+          ]"
         >
-          <span class="text-lg-medium text-nowrap truncate">{{
-            currentView.label
-          }}</span>
+          <!-- On the navy bar we drop the view-name label ("List") to save
+               room; the icon + chevron carry it. -->
+          <span
+            v-if="!onDark"
+            class="text-lg-medium text-nowrap truncate"
+            >{{ currentView.label }}</span
+          >
           <template #prefix>
             <component
               :is="currentView.icon"
               class="flex size-4 shrink-0 items-center justify-center"
+              :class="onDark && 'text-white'"
             />
           </template>
           <template #suffix>
             <FeatherIcon
               :name="open ? 'chevron-up' : 'chevron-down'"
-              class="h-4 text-ink-gray-8"
+              class="h-4"
+              :class="onDark ? 'text-white' : 'text-ink-gray-8'"
             />
           </template>
         </Button>
@@ -112,6 +123,11 @@ const props = defineProps({
   currentView: {
     type: Object,
     required: true,
+  },
+  // Render for the navy mobile brand bar: white text, no view-name label.
+  onDark: {
+    type: Boolean,
+    default: false,
   },
 });
 
