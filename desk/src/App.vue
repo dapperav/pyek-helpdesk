@@ -7,20 +7,20 @@
 
 <script setup lang="ts">
 import { Dialogs } from "@/components/dialogs";
-import { useConfigStore } from "@/stores/config";
-import { useFavicon } from "@vueuse/core";
 import { FrappeUIProvider, setConfig, toast, useTheme } from "frappe-ui";
-import { storeToRefs } from "pinia";
 import { h, onMounted } from "vue";
 import Wifi from "~icons/lucide/wifi";
 import WifiOff from "~icons/lucide/wifi-off";
 import { __ } from "./translation";
 import { isCustomerPortal, getBrowserTimezone } from "./utils";
 
-const configStore = useConfigStore();
-const { favicon } = storeToRefs(configStore);
-
-useFavicon(favicon);
+// NOTE: intentionally NOT running @vueuse useFavicon(config.favicon) here.
+// useFavicon rewrites EVERY link[rel*="icon"] — favicon, mask-icon AND
+// apple-touch-icon — to the HD Settings branding favicon. That clobbered the
+// per-site home-screen icon (PMIT/PMAP/PMHR) rendered server-side in
+// www/helpdesk/index.html, and iOS rejects SVG apple-touch icons anyway. The
+// browser-tab favicon + home-screen apple-touch icon are set statically/per
+// site in index.html instead, so we leave the DOM icon links alone.
 
 if (!localStorage.getItem("theme")) {
   localStorage.setItem("theme", "light");
