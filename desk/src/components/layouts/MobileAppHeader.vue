@@ -2,9 +2,10 @@
   <!-- Navy brand bar — bookends the navy footer. It extends up behind the
        status bar (padding-top = the notch/status inset, needed since the
        viewport is viewport-fit=cover); status text is white via
-       apple-mobile-web-app-status-bar-style=black-translucent. Brand + menu
-       only — the page controls live on the white row below, so nothing here
-       needs light-on-navy restyling. -->
+       apple-mobile-web-app-status-bar-style=black-translucent.
+       Left = the view switcher (teleported in by the tickets list on mobile,
+       so we drop the separate white "List" row + the old menu hamburger — the
+       nav drawer now opens from the "Menu" tab in the bottom bar). -->
   <div
     class="flex items-center gap-2 px-3"
     style="
@@ -13,14 +14,9 @@
       padding-top: env(safe-area-inset-top);
     "
   >
-    <button
-      type="button"
-      class="grid size-8 shrink-0 place-items-center rounded text-white/90 transition active:bg-white/10"
-      aria-label="Open menu"
-      @click="sidebarOpened = !sidebarOpened"
-    >
-      <FeatherIcon name="menu" class="size-5" />
-    </button>
+    <!-- View-switcher teleport target (light-on-navy). Empty on non-list
+         pages, which just show the brand. -->
+    <div id="mobile-header-view" class="flex min-w-0 shrink items-center"></div>
     <PyekMark class="h-5 w-auto shrink-0" />
     <span class="text-base tracking-tight">
       <span class="font-bold text-white">PYEK</span
@@ -38,16 +34,20 @@
       {{ __("Create") }}
     </RouterLink>
   </div>
-  <!-- White controls row: the page title / breadcrumb / view switcher /
-       Create button teleport into #app-header here, on white as designed. -->
-  <div class="flex h-12 items-center border-b border-outline-gray-2 pl-1 pr-2">
+  <!-- White controls row: other pages teleport their title / breadcrumb into
+       #app-header here (on white as designed). Hidden on the tickets list,
+       where the view switcher now lives in the navy bar above — reclaiming a
+       full row of screen space. -->
+  <div
+    v-if="route.name !== 'TicketsAgent'"
+    class="flex h-12 items-center border-b border-outline-gray-2 pl-1 pr-2"
+  >
     <header id="app-header" class="w-full min-w-0"></header>
   </div>
   <CallUI class="mr-3 mt-2" :userEmail="user" />
 </template>
 
 <script setup>
-import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import PyekMark from "@/components/PyekMark.vue";
 import { __ } from "@/translation";
 import CallUI from "../telephony/CallUI.vue";
