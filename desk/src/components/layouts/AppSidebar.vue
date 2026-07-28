@@ -4,7 +4,13 @@
     :disable-collapse="mobile"
     class="border-e border-outline-gray-1"
   >
-    <div class="flex h-full flex-col p-2">
+    <!-- On the mobile drawer, clear the iOS status-bar inset so the brand
+         doesn't render behind the clock (the navy sidebar bg fills the notch
+         strip). Desktop is unaffected. -->
+    <div
+      class="flex h-full flex-col p-2"
+      :style="mobile ? { paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' } : {}"
+    >
       <UserMenu :options="profileSettings" :is-collapsed="isCollapsed" />
 
       <ScrollArea class="mt-2 min-h-0 flex-1 -mx-2" viewport-class="px-2">
