@@ -135,6 +135,22 @@ def get_list_data(
             ):
                 if _pyek_field not in rows:
                     rows.append(_pyek_field)
+            # PYEK-AP: invoice fields the AP-instance list row renders (vendor,
+            # amount, doc-type, invoice #, and the missing/duplicate flags). Guarded
+            # by has_field so the IT/HR sites — which don't have these columns —
+            # never query them (an unknown column would 500 the whole list). The
+            # frontend keys the AP row layout off the presence of these keys.
+            if frappe.get_meta("HD Ticket").has_field("ap_vendor"):
+                for _ap_field in (
+                    "ap_vendor",
+                    "ap_amount",
+                    "ap_doc_type",
+                    "ap_invoice_number",
+                    "ap_missing_invoice",
+                    "ap_duplicate",
+                ):
+                    if _ap_field not in rows:
+                        rows.append(_ap_field)
     # PYEK: two-tier ordering for the agent ticket list — float tickets that are
     # due soon (overdue / today / within the next 7 days, by pyek_requested_due_date)
     # to the TOP so agents can prioritise by due date, then fall back to the

@@ -68,15 +68,24 @@
     </button>
 
     <div class="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-1 pr-4">
-      <!-- Line 1: requester + date -->
+      <!-- Line 1: AP instance -> park chip + vendor + amount; else requester + date -->
       <div class="flex items-center gap-2">
+        <span
+          v-if="isAP && park"
+          class="shrink-0 rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
+        >{{ park }}</span>
         <span
           class="min-w-0 flex-1 truncate text-sm text-ink-gray-8"
           :class="unread ? 'font-semibold' : 'font-medium'"
         >
-          {{ requester }}
+          {{ isAP ? vendor : requester }}
         </span>
-        <span class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
+        <span
+          v-if="isAP"
+          class="shrink-0 text-sm"
+          :class="amountLabel !== '—' ? 'font-medium text-ink-gray-8' : 'text-ink-gray-5'"
+        >{{ amountLabel }}</span>
+        <span v-else class="shrink-0 text-xs text-ink-gray-5">{{ dateLabel }}</span>
       </div>
 
       <!-- Line 2: priority indicator + subject + status pill -->
@@ -102,11 +111,20 @@
         />
       </div>
 
-      <!-- Line 3: preview snippet + due date + assignee avatar -->
+      <!-- Line 3: AP -> invoice # + doc-type/flag badges; else preview snippet.
+           Then the due badge + assignee (shared). -->
       <div class="flex items-center gap-2">
         <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">
-          {{ snippet }}
+          {{ isAP ? apSubline : snippet }}
         </span>
+        <Badge
+          v-for="f in apFlags"
+          :key="f.label"
+          class="shrink-0"
+          :label="f.label"
+          :theme="f.theme"
+          variant="subtle"
+        />
         <Badge
           v-if="dueLabel && !isMobileView"
           class="shrink-0"
@@ -381,5 +399,43 @@ const snippet = computed(() => {
   // into the preview — textContent would otherwise include it.
   el.querySelectorAll("style, script").forEach((n) => n.remove());
   return (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
+});
+
+// --- PYEK-AP invoice row -----------------------------------------------------
+// On the AP instance the backend injects ap_* keys into each row (guarded by
+// has_field, so IT/HR rows never carry them). When present, the row reads as an
+// invoice — park chip + vendor + amount on line 1, invoice # + flags on line 3 —
+// instead of the requester/preview layout. Keyed off the KEY being present (not
+// its value), so portal-link tickets with no vendor still render AP-style.
+const isAP = computed(
+  () => "ap_vendor" in props.row || "ap_doc_type" in props.row
+);
+const park = computed(() => props.row.pyek_property || "");
+const vendor = computed(
+  () => props.row.ap_vendor || props.row.contact || props.row.raised_by || "—"
+);
+const amountLabel = computed(() => {
+  const a = props.row.ap_amount;
+  if (a === null || a === undefined || a === "" || Number(a) === 0) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(a));
+});
+const apSubline = computed(() => {
+  const parts: string[] = [];
+  if (props.row.ap_invoice_number) parts.push("#" + props.row.ap_invoice_number);
+  const dt = props.row.ap_doc_type;
+  if (dt && dt !== "Invoice") parts.push(dt);
+  return parts.join("  ·  ") || snippet.value;
+});
+const apFlags = computed(() => {
+  const flags: { label: string; theme: string }[] = [];
+  if (props.row.ap_duplicate) flags.push({ label: "Duplicate", theme: "red" });
+  if (props.row.ap_missing_invoice)
+    flags.push({ label: "Missing", theme: "orange" });
+  else if ("ap_vendor" in props.row && !props.row.ap_vendor)
+    flags.push({ label: "Via link", theme: "gray" });
+  return flags;
 });
 </script>
