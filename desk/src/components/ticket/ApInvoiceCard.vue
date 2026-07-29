@@ -69,10 +69,7 @@
         v-if="filename"
         class="mt-2.5 rounded-lg border border-outline-gray-2 px-2.5 py-2"
       >
-        <div class="mb-1 flex items-center gap-2">
-          <p class="text-xs text-ink-gray-5">{{ __("Intacct filename") }}</p>
-          <span v-if="updated" class="text-xs" style="color: #16a34a">{{ __("Updated") }}</span>
-        </div>
+        <p class="mb-1 text-xs text-ink-gray-5">{{ __("Intacct filename") }}</p>
         <div class="flex items-center gap-2">
           <code class="min-w-0 flex-1 truncate text-sm text-ink-gray-8">{{ filename }}</code>
           <button
@@ -157,12 +154,13 @@ const extra = createResource({
     () => isAP.value && !!props.ticket?.name && !props.ticket?.ap_proposed_filename
   ),
 });
-// Local, editable copy of the filename so a park change can rewrite it in place.
-const filename = ref<string>("");
+// Enricher-set filename (may carry a stale park token). We display a live copy
+// with the CURRENT park token swapped in — see `filename` below.
+const storedFilename = ref<string>("");
 watch(
   () => props.ticket?.ap_proposed_filename || extra.data?.ap_proposed_filename,
   (v) => {
-    if (v) filename.value = v as string;
+    if (v) storedFilename.value = v as string;
   },
   { immediate: true }
 );
@@ -170,34 +168,18 @@ const isDuplicate = computed(
   () => Number(props.ticket?.ap_duplicate ?? extra.data?.ap_duplicate) === 1
 );
 
-// --- Keep the Intacct filename's park token in sync with the Property field ---
-// The park is edited on the Property field in Details (a Select). When it
-// changes, rewrite the filename's first (park) token in place and persist it, so
-// the copied name always matches the corrected park (also cleans stale tokens).
-const saveRes = createResource({ url: "frappe.client.set_value" });
-const updated = ref(false);
-watch(
-  () => props.ticket?.pyek_property,
-  (newCode, oldCode) => {
-    // Only on a genuine post-mount change, and only if we have a filename to fix.
-    if (oldCode === undefined || !newCode || newCode === oldCode) return;
-    if (!filename.value || !filename.value.includes("_")) return;
-    const rebuilt = newCode + filename.value.slice(filename.value.indexOf("_"));
-    if (rebuilt === filename.value) return;
-    filename.value = rebuilt;
-    saveRes
-      .submit({
-        doctype: "HD Ticket",
-        name: props.ticket.name,
-        fieldname: { ap_proposed_filename: rebuilt },
-      })
-      .then(() => {
-        updated.value = true;
-        setTimeout(() => (updated.value = false), 1600);
-      })
-      .catch(() => {});
-  }
-);
+// The Intacct filename shown/copied ALWAYS reflects the current park (edited on
+// the Property field): swap the stored name's first (park) token to the current
+// pyek_property. Purely COMPUTED — NO write — so it never races the Property
+// field's own save (a second write caused a "document modified" conflict). The
+// park is persisted by the Property field, so this stays correct on reopen.
+const filename = computed(() => {
+  const stored = storedFilename.value;
+  if (!stored) return "";
+  const code = props.ticket?.pyek_property;
+  if (!code || !stored.includes("_")) return stored;
+  return code + stored.slice(stored.indexOf("_"));
+});
 
 const copied = ref(false);
 function copyFilename() {
