@@ -3,10 +3,12 @@
     <!-- AP invoice working card (park dropdown + Intacct filename). Renders
          nothing on IT/HR tickets via its own ap_vendor guard. -->
     <ApInvoiceCard :ticket="ticket.doc" />
-    <div class="shrink-0 px-4 pb-4 flex flex-col">
-      <!-- User avatar with buttons. Hidden on AP: the sender/vendor already shows on
-           the invoice card + list row, and the contact name confused triage. -->
-      <TicketContact v-if="!isAP" />
+    <!-- Non-AP: contact + core fields (ticket type/priority/customer/team) + assignee
+         at the top, as before. On AP this whole block moves to a card at the BOTTOM
+         (see below) so Ticket Info sits directly under the invoice card. -->
+    <div v-if="!isAP" class="shrink-0 px-4 pb-4 flex flex-col">
+      <!-- User avatar with buttons. -->
+      <TicketContact />
       <!-- Core Fields -->
       <div class="mt-4">
         <div
@@ -42,13 +44,23 @@
       </div>
     </div>
 
-    <!-- Scrollable sections: Ticket Info + Recent / Similar Tickets -->
+    <!-- Scrollable sections: Ticket Info + (AP) Priority/Assignee + Recent/Similar.
+         On AP these render as bordered cards (matching the invoice card) with no
+         divider lines; non-AP keeps the original bordered/divided list. -->
     <div
-      class="border-t flex-1 min-h-0 overflow-y-auto divide-y-[1px]"
-      v-if="Boolean(customFields.length) || showRecentSimilarTickets"
+      class="flex-1 min-h-0 overflow-y-auto"
+      :class="isAP ? 'pb-4' : 'border-t divide-y-[1px]'"
+      v-if="Boolean(customFields.length) || showRecentSimilarTickets || isAP"
     >
       <!-- Ticket Info (custom fields) -->
-      <div v-if="Boolean(customFields.length)">
+      <div
+        v-if="Boolean(customFields.length)"
+        :class="
+          isAP
+            ? 'mx-5 mt-3 rounded-xl border border-outline-gray-2 bg-surface-white overflow-hidden'
+            : ''
+        "
+      >
         <Section label="Ticket Info" v-model:opened="openedSections.ticketInfo">
           <template #header="{ opened, toggle }">
             <div
@@ -81,6 +93,40 @@
             </template>
           </div>
         </Section>
+      </div>
+
+      <!-- AP: Priority + Assignee in a matching card at the bottom (moved out of the
+           top block so Ticket Info sits directly under the invoice card). -->
+      <div
+        v-if="isAP"
+        class="mx-5 mt-3 rounded-xl border border-outline-gray-2 bg-surface-white p-3.5"
+      >
+        <div class="mb-3 text-base-semibold text-ink-gray-8">{{ __("Details") }}</div>
+        <div
+          v-for="(section, index) in coreFields"
+          :key="index"
+          class="mb-3"
+        >
+          <template v-for="field in section.fields">
+            <Link
+              v-if="field.visible"
+              :key="field.fieldname"
+              :ref="(el) => setFieldRef(field.fieldname, el)"
+              class="form-control-core w-full"
+              :id="field.fieldname"
+              :page-length="10"
+              :label="field.label"
+              :placeholder="field.placeholder"
+              :doctype="field.doctype"
+              :modelValue="field.value"
+              :required="field.required"
+              @update:model-value="
+                (val:string) => handleFieldUpdate(field.fieldname, val, true)
+              "
+            />
+          </template>
+        </div>
+        <AssignTo />
       </div>
 
       <!-- Recent / Similar Tickets -->
@@ -158,7 +204,7 @@ import {
 } from "@/types";
 import { useStorage } from "@vueuse/core";
 import { dayjs, Tooltip } from "frappe-ui";
-import { computed, inject, ref } from "vue";
+import { computed, inject, ref, watch } from "vue";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
@@ -256,6 +302,16 @@ const openedSections = useStorage(
   },
   localStorage,
   { mergeDefaults: true }
+);
+
+// On AP, Ticket Info is the primary panel (directly under the invoice card), so
+// default it open once the ticket doc has loaded.
+watch(
+  isAP,
+  (v) => {
+    if (v) openedSections.value.ticketInfo = true;
+  },
+  { immediate: true }
 );
 
 const sections = computed(() => {
