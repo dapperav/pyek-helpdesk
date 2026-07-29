@@ -39,7 +39,7 @@
     style="background:#fde68a;color:#111;font-size:11px;line-height:1.4;padding:3px 8px;font-family:monospace"
   >
     dbg · route={{ route.name }} · w={{ width }} · pwa={{ standalone }} ·
-    m={{ isMobileView }}
+    m={{ isMobileView }}<span v-if="lastError"> · {{ lastError }}</span>
   </div>
   <!-- White controls row: other pages teleport their title / breadcrumb into
        #app-header here (on white as designed). Hidden on the tickets list,
@@ -71,6 +71,7 @@ import CallUI from "../telephony/CallUI.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTelephonyStore } from "@/stores/telephony";
 import { useScreenSize } from "@/composables/screen";
+import { lastError } from "@/lastError";
 import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 
