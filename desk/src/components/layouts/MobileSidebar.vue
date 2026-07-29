@@ -89,6 +89,13 @@ const customerPortalDropdown = computed(() => [
 ]);
 
 const agentPortalDropdown = computed(() => [
+  // PYEK: Notifications lives here now that the bottom bar dropped its standalone
+  // Alerts tab (see MobileBottomNav). The unread count still shows on the Menu tab.
+  {
+    label: __("Notifications"),
+    icon: "lucide-bell",
+    onClick: () => router.push({ name: "Notifications" }),
+  },
   appsMenuOption.value,
   ...(authStore.hasAgentRecord
     ? [
