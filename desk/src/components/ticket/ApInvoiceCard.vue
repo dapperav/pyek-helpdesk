@@ -25,6 +25,10 @@
           <span class="text-ink-gray-5">{{ __("Amount") }}</span>
           <span class="font-medium text-ink-gray-9">{{ amountLabel }}</span>
         </div>
+        <div v-if="receivedDate" class="flex items-center justify-between">
+          <span class="text-ink-gray-5">{{ __("Received") }}</span>
+          <span class="text-ink-gray-8">{{ receivedDate }}</span>
+        </div>
         <div v-if="ticket.ap_invoice_number" class="flex items-center justify-between">
           <span class="text-ink-gray-5">{{ __("Invoice #") }}</span>
           <span class="text-ink-gray-8">{{ ticket.ap_invoice_number }}</span>
@@ -44,6 +48,17 @@
           <span class="text-ink-gray-5">{{ __("Doc type") }}</span>
           <span class="text-ink-gray-8">{{ ticket.ap_doc_type }}</span>
         </div>
+      </div>
+
+      <!-- Needs-review banner: the enricher flagged a low-confidence / handwritten /
+           reimbursement-mismatch extraction — verify the fields before posting. -->
+      <div
+        v-if="isNeedsReview"
+        class="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
+        style="background-color: #fffbeb; color: #b45309"
+      >
+        <LucideTriangleAlert class="size-4 shrink-0" />
+        {{ __("Needs review — verify fields before posting") }}
       </div>
 
       <!-- Duplicate / missing banner -->
@@ -132,6 +147,9 @@ const amountLabel = computed(() => {
 const fmt = (d?: string) => (d ? dayjs(d).format("MM/DD/YYYY") : "");
 const invoiceDate = computed(() => fmt(props.ticket?.ap_invoice_date));
 const dueDate = computed(() => fmt(props.ticket?.pyek_requested_due_date));
+// True date the sender emailed ap@ (enricher-set from the email's Date header, NOT
+// Frappe's ingest time). A template field, so it's on the doc and reacts to edits.
+const receivedDate = computed(() => fmt(props.ticket?.ap_received_date));
 const isOverdue = computed(
   () =>
     !!props.ticket?.pyek_requested_due_date &&
@@ -148,12 +166,17 @@ const extra = createResource({
   makeParams: () => ({
     doctype: "HD Ticket",
     filters: { name: props.ticket?.name },
-    fieldname: ["ap_proposed_filename", "ap_duplicate"],
+    fieldname: ["ap_proposed_filename", "ap_duplicate", "ap_needs_review"],
   }),
   auto: computed(
     () => isAP.value && !!props.ticket?.name && !props.ticket?.ap_proposed_filename
   ),
 });
+
+// Enricher review flag (not a template field, so self-fetched with the filename/dup).
+const isNeedsReview = computed(
+  () => Number(props.ticket?.ap_needs_review ?? extra.data?.ap_needs_review) === 1
+);
 // Enricher-set filename (may carry a stale park token). We display a live copy
 // with the CURRENT park token swapped in — see `filename` below.
 const storedFilename = ref<string>("");
