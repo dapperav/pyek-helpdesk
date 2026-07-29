@@ -1,5 +1,8 @@
 <template>
   <div class="flex h-full flex-col">
+    <!-- AP invoice working card (park dropdown + Intacct filename). Renders
+         nothing on IT/HR tickets via its own ap_vendor guard. -->
+    <ApInvoiceCard :ticket="ticket.doc" />
     <div class="shrink-0 px-4 pb-4 flex flex-col">
       <!-- User avatar with buttons -->
       <TicketContact />
@@ -160,6 +163,7 @@ import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
+import ApInvoiceCard from "@/components/ticket/ApInvoiceCard.vue";
 
 const ticket = inject(TicketSymbol)!;
 const assignees = inject(AssigneeSymbol)!;
