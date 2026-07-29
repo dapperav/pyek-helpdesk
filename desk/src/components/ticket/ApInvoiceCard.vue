@@ -1,31 +1,22 @@
 <template>
   <!-- AP invoice working card (mobile + desktop ticket detail). Renders only for
-       AP tickets (the ap_vendor field is present); on IT/HR it renders nothing,
-       so it's safe on the shared component. At-a-glance invoice summary, an
-       editable park (fixes mislabels + rewrites the Intacct filename), and the
-       copyable Intacct filename. -->
+       AP tickets (the ap_vendor field is present); on IT/HR it renders nothing.
+       Park is READ-ONLY here — it's edited on the Property field in Details; this
+       card watches that field and rewrites the Intacct filename to match. -->
   <div v-if="isAP" class="px-5 pt-4">
     <div class="rounded-xl border border-outline-gray-2 bg-surface-white p-3.5">
-      <!-- Header: vendor + editable park -->
+      <!-- Header: vendor + park (read-only) -->
       <div class="mb-2.5 flex items-center justify-between gap-2">
         <span class="truncate text-base-medium text-ink-gray-9">
           {{ vendor || __("Invoice") }}
         </span>
-        <div class="flex shrink-0 items-center gap-1.5">
-          <span
-            class="size-2 shrink-0 rounded-full"
-            :style="{ backgroundColor: parkColor(parkLabel(park)) }"
-          />
-          <select
-            :value="park"
-            :aria-label="__('Park')"
-            class="rounded border border-outline-gray-3 bg-surface-white py-0.5 pl-1.5 pr-1 text-xs font-medium text-ink-gray-7"
-            @change="onParkChange"
-          >
-            <option v-for="p in parkOptions" :key="p" :value="p">{{ p || "—" }}</option>
-          </select>
-          <span v-if="saved" class="text-xs" style="color: #16a34a">{{ __("Saved") }}</span>
-        </div>
+        <span
+          v-if="park"
+          class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+          :style="{ backgroundColor: parkColor(park) }"
+        >
+          {{ park }}
+        </span>
       </div>
 
       <!-- Fields -->
@@ -73,12 +64,15 @@
         {{ __("No invoice attached") }}
       </div>
 
-      <!-- Intacct filename (rewrites its park token when the park changes) -->
+      <!-- Intacct filename (park token follows the Property field) -->
       <div
         v-if="filename"
         class="mt-2.5 rounded-lg border border-outline-gray-2 px-2.5 py-2"
       >
-        <p class="mb-1 text-xs text-ink-gray-5">{{ __("Intacct filename") }}</p>
+        <div class="mb-1 flex items-center gap-2">
+          <p class="text-xs text-ink-gray-5">{{ __("Intacct filename") }}</p>
+          <span v-if="updated" class="text-xs" style="color: #16a34a">{{ __("Updated") }}</span>
+        </div>
         <div class="flex items-center gap-2">
           <code class="min-w-0 flex-1 truncate text-sm text-ink-gray-8">{{ filename }}</code>
           <button
@@ -127,25 +121,7 @@ const { isMobileView } = useScreenSize();
 const isAP = computed(() => props.ticket && "ap_vendor" in props.ticket);
 
 const vendor = computed(() => props.ticket?.ap_vendor || "");
-
-// --- Editable park -----------------------------------------------------------
-// The AP entity codes. `park` is the raw pyek_property value (a code), kept as a
-// local ref so the dropdown can change it; the enricher only touches un-enriched
-// tickets, so a manual fix here sticks.
-const PARK_OPTIONS = ["TTH", "TTA", "CBB", "CBC", "CBV", "DTL", "PYK"];
-const park = ref<string>("");
-watch(
-  () => props.ticket?.pyek_property,
-  (v) => (park.value = v || ""),
-  { immediate: true }
-);
-// Show the current value even if it isn't one of the standard codes (older data).
-const parkOptions = computed(() => {
-  const opts = [...PARK_OPTIONS];
-  if (park.value && !opts.includes(park.value)) opts.unshift(park.value);
-  if (!park.value) opts.unshift("");
-  return opts;
-});
+const park = computed(() => parkLabel(props.ticket?.pyek_property));
 
 const amountLabel = computed(() => {
   const n = Number(props.ticket?.ap_amount);
@@ -194,33 +170,34 @@ const isDuplicate = computed(
   () => Number(props.ticket?.ap_duplicate ?? extra.data?.ap_duplicate) === 1
 );
 
-// --- Persist a park correction + rewrite the filename's park token -----------
+// --- Keep the Intacct filename's park token in sync with the Property field ---
+// The park is edited on the Property field in Details (a Select). When it
+// changes, rewrite the filename's first (park) token in place and persist it, so
+// the copied name always matches the corrected park (also cleans stale tokens).
 const saveRes = createResource({ url: "frappe.client.set_value" });
-const saved = ref(false);
-async function onParkChange(e: Event) {
-  const newCode = (e.target as HTMLSelectElement).value;
-  if (newCode === park.value) return;
-  park.value = newCode;
-  const update: Record<string, string> = { pyek_property: newCode };
-  // The Intacct filename is `PARK_InvoiceDate_Vendor_Amount`; the park is the
-  // first underscore-delimited token, so swap just that (also cleans stale
-  // tokens like a leftover CBV_).
-  if (newCode && filename.value && filename.value.includes("_")) {
-    filename.value = newCode + filename.value.slice(filename.value.indexOf("_"));
-    update.ap_proposed_filename = filename.value;
+const updated = ref(false);
+watch(
+  () => props.ticket?.pyek_property,
+  (newCode, oldCode) => {
+    // Only on a genuine post-mount change, and only if we have a filename to fix.
+    if (oldCode === undefined || !newCode || newCode === oldCode) return;
+    if (!filename.value || !filename.value.includes("_")) return;
+    const rebuilt = newCode + filename.value.slice(filename.value.indexOf("_"));
+    if (rebuilt === filename.value) return;
+    filename.value = rebuilt;
+    saveRes
+      .submit({
+        doctype: "HD Ticket",
+        name: props.ticket.name,
+        fieldname: { ap_proposed_filename: rebuilt },
+      })
+      .then(() => {
+        updated.value = true;
+        setTimeout(() => (updated.value = false), 1600);
+      })
+      .catch(() => {});
   }
-  try {
-    await saveRes.submit({
-      doctype: "HD Ticket",
-      name: props.ticket.name,
-      fieldname: update,
-    });
-    saved.value = true;
-    setTimeout(() => (saved.value = false), 1600);
-  } catch (e) {
-    // Leave the UI showing the attempted value; the agent can retry.
-  }
-}
+);
 
 const copied = ref(false);
 function copyFilename() {
