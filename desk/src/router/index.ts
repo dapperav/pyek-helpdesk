@@ -1,9 +1,5 @@
 import { useScreenSize } from "@/composables/screen";
 import { lastError } from "@/lastError";
-// Eager (static) import: /home must not lazy-fetch a chunk on tap — that fetch
-// silently fails in the installed iOS PWA. Bundling HomeView into the eager app
-// code makes the Dashboard tab work without a runtime chunk load.
-import HomeView from "@/pages/home/HomeView.vue";
 import { canViewPersona, personaInterrupt } from "@/persona";
 import { useAuthStore } from "@/stores/auth";
 import { useUserStore } from "@/stores/user";
@@ -41,7 +37,7 @@ const portalRoutes = [
     // PYEK: HomeView wraps the mobile/desktop choice with a LIVE viewport check
     // (the module-scope isMobileView below is frozen at load and unreliable).
     // Mobile → MobileHome (tiles + queue jumps); desktop → PyekHome.
-    component: HomeView,
+    component: () => import("@/pages/home/HomeView.vue"),
   },
 
   {
