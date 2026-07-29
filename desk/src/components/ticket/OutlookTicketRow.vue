@@ -157,8 +157,11 @@
               <div class="truncate text-xs text-ink-gray-5">{{ row.subject || __("(No subject)") }}</div>
             </div>
           </div>
-          <div class="flex min-w-0 flex-1 flex-col gap-1">
-            <div class="flex items-center gap-2">
+          <!-- Right-aligned: pinned to the row's right edge (shrink-0 while the
+               contact card takes flex-1), amount/park + status/due/flags stacked
+               and right-justified so the numbers line up down the right side. -->
+          <div class="flex shrink-0 flex-col items-end gap-1">
+            <div class="flex items-center justify-end gap-2">
               <span
                 v-if="isHighPriority"
                 class="size-2 shrink-0 rounded-full"
@@ -171,11 +174,11 @@
               >{{ park }}</span>
               <span
                 v-if="amountLabel !== '—'"
-                class="min-w-0 flex-1 truncate text-sm font-medium text-ink-gray-8"
+                class="shrink-0 text-sm font-medium text-ink-gray-8"
                 :class="unread ? 'font-semibold' : ''"
               >{{ amountLabel }}</span>
             </div>
-            <div class="flex flex-wrap items-center gap-1.5">
+            <div class="flex flex-wrap items-center justify-end gap-1.5">
               <Badge
                 v-if="statusLabel"
                 class="shrink-0"
