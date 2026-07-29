@@ -55,6 +55,26 @@ class CustomInboundMail(InboundMail):
         self._parent_communication = ""
         return self._parent_communication
 
+    def match_record_by_subject_and_sender(self, doctype):
+        """PYEK override — never merge a brand-new email onto an existing
+        ticket just because their subject lines match.
+
+        Frappe's default (frappe.email.receive.InboundMail) falls back to a
+        fuzzy ``subject LIKE %..%`` match within a 60-day window when an email
+        can't be threaded by reply headers — and for a sender who is a Frappe
+        *system user* with a subject longer than 10 chars it drops the sender
+        check and matches on subject ALONE. That silently swallowed unrelated
+        new emails that happened to reuse a subject line ("Refund request",
+        "POS down", etc.) into old, often-closed tickets.
+
+        We keep ONLY the precise path: an explicit ticket name embedded in the
+        subject (e.g. "... (#0042)"). Genuine replies still thread correctly
+        via the In-Reply-To / References headers handled in
+        ``parent_communication`` above. Everything else becomes a new ticket.
+        """
+        name = self.get_reference_name_from_subject()
+        return self.get_doc(doctype, name, ignore_error=True) if name else None
+
 
 class CustomEmailAccount(EmailAccount):
     def get_inbound_mails(self) -> list[InboundMail]:
