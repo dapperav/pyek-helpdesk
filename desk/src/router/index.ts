@@ -26,17 +26,18 @@ const portalRoutes = [
   // Agent Portal Routes
   {
     path: "",
-    // PYEK: phones open straight to the ticket inbox; desktop lands on the
-    // dashboard home.
-    redirect: () => (isMobileView.value ? "/tickets" : "/home"),
+    // PYEK: everyone lands on the dashboard home. On phones that's the AP
+    // MobileHome (tiles + jump-to views); on desktop it's PyekHome.
+    redirect: "/home",
   },
   {
     path: "/home",
     name: "Home",
-    // PYEK: branded dashboard landing (metric cards + charts + saved-view
-    // launchers). Upstream Home.vue (the customizable widget board) is kept in
-    // the tree but no longer the landing.
-    component: () => import("@/pages/home/PyekHome.vue"),
+    // PYEK: branded dashboard landing. Mobile gets the AP-tailored MobileHome
+    // (metric tiles + jump-to views); desktop keeps PyekHome (cards + charts).
+    // Upstream Home.vue (the widget board) stays in the tree, unrouted.
+    component: () =>
+      import(`@/pages/home/${isMobileView.value ? "MobileHome" : "PyekHome"}.vue`),
   },
 
   {

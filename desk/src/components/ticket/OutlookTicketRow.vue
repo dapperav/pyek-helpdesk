@@ -74,9 +74,70 @@
            the enricher has populated ap_sender_photo; everyone else = initials.
            Non-AP (IT/HR) keeps the original 3-line Outlook layout below. -->
       <template v-if="isAP">
-        <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <!-- Contact card -->
-          <div class="flex min-w-0 items-center gap-2.5 sm:flex-1">
+        <!-- MOBILE: compact + scannable. Line 1 = vendor + amount (the two
+             numbers that matter, aligned); line 2 = email + due date (colored);
+             line 3 = subject; line 4 (only when present) = park chip + flags.
+             Status is already shown by the left color strip, so there's no
+             status pill here — that's what made the old row a pile of badges. -->
+        <div v-if="isMobileView" class="flex items-start gap-2.5">
+          <img
+            v-if="senderPhoto"
+            :src="senderPhoto"
+            :alt="senderName"
+            class="size-9 shrink-0 rounded-full object-cover"
+          />
+          <div
+            v-else
+            class="grid size-9 shrink-0 place-items-center rounded-full bg-surface-gray-3 text-xs font-medium text-ink-gray-7"
+          >{{ initials }}</div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-baseline gap-2">
+              <span
+                class="min-w-0 flex-1 truncate text-sm text-ink-gray-8"
+                :class="unread ? 'font-semibold' : 'font-medium'"
+              >{{ senderName }}</span>
+              <span
+                v-if="amountLabel !== '—'"
+                class="shrink-0 text-sm font-semibold text-ink-gray-9"
+              >{{ amountLabel }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">{{ senderEmail }}</span>
+              <span
+                v-if="dueLabel"
+                class="shrink-0 text-xs font-medium"
+                :style="{ color: dueColor }"
+              >{{ dueLabel }}</span>
+            </div>
+            <div class="truncate text-xs text-ink-gray-5">{{ row.subject || __("(No subject)") }}</div>
+            <div
+              v-if="park || apFlags.length || row._assign"
+              class="mt-1 flex flex-wrap items-center gap-1.5"
+            >
+              <span
+                v-if="park"
+                class="rounded border border-outline-gray-3 px-1.5 py-px text-[10px] font-medium leading-4 text-ink-gray-6"
+              >{{ park }}</span>
+              <Badge
+                v-for="f in apFlags"
+                :key="f.label"
+                :label="f.label"
+                :theme="f.theme"
+                variant="subtle"
+              />
+              <MultipleAvatar
+                v-if="row._assign"
+                :avatars="row._assign"
+                :hide-name="true"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- DESKTOP: the two-column contact card + park/amount + status/due/flags
+             (kept as-is; only the mobile layout above changed). -->
+        <div v-else class="flex items-center gap-3">
+          <div class="flex min-w-0 flex-1 items-center gap-2.5">
             <img
               v-if="senderPhoto"
               :src="senderPhoto"
@@ -96,8 +157,7 @@
               <div class="truncate text-xs text-ink-gray-5">{{ row.subject || __("(No subject)") }}</div>
             </div>
           </div>
-          <!-- Park + amount, then status / due / flags -->
-          <div class="flex min-w-0 flex-col gap-1 sm:flex-1">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
             <div class="flex items-center gap-2">
               <span
                 v-if="isHighPriority"
@@ -443,6 +503,16 @@ const dueTheme = computed(() => {
   if (d.isBefore(today)) return "red"; // overdue
   if (d.diff(today, "day") <= 1) return "orange"; // due today/tomorrow
   return "gray";
+});
+// Hex form of the due color for the mobile row (which shows due as plain
+// colored text instead of a Badge): red overdue / amber due-soon / muted.
+const dueColor = computed(() => {
+  if (!props.row.pyek_requested_due_date) return "#64748b";
+  const d = dayjs(props.row.pyek_requested_due_date).startOf("day");
+  const today = dayjs().startOf("day");
+  if (d.isBefore(today)) return "#b91c1c";
+  if (d.diff(today, "day") <= 1) return "#b45309";
+  return "#64748b";
 });
 
 // --- Preview snippet: the latest email in the thread (Outlook-style), provided

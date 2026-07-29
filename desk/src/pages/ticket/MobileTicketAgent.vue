@@ -57,6 +57,11 @@
           >
             <template #tab-panel="{ tab }">
               <div v-if="tab.name === 'details'">
+                <!-- AP invoice working card (no-ops on IT/HR tickets) -->
+                <ApInvoiceCard
+                  :ticket="ticket.doc"
+                  @view-pdf="goToEmails"
+                />
                 <!-- ticket contact info -->
                 <TicketAgentContact
                   v-if="contact.data"
@@ -207,6 +212,7 @@ import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";
 import TicketAgentDetails from "@/components/ticket/TicketAgentDetails.vue";
+import ApInvoiceCard from "@/components/ticket/ApInvoiceCard.vue";
 import TicketAgentFields from "@/components/ticket/TicketAgentFields.vue";
 import {
   parseField,
@@ -478,6 +484,13 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
 });
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs);
+
+// AP invoice card asks to see the PDF → switch to the Emails tab, where the
+// invoice attachments render.
+function goToEmails() {
+  const i = tabs.value.findIndex((t) => t.name === "email");
+  if (i >= 0) changeTabTo(i);
+}
 
 const _activities = computed(() => {
   if (!activities.value?.data) {
