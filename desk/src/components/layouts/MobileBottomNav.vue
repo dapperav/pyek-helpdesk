@@ -3,7 +3,7 @@
        MobileLayout, so desktop is untouched. Big touch targets. Dashboard opens
        the branded home; POS / IT / Wrike jump straight to those saved ticket
        queues; Menu opens the nav drawer (all views, notifications, profile,
-       logout). Order: Dashboard · POS · IT · Menu · Wrike. -->
+       logout). Order: Dashboard · POS · IT · Wrike · Menu. -->
   <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
        active. paddingBottom carries the iOS home-indicator safe-area inset so
        the labels never sit under the home bar. -->
@@ -77,10 +77,17 @@ const items = computed<Item[]>(() => [
     key: "dashboard",
     label: __("Dashboard"),
     icon: LucideLayoutDashboard,
-    route: "Home",
+    route: "Dashboard",
   },
   { key: "pos", label: __("POS"), icon: LucideScanBarcode, view: "POS Tickets" },
   { key: "it", label: __("IT"), icon: LucideHeadset, view: "IT Tickets" },
+  // Open marketing/Wrike tickets awaiting POS action.
+  {
+    key: "wrike",
+    label: __("Wrike"),
+    icon: LucideMegaphone,
+    view: "Open Wrike Tickets",
+  },
   // Opens the nav drawer (all saved views, notifications, availability, log
   // out). The unread badge lives here now that the standalone Alerts tab is
   // gone — Notifications is reachable inside the drawer.
@@ -90,13 +97,6 @@ const items = computed<Item[]>(() => [
     icon: LucideMenu,
     action: () => (sidebarOpened.value = true),
     badge: notificationStore.unread,
-  },
-  // Open marketing/Wrike tickets awaiting POS action.
-  {
-    key: "wrike",
-    label: __("Wrike"),
-    icon: LucideMegaphone,
-    view: "Open Wrike Tickets",
   },
 ]);
 
