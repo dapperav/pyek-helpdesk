@@ -1,4 +1,5 @@
 import { useScreenSize } from "@/composables/screen";
+import { lastError } from "@/lastError";
 import { canViewPersona, personaInterrupt } from "@/persona";
 import { useAuthStore } from "@/stores/auth";
 import { useUserStore } from "@/stores/user";
@@ -230,6 +231,21 @@ export const router = createRouter({
   history: createWebHistory("/helpdesk/"),
   routes,
 });
+
+// TEMP diagnostic: capture lazy-route / dynamic-import failures (e.g. /home's
+// HomeView chunk not loading in the standalone PWA) and surface them in the
+// mobile header debug line.
+router.onError((err) => {
+  lastError.value = ("onError: " + (err?.message || err)).slice(0, 140);
+});
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (e) => {
+    const m = e?.reason?.message || e?.reason || "";
+    if (/import|chunk|module|fetch/i.test(String(m))) {
+      lastError.value = ("reject: " + m).slice(0, 140);
+    }
+  });
+}
 
 router.beforeEach(async (to, _, next) => {
   const authStore = useAuthStore();
