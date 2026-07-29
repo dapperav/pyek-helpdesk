@@ -1,8 +1,9 @@
 <template>
   <!-- PYEK: persistent bottom tab bar for phones. Rendered only inside
-       MobileLayout, so desktop is untouched. Big touch targets; POS / IT jump
-       straight to those saved ticket queues. The hamburger drawer stays for
-       everything else (all tickets, views, profile, settings, logout, search). -->
+       MobileLayout, so desktop is untouched. Big touch targets. Dashboard opens
+       the branded home; POS / IT / Wrike jump straight to those saved ticket
+       queues; Menu opens the nav drawer (all views, notifications, profile,
+       logout). Order: Dashboard · POS · IT · Menu · Wrike. -->
   <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
        active. paddingBottom carries the iOS home-indicator safe-area inset so
        the labels never sit under the home bar. -->
@@ -43,19 +44,20 @@ import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import { __ } from "@/translation";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import LucideBell from "~icons/lucide/bell";
-import LucideHome from "~icons/lucide/home";
+import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
 import LucideHeadset from "~icons/lucide/headset";
 import LucideScanBarcode from "~icons/lucide/scan-barcode";
 import LucideMenu from "~icons/lucide/menu";
+import LucideMegaphone from "~icons/lucide/megaphone";
 
 const route = useRoute();
 const router = useRouter();
 const notificationStore = useNotificationStore();
 const { publicViews } = useView();
 
-// Resolve a saved HD View id from its label (POS Tickets / IT Tickets), so the
-// POS/IT tabs open those exact queues. Falls back to the plain ticket list.
+// Resolve a saved HD View id from its label (POS Tickets / IT Tickets / Open
+// Wrike Tickets), so those tabs open the exact queues. Falls back to the plain
+// ticket list.
 function viewId(label: string): string | undefined {
   return (publicViews.value || []).find((v: any) => v.label === label)?.name;
 }
@@ -71,23 +73,30 @@ type Item = {
 };
 
 const items = computed<Item[]>(() => [
-  { key: "home", label: __("Home"), icon: LucideHome, route: "Home" },
+  {
+    key: "dashboard",
+    label: __("Dashboard"),
+    icon: LucideLayoutDashboard,
+    route: "Home",
+  },
   { key: "pos", label: __("POS"), icon: LucideScanBarcode, view: "POS Tickets" },
   { key: "it", label: __("IT"), icon: LucideHeadset, view: "IT Tickets" },
-  {
-    key: "alerts",
-    label: __("Alerts"),
-    icon: LucideBell,
-    route: "Notifications",
-    badge: notificationStore.unread,
-  },
-  // Opens the nav drawer (Dashboard, all saved views, availability, log out) —
-  // relocated here from the old top-left hamburger.
+  // Opens the nav drawer (all saved views, notifications, availability, log
+  // out). The unread badge lives here now that the standalone Alerts tab is
+  // gone — Notifications is reachable inside the drawer.
   {
     key: "menu",
     label: __("Menu"),
     icon: LucideMenu,
     action: () => (sidebarOpened.value = true),
+    badge: notificationStore.unread,
+  },
+  // Open marketing/Wrike tickets awaiting POS action.
+  {
+    key: "wrike",
+    label: __("Wrike"),
+    icon: LucideMegaphone,
+    view: "Open Wrike Tickets",
   },
 ]);
 
