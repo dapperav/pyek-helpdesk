@@ -4,8 +4,9 @@
          nothing on IT/HR tickets via its own ap_vendor guard. -->
     <ApInvoiceCard :ticket="ticket.doc" />
     <div class="shrink-0 px-4 pb-4 flex flex-col">
-      <!-- User avatar with buttons -->
-      <TicketContact />
+      <!-- User avatar with buttons. Hidden on AP: the sender/vendor already shows on
+           the invoice card + list row, and the contact name confused triage. -->
+      <TicketContact v-if="!isAP" />
       <!-- Core Fields -->
       <div class="mt-4">
         <div
@@ -176,6 +177,13 @@ const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
 const dateFormat = window.date_format;
 const { getStatus, colorMap } = useTicketStatusStore();
 
+// AP tickets carry ap_vendor; on those we strip the confusing generic meta
+// (Ticket Type / Customer / Team) from this panel and keep only Priority — AP has
+// one inbox, so team/customer are meaningless and Nedra was mis-clicking them.
+const isAP = computed(
+  () => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc
+);
+
 // ticket_type, priority, customer, agent_group
 const coreFields = computed(() => {
   // TODO: to confirm whether customizations should apply to core fields as well
@@ -183,11 +191,13 @@ const coreFields = computed(() => {
   if (!fieldsMeta || fieldsMeta.length === 0) {
     return [];
   }
-  const _coreFields = [
-    { group: true, fields: [getField("ticket_type"), getField("priority")] },
-    { group: false, fields: [getField("customer")] },
-    { group: true, fields: [getField("agent_group")] },
-  ];
+  const _coreFields = isAP.value
+    ? [{ group: false, fields: [getField("priority")] }]
+    : [
+        { group: true, fields: [getField("ticket_type"), getField("priority")] },
+        { group: false, fields: [getField("customer")] },
+        { group: true, fields: [getField("agent_group")] },
+      ];
 
   _coreFields.forEach((section) => {
     section.fields = section.fields.map((f) => {

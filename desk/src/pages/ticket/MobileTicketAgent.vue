@@ -39,7 +39,7 @@
       </div>
       <!-- right side -->
       <div class="flex items-center gap-2">
-        <MoveTeamButton compact />
+        <MoveTeamButton v-if="!isAP" compact />
         <CustomActions
           v-if="mobileCustomActions.length"
           :actions="mobileCustomActions"
@@ -279,6 +279,10 @@ const ticketComposable = computed(() => useTicket(props.ticketId));
 const ticket = computed(() => ticketComposable.value.ticket);
 const assignees = computed(() => ticketComposable.value.assignees);
 const contact = computed(() => ticketComposable.value.contact);
+// AP tickets (ap_vendor present) have one inbox — no POS/IT move button.
+const isAP = computed(
+  () => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc
+);
 const activities = computed(() => ticketComposable.value.activities);
 
 const customizations: Resource<Customizations> = createResource({
