@@ -37,9 +37,19 @@
   <!-- White controls row: other pages teleport their title / breadcrumb into
        #app-header here (on white as designed). Hidden on the tickets list,
        where the view switcher now lives in the navy bar above — reclaiming a
-       full row of screen space. -->
+       full row of screen space.
+       IMPORTANT: use v-show, NOT v-if. #app-header is a Teleport target for
+       LayoutHeader (e.g. the ticket detail teleports its breadcrumb + status
+       dropdown here, and PyekHome/Dashboard teleport their titles). With v-if
+       the target is created/destroyed across the list <-> detail/home route
+       change, and a LayoutHeader teleporting into a target that's churning
+       mid-transition crashes Vue's patcher ("Cannot read properties of null
+       (reading 'emitsOptions')") — which left the page blank and the bottom nav
+       vanished (and blocked ticket clicks). v-show keeps the target permanently
+       in the DOM (display:none reclaims the row's space on the list just like
+       v-if did), so the teleport is always stable. -->
   <div
-    v-if="route.name !== 'TicketsAgent'"
+    v-show="route.name !== 'TicketsAgent'"
     class="flex h-12 items-center border-b border-outline-gray-2 pl-1 pr-2"
   >
     <header id="app-header" class="w-full min-w-0"></header>
