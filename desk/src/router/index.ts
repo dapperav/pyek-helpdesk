@@ -33,14 +33,10 @@ const portalRoutes = [
   {
     path: "/home",
     name: "Home",
-    // PYEK: branded dashboard. Mobile gets the phone-first MobileHome (triage
-    // tiles + queue jumps); desktop keeps PyekHome (cards + charts). The
-    // "Dashboard" bottom-nav tab routes here. Upstream Home.vue (the widget
-    // board) stays in the tree, unrouted.
-    component: () =>
-      import(
-        `@/pages/home/${isMobileView.value ? "MobileHome" : "PyekHome"}.vue`
-      ),
+    // PYEK: HomeView wraps the mobile/desktop choice with a LIVE viewport check
+    // (the module-scope isMobileView below is frozen at load and unreliable).
+    // Mobile → MobileHome (tiles + queue jumps); desktop → PyekHome.
+    component: () => import("@/pages/home/HomeView.vue"),
   },
 
   {
