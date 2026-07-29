@@ -1,8 +1,10 @@
 <template>
-  <!-- PYEK: persistent bottom tab bar for phones. Rendered only inside
-       MobileLayout, so desktop is untouched. Big touch targets; POS / IT jump
-       straight to those saved ticket queues. The hamburger drawer stays for
-       everything else (all tickets, views, profile, settings, logout, search). -->
+  <!-- PYEK / AP: persistent bottom tab bar for phones. Rendered only inside
+       MobileLayout, so desktop is untouched. Big touch targets. Home = the AP
+       dashboard; Inbox = the "All open" queue; Mine = "My queue"; Menu opens
+       the drawer (all saved views, profile, settings, logout, search).
+       Notifications live in the header bell now that Alerts isn't a tab. -->
+
   <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
        active. paddingBottom carries the iOS home-indicator safe-area inset so
        the labels never sit under the home bar. -->
@@ -38,24 +40,22 @@
 
 <script setup lang="ts">
 import { useView } from "@/composables/useView";
-import { useNotificationStore } from "@/stores/notification";
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import { __ } from "@/translation";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import LucideBell from "~icons/lucide/bell";
 import LucideHome from "~icons/lucide/home";
-import LucideHeadset from "~icons/lucide/headset";
-import LucideScanBarcode from "~icons/lucide/scan-barcode";
+import LucideInbox from "~icons/lucide/inbox";
+import LucideUser from "~icons/lucide/user";
 import LucideMenu from "~icons/lucide/menu";
 
 const route = useRoute();
 const router = useRouter();
-const notificationStore = useNotificationStore();
 const { publicViews } = useView();
 
-// Resolve a saved HD View id from its label (POS Tickets / IT Tickets), so the
-// POS/IT tabs open those exact queues. Falls back to the plain ticket list.
+// Resolve a saved HD View id from its label (e.g. "All Open", "My queue"), so a
+// tab opens that exact AP queue. Falls back to the plain ticket list if a view
+// with that label doesn't exist yet.
 function viewId(label: string): string | undefined {
   return (publicViews.value || []).find((v: any) => v.label === label)?.name;
 }
@@ -72,15 +72,8 @@ type Item = {
 
 const items = computed<Item[]>(() => [
   { key: "home", label: __("Home"), icon: LucideHome, route: "Home" },
-  { key: "pos", label: __("POS"), icon: LucideScanBarcode, view: "POS Tickets" },
-  { key: "it", label: __("IT"), icon: LucideHeadset, view: "IT Tickets" },
-  {
-    key: "alerts",
-    label: __("Alerts"),
-    icon: LucideBell,
-    route: "Notifications",
-    badge: notificationStore.unread,
-  },
+  { key: "inbox", label: __("Inbox"), icon: LucideInbox, view: "All Open" },
+  { key: "mine", label: __("Mine"), icon: LucideUser, view: "My queue" },
   // Opens the nav drawer (Dashboard, all saved views, availability, log out) —
   // relocated here from the old top-left hamburger.
   {

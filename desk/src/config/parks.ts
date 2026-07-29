@@ -11,6 +11,10 @@ export const PARK_COLORS: Record<string, string> = {
   CBV: "#7C3AED",
   ALL: "#16A34A",
   DTL: "#0EA5E9",
+  // AP tags corporate/all-park invoices "PYK" (the rest of the stack uses
+  // CORP / "Corporate (PYK)"). Give it the same corporate slate so AP rows +
+  // dashboards don't render it as an unknown grey.
+  PYK: "#475569",
 };
 
 export const PARK_FALLBACK = "#94A3B8"; // unspecified / unknown
