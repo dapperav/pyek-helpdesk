@@ -1,4 +1,5 @@
 import { createApp, h } from "vue";
+import { lastError } from "@/lastError";
 import {
   Badge,
   Button,
@@ -62,6 +63,13 @@ setConfig("fallbackErrorHandler", (error) => {
 
 const pinia = createPinia();
 const app = createApp(App);
+
+// TEMP diagnostic: surface any uncaught component error (e.g. a setup throw that
+// prevents /home's HomeView from mounting in the PWA) into the header debug line.
+app.config.errorHandler = (err, _instance, info) => {
+  lastError.value = ("errHandler: " + (err?.message || err) + " @" + info).slice(0, 160);
+  console.error(err);
+};
 
 app.use(FrappeUI);
 app.use(spritePlugin);
