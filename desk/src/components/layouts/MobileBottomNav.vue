@@ -74,10 +74,13 @@ type Item = {
 
 const items = computed<Item[]>(() => [
   {
+    // The branded IT dashboard is PyekHome (route "Home") — greeting, metric
+    // cards, charts, saved-view launchers. (The bare "/dashboard" analytics page
+    // is a separate, desktop-oriented view.)
     key: "dashboard",
     label: __("Dashboard"),
     icon: LucideLayoutDashboard,
-    route: "Dashboard",
+    route: "Home",
   },
   { key: "pos", label: __("POS"), icon: LucideScanBarcode, view: "POS Tickets" },
   { key: "it", label: __("IT"), icon: LucideHeadset, view: "IT Tickets" },
