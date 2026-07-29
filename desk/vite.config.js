@@ -46,6 +46,14 @@ export default defineConfig(async ({ mode }) => {
       vueJsx(),
       VitePWA({
         registerType: "autoUpdate",
+        // PYEK: kill the service worker. On iOS the installed PWA keeps its own
+        // SW cache (separate from Safari) and was serving STALE JS chunks that no
+        // longer matched the freshly-loaded app shell — causing the Dashboard tab
+        // to crash (null-destructure) only in the standalone app. This app is
+        // online-only, so it needs no offline caching. selfDestroying emits a SW
+        // that unregisters itself + clears caches, healing existing installs and
+        // making the PWA fetch fresh (like the browser, which always worked).
+        selfDestroying: true,
         devOptions: {
           enabled: true,
         },
