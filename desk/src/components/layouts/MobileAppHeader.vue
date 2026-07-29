@@ -34,6 +34,13 @@
       {{ __("Create") }}
     </RouterLink>
   </div>
+  <!-- TEMP PWA DIAGNOSTIC (always visible on mobile; remove after debugging). -->
+  <div
+    style="background:#fde68a;color:#111;font-size:11px;line-height:1.4;padding:3px 8px;font-family:monospace"
+  >
+    dbg · route={{ route.name }} · w={{ width }} · pwa={{ standalone }} ·
+    m={{ isMobileView }}
+  </div>
   <!-- White controls row: other pages teleport their title / breadcrumb into
        #app-header here (on white as designed). Hidden on the tickets list,
        where the view switcher now lives in the navy bar above — reclaiming a
@@ -63,6 +70,7 @@ import { __ } from "@/translation";
 import CallUI from "../telephony/CallUI.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTelephonyStore } from "@/stores/telephony";
+import { useScreenSize } from "@/composables/screen";
 import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 
@@ -71,6 +79,17 @@ const { user } = useAuthStore();
 // Show Create in the navy bar only on the tickets list (its create route).
 const route = useRoute();
 const showCreate = computed(() => route.name === "TicketsAgent");
+
+// TEMP diagnostic bindings (remove after debugging the PWA dashboard issue).
+const { isMobileView, size } = useScreenSize();
+const width = computed(() => size.width);
+const standalone =
+  typeof window !== "undefined" &&
+  ((window.matchMedia &&
+    window.matchMedia("(display-mode: standalone)").matches) ||
+    window.navigator.standalone === true)
+    ? 1
+    : 0;
 
 const telephonyStore = useTelephonyStore();
 
