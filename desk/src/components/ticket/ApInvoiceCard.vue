@@ -409,11 +409,17 @@ const assigneeNames = computed(() => {
 });
 const assigneeLabel = computed(() => {
   const d = assignees?.value?.data || [];
-  if (d.length === 1)
-    return d[0].label || d[0].agent_name || String(d[0].name).split("@")[0];
+  if (d.length === 1) return displayName(d[0].name);
   if (d.length > 1) return __("{0} assignees").replace("{0}", String(d.length));
   return optimisticAssignee.value ? optimisticAssignee.value.label : "";
 });
+// Resolve a user email to the agent's display name (the assignees resource only
+// carries the email); fall back to the email's local part.
+function displayName(email: string): string {
+  if (!email) return "";
+  const a = (agentResource.data || []).find((x: any) => x.name === email);
+  return (a && a.agent_name) || String(email).split("@")[0];
+}
 const agentResource = createListResource({
   doctype: "HD Agent",
   fields: ["name", "agent_name"],
