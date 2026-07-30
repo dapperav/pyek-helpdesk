@@ -115,6 +115,7 @@
            silent). Once verified, the same control reopens the list to (re)assign. -->
       <Popover class="mt-2 w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
         <template #target="{ togglePopover }">
+          <!-- Not verified: one action button -->
           <button
             v-if="!isVerified"
             class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white disabled:opacity-60"
@@ -125,21 +126,38 @@
             <LucideCheck class="size-4" />
             {{ verifying ? __("Saving…") : __("Mark verified and assign") }}
           </button>
-          <div
-            v-else
-            class="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-base-medium"
-            style="background-color: #f0fdf4; color: #15803d"
-          >
-            <span class="flex min-w-0 items-center gap-1.5">
+
+          <!-- Verified: compact "Verified" chip, then a clear "Assigned to …" row
+               with a Change/Assign control. Kept on their own lines + truncated so
+               nothing runs off the sidebar. -->
+          <div v-else class="flex flex-col gap-2">
+            <div
+              class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
+              style="background-color: #f0fdf4; color: #15803d"
+            >
               <LucideCircleCheck class="size-4 shrink-0" />
               <span class="truncate">{{ verifiedLabel }}</span>
-            </span>
-            <button
-              class="shrink-0 text-xs underline hover:opacity-80"
-              @click="togglePopover()"
+            </div>
+            <div
+              class="flex items-center justify-between gap-2 rounded-lg border border-outline-gray-2 px-2.5 py-1.5"
             >
-              {{ assignedLabel ? __("Reassign") : __("Assign") }}
-            </button>
+              <span class="flex min-w-0 items-center gap-1.5 text-sm">
+                <template v-if="assigneeNames.length">
+                  <UserAvatar :name="assigneeNames[0]" size="sm" />
+                  <span class="truncate text-ink-gray-8">{{ assigneeLabel }}</span>
+                </template>
+                <template v-else>
+                  <LucideUserPlus class="size-4 shrink-0 text-ink-gray-5" />
+                  <span class="text-ink-gray-5">{{ __("Unassigned") }}</span>
+                </template>
+              </span>
+              <button
+                class="shrink-0 text-xs text-ink-gray-6 underline hover:text-ink-gray-9"
+                @click="togglePopover()"
+              >
+                {{ assigneeNames.length ? __("Change") : __("Assign") }}
+              </button>
+            </div>
           </div>
         </template>
         <template #body>
@@ -207,6 +225,7 @@ import LucideCheck from "~icons/lucide/check";
 import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideDownload from "~icons/lucide/download";
 import LucideFileText from "~icons/lucide/file-text";
+import LucideUserPlus from "~icons/lucide/user-plus";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
@@ -374,8 +393,27 @@ function onVerifyAssign(togglePopover: () => void) {
 }
 
 const assignOpen = ref(false);
-const assignedLabel = ref("");
+// Optimistic assignee for instant feedback before the assignees resource reloads.
+const optimisticAssignee = ref<{ name: string; label: string } | null>(null);
 const agentSearch = ref("");
+
+// Current assignee(s), shown in the card so it's obvious who owns the ticket
+// (mirrors the Details Assignee widget). Reads the shared assignees resource when
+// present, else the optimistic value just set from the picker.
+const assigneeNames = computed(() => {
+  const names = (assignees?.value?.data || [])
+    .map((a: any) => a.name)
+    .filter(Boolean);
+  if (names.length) return names;
+  return optimisticAssignee.value ? [optimisticAssignee.value.name] : [];
+});
+const assigneeLabel = computed(() => {
+  const d = assignees?.value?.data || [];
+  if (d.length === 1)
+    return d[0].label || d[0].agent_name || String(d[0].name).split("@")[0];
+  if (d.length > 1) return __("{0} assignees").replace("{0}", String(d.length));
+  return optimisticAssignee.value ? optimisticAssignee.value.label : "";
+});
 const agentResource = createListResource({
   doctype: "HD Agent",
   fields: ["name", "agent_name"],
@@ -401,7 +439,7 @@ async function assignOne(agent: { name: string; label: string }) {
       // Email the assignee — unless someone assigned it to themselves.
       notify: agent.name === auth.userId ? 0 : 1,
     });
-    assignedLabel.value = agent.label;
+    optimisticAssignee.value = agent;
     toast.success(
       agent.name === auth.userId
         ? __("Assigned to {0}").replace("{0}", agent.label)
