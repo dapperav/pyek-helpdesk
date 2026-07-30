@@ -6,8 +6,9 @@
     class="[&_[role='tab']]:px-0 [&_[role='tablist']]:px-5 [&_[role='tablist']]:gap-7.5 [&_[role='tablist']]:flex-shrink-0 [&_[role='tabpanel'][data-state='active']]:flex-1"
   >
     <template #tab-panel="{ tab }">
+      <ApVerifyPane v-if="tab.name === 'invoice'" />
       <TicketAgentActivities
-        v-if="Boolean(activities.data)"
+        v-else-if="Boolean(activities.data)"
         ref="ticketAgentActivitiesRef"
         :activities="filterActivities(tab.name as TicketTab)"
         :title="tab.label"
@@ -68,6 +69,8 @@ import { Button, Tabs } from "frappe-ui";
 import { storeToRefs } from "pinia";
 import { computed, ComputedRef, inject, ref } from "vue";
 import { TicketAgentActivities } from "../ticket";
+import ApVerifyPane from "../ticket/ApVerifyPane.vue";
+import LucideFileText from "~icons/lucide/file-text";
 
 const ticket = inject(TicketSymbol);
 const activities = inject(ActivitiesSymbol);
@@ -81,8 +84,16 @@ const communicationAreaRef = ref<InstanceType<typeof CommunicationArea> | null>(
 const telephonyStore = useTelephonyStore();
 const { isCallingEnabled } = storeToRefs(telephonyStore);
 
+// AP tickets carry ap_vendor; on those, lead with an invoice-verify tab (index 0 =
+// the default landing tab) so Nedra opens straight into the side-by-side view.
+const isAP = computed(() => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc);
+
 const tabs: ComputedRef<TabObject[]> = computed(() => {
-  const _tabs: TabObject[] = [
+  const _tabs: TabObject[] = [];
+  if (isAP.value) {
+    _tabs.push({ name: "invoice", label: "Invoice", icon: LucideFileText });
+  }
+  _tabs.push(
     {
       name: "activity",
       label: "Activity",
@@ -97,8 +108,8 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       name: "comment",
       label: "Comments",
       icon: CommentIcon,
-    },
-  ];
+    }
+  );
 
   if (isCallingEnabled.value) {
     _tabs.push({
