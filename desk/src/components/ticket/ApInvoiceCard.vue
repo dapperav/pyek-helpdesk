@@ -413,16 +413,19 @@ const assigneeLabel = computed(() => {
   if (d.length > 1) return __("{0} assignees").replace("{0}", String(d.length));
   return optimisticAssignee.value ? optimisticAssignee.value.label : "";
 });
-// Resolve a user email to the agent's display name (the assignees resource only
-// carries the email); fall back to the email's local part.
+// Resolve an assignee email to the agent's display name. Match on the linked
+// user OR the agent name (they differ for agents on the @pyek.com/@pyekgroup.com
+// alias split); fall back to the email's local part.
 function displayName(email: string): string {
   if (!email) return "";
-  const a = (agentResource.data || []).find((x: any) => x.name === email);
+  const a = (agentResource.data || []).find(
+    (x: any) => (x.user || x.name) === email
+  );
   return (a && a.agent_name) || String(email).split("@")[0];
 }
 const agentResource = createListResource({
   doctype: "HD Agent",
-  fields: ["name", "agent_name"],
+  fields: ["name", "agent_name", "user"],
   filters: { is_active: true },
   pageLength: 50,
   auto: true,
@@ -430,7 +433,11 @@ const agentResource = createListResource({
 const agentOptions = computed(() => {
   const q = agentSearch.value.trim().toLowerCase();
   return (agentResource.data || [])
-    .map((a: any) => ({ name: a.name, label: a.agent_name || a.name }))
+    // Assign to the agent's LINKED USER, not the HD Agent name — some agents'
+    // name (@pyekgroup.com) differs from their real User (@pyek.com), and
+    // assignment (ToDo.allocated_to → User) fails on the name. `user` is the
+    // account they actually log in as, so My queue resolves correctly too.
+    .map((a: any) => ({ name: a.user || a.name, label: a.agent_name || a.name }))
     .filter((a) => !q || a.label.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
 });
 
