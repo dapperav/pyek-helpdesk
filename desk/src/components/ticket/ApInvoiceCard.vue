@@ -2,7 +2,8 @@
   <!-- AP invoice working card (mobile + desktop ticket detail). Renders only for
        AP tickets (the ap_vendor field is present); on IT/HR it renders nothing.
        Park is READ-ONLY here — it's edited on the Property field in Details; this
-       card watches that field and rewrites the Intacct filename to match. -->
+       card watches that field and rewrites the Intacct filename to match. Also hosts
+       the invoice-verify actions: download-pre-named + mark-verified-and-assign. -->
   <div v-if="isAP" class="px-5 pt-4">
     <div class="rounded-xl border border-outline-gray-2 bg-surface-white p-3.5">
       <!-- Header: vendor + park (read-only) -->
@@ -50,10 +51,9 @@
         </div>
       </div>
 
-      <!-- Needs-review banner: the enricher flagged a low-confidence / handwritten /
-           reimbursement-mismatch extraction — verify the fields before posting. -->
+      <!-- Needs-review banner (hidden once verified). -->
       <div
-        v-if="isNeedsReview"
+        v-if="isNeedsReview && !isVerified"
         class="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
         style="background-color: #fffbeb; color: #b45309"
       >
@@ -98,11 +98,83 @@
         </div>
       </div>
 
+      <!-- Download the invoice already named for Intacct (same-origin: the browser
+           saves it with this name, so no manual rename). -->
+      <a
+        v-if="invoiceUrl"
+        :href="invoiceUrl"
+        :download="downloadName || undefined"
+        class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 active:bg-surface-gray-2"
+      >
+        <LucideDownload class="size-4" />
+        {{ __("Download for Intacct") }}
+      </a>
+
+      <!-- Verify + assign. Clicking marks verified immediately, then opens the agent
+           list; picking someone assigns the ticket and emails them (self-assign is
+           silent). Once verified, the same control reopens the list to (re)assign. -->
+      <Popover class="mt-2 w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
+        <template #target="{ togglePopover }">
+          <button
+            v-if="!isVerified"
+            class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white disabled:opacity-60"
+            style="background-color: #16a34a"
+            :disabled="verifying"
+            @click="onVerifyAssign(togglePopover)"
+          >
+            <LucideCheck class="size-4" />
+            {{ verifying ? __("Saving…") : __("Mark verified and assign") }}
+          </button>
+          <div
+            v-else
+            class="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-base-medium"
+            style="background-color: #f0fdf4; color: #15803d"
+          >
+            <span class="flex min-w-0 items-center gap-1.5">
+              <LucideCircleCheck class="size-4 shrink-0" />
+              <span class="truncate">{{ verifiedLabel }}</span>
+            </span>
+            <button
+              class="shrink-0 text-xs underline hover:opacity-80"
+              @click="togglePopover()"
+            >
+              {{ assignedLabel ? __("Reassign") : __("Assign") }}
+            </button>
+          </div>
+        </template>
+        <template #body>
+          <div class="min-w-[220px] rounded-lg bg-surface-white p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+            <input
+              v-model="agentSearch"
+              :placeholder="__('Search agents…')"
+              class="mb-1 w-full rounded-md border-none bg-surface-gray-2 px-2 py-1.5 text-sm outline-none focus:ring-0"
+            />
+            <div class="max-h-56 overflow-y-auto">
+              <button
+                v-for="a in agentOptions"
+                :key="a.name"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
+                @click="assignOne(a)"
+              >
+                <UserAvatar :name="a.name" size="sm" />
+                <span class="truncate">{{ a.label }}</span>
+              </button>
+              <div
+                v-if="!agentOptions.length"
+                class="px-2 py-3 text-center text-sm text-ink-gray-5"
+              >
+                {{ __("No agents found") }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </Popover>
+
       <!-- View the invoice PDF (mobile only — jumps to the Emails tab where
-           attachments live; on desktop the conversation is already on screen). -->
+           attachments live; on desktop the Invoice tab already shows it). -->
       <button
         v-if="isMobileView"
-        class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
+        class="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
         @click="$emit('view-pdf')"
       >
         <LucideFileText class="size-4" />
@@ -115,19 +187,37 @@
 <script setup lang="ts">
 import { parkColor, parkLabel } from "@/config/parks";
 import { useScreenSize } from "@/composables/screen";
+import { useAuthStore } from "@/stores/auth";
+import { ActivitiesSymbol, AssigneeSymbol } from "@/types";
 import { __ } from "@/translation";
-import { createResource, dayjs } from "frappe-ui";
-import { computed, ref, watch } from "vue";
+import {
+  Popover,
+  call,
+  createResource,
+  createListResource,
+  dayjs,
+  toast,
+} from "frappe-ui";
+import { computed, inject, ref, watch } from "vue";
+import UserAvatar from "../UserAvatar.vue";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import LucideFileX from "~icons/lucide/file-x";
 import LucideCopy from "~icons/lucide/copy";
 import LucideCheck from "~icons/lucide/check";
+import LucideCircleCheck from "~icons/lucide/circle-check";
+import LucideDownload from "~icons/lucide/download";
 import LucideFileText from "~icons/lucide/file-text";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
 
 const { isMobileView } = useScreenSize();
+const auth = useAuthStore();
+// Optional: present in the ticket-detail context so we can refresh the Assignee
+// widget after assigning. Absent contexts just skip the reload (assignment still
+// persists via the API call).
+const assignees = inject(AssigneeSymbol, undefined);
+const activities = inject(ActivitiesSymbol, undefined);
 
 // AP tickets carry ap_vendor; IT/HR don't → the whole card no-ops there.
 const isAP = computed(() => props.ticket && "ap_vendor" in props.ticket);
@@ -159,24 +249,32 @@ const isOverdue = computed(
 
 const isMissing = computed(() => Number(props.ticket?.ap_missing_invoice) === 1);
 
-// ap_proposed_filename + ap_duplicate are enricher-set fields the detail payload
-// may not include, so self-fetch them once when the filename isn't on the doc.
+// Enricher-set machine fields the detail payload doesn't carry — self-fetch them.
 const extra = createResource({
   url: "frappe.client.get_value",
   makeParams: () => ({
     doctype: "HD Ticket",
     filters: { name: props.ticket?.name },
-    fieldname: ["ap_proposed_filename", "ap_duplicate", "ap_needs_review"],
+    fieldname: [
+      "ap_proposed_filename",
+      "ap_duplicate",
+      "ap_needs_review",
+      "ap_invoice_file",
+      "ap_verified",
+      "ap_verified_by",
+      "ap_verified_on",
+    ],
   }),
-  auto: computed(
-    () => isAP.value && !!props.ticket?.name && !props.ticket?.ap_proposed_filename
-  ),
+  auto: computed(() => isAP.value && !!props.ticket?.name),
 });
 
-// Enricher review flag (not a template field, so self-fetched with the filename/dup).
 const isNeedsReview = computed(
   () => Number(props.ticket?.ap_needs_review ?? extra.data?.ap_needs_review) === 1
 );
+const isDuplicate = computed(
+  () => Number(props.ticket?.ap_duplicate ?? extra.data?.ap_duplicate) === 1
+);
+
 // Enricher-set filename (may carry a stale park token). We display a live copy
 // with the CURRENT park token swapped in — see `filename` below.
 const storedFilename = ref<string>("");
@@ -187,15 +285,11 @@ watch(
   },
   { immediate: true }
 );
-const isDuplicate = computed(
-  () => Number(props.ticket?.ap_duplicate ?? extra.data?.ap_duplicate) === 1
-);
 
 // The Intacct filename shown/copied ALWAYS reflects the current park (edited on
 // the Property field): swap the stored name's first (park) token to the current
 // pyek_property. Purely COMPUTED — NO write — so it never races the Property
-// field's own save (a second write caused a "document modified" conflict). The
-// park is persisted by the Property field, so this stays correct on reopen.
+// field's own save.
 const filename = computed(() => {
   const stored = storedFilename.value;
   if (!stored) return "";
@@ -203,6 +297,18 @@ const filename = computed(() => {
   if (!code || !stored.includes("_")) return stored;
   return code + stored.slice(stored.indexOf("_"));
 });
+// Download needs ONE clean name: multi-invoice emails store a joined
+// "name1 ; name2", so take the primary (first) segment before swapping the park.
+const downloadName = computed(() => {
+  const first = (storedFilename.value || "").split(" ; ")[0].trim();
+  if (!first) return "";
+  const code = props.ticket?.pyek_property;
+  if (!code || !first.includes("_")) return first;
+  return code + first.slice(first.indexOf("_"));
+});
+
+// Exact attachment the fields were read from (for the download link).
+const invoiceUrl = computed(() => extra.data?.ap_invoice_file || "");
 
 const copied = ref(false);
 function copyFilename() {
@@ -210,5 +316,101 @@ function copyFilename() {
   navigator.clipboard.writeText(filename.value);
   copied.value = true;
   setTimeout(() => (copied.value = false), 1400);
+}
+
+// --- verify + assign ---
+const localVerified = ref(false);
+const localVerifiedBy = ref("");
+const localVerifiedOn = ref("");
+watch(
+  () => extra.data,
+  (d) => {
+    if (d && Number(d.ap_verified) === 1) {
+      localVerified.value = true;
+      localVerifiedBy.value = d.ap_verified_by || "";
+      localVerifiedOn.value = d.ap_verified_on || "";
+    }
+  }
+);
+const isVerified = computed(() => localVerified.value);
+const verifiedLabel = computed(() => {
+  const who = (localVerifiedBy.value || "").split("@")[0];
+  const when = localVerifiedOn.value ? dayjs(localVerifiedOn.value).format("MM/DD/YYYY") : "";
+  if (who && when) return __("Verified by {0} · {1}").replace("{0}", who).replace("{1}", when);
+  return __("Verified");
+});
+
+const verifying = ref(false);
+async function markVerified() {
+  if (verifying.value || !props.ticket?.name || isVerified.value) return;
+  verifying.value = true;
+  const now = dayjs().format("YYYY-MM-DD HH:mm:ss");
+  try {
+    await call("frappe.client.set_value", {
+      doctype: "HD Ticket",
+      name: props.ticket.name,
+      fieldname: {
+        ap_verified: 1,
+        ap_verified_by: auth.userId,
+        ap_verified_on: now,
+      },
+    });
+    localVerified.value = true;
+    localVerifiedBy.value = auth.userId;
+    localVerifiedOn.value = now;
+    toast.success(__("Marked verified"));
+  } catch (e) {
+    toast.error(__("Couldn't save. Try again."));
+  } finally {
+    verifying.value = false;
+  }
+}
+
+// "Verify now, then pick (skippable)": stamp verified immediately, then open the
+// agent list so she can route it (or close to leave it verified + unassigned).
+function onVerifyAssign(togglePopover: () => void) {
+  markVerified();
+  togglePopover();
+}
+
+const assignOpen = ref(false);
+const assignedLabel = ref("");
+const agentSearch = ref("");
+const agentResource = createListResource({
+  doctype: "HD Agent",
+  fields: ["name", "agent_name"],
+  filters: { is_active: true },
+  pageLength: 50,
+  auto: true,
+});
+const agentOptions = computed(() => {
+  const q = agentSearch.value.trim().toLowerCase();
+  return (agentResource.data || [])
+    .map((a: any) => ({ name: a.name, label: a.agent_name || a.name }))
+    .filter((a) => !q || a.label.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
+});
+
+async function assignOne(agent: { name: string; label: string }) {
+  if (!props.ticket?.name) return;
+  assignOpen.value = false;
+  try {
+    await call("frappe.desk.form.assign_to.add", {
+      doctype: "HD Ticket",
+      name: props.ticket.name,
+      assign_to: [agent.name],
+      // Email the assignee — unless someone assigned it to themselves.
+      notify: agent.name === auth.userId ? 0 : 1,
+    });
+    assignedLabel.value = agent.label;
+    toast.success(
+      agent.name === auth.userId
+        ? __("Assigned to {0}").replace("{0}", agent.label)
+        : __("Assigned to {0} · emailed").replace("{0}", agent.label)
+    );
+    assignees?.value?.reload?.();
+    activities?.value?.reload?.();
+  } catch (e) {
+    toast.error(__("Couldn't assign. Try again."));
+  }
 }
 </script>
