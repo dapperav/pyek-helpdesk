@@ -257,8 +257,11 @@ const invoiceName = computed(() => {
 // Intacct filename with the park token swapped to the current pyek_property
 // (matches the ApInvoiceCard logic, so the downloaded file is named correctly).
 const filename = computed(() => {
-  const stored = extra.data?.ap_proposed_filename as string | undefined;
+  let stored = extra.data?.ap_proposed_filename as string | undefined;
   if (!stored) return "";
+  // Multi-invoice emails store a joined name ("name1 ; name2"); the pane shows the
+  // primary invoice, and a download filename must be a single clean name.
+  stored = stored.split(" ; ")[0].trim();
   const code = ticket.value.pyek_property;
   if (!code || !stored.includes("_")) return stored;
   return code + stored.slice(stored.indexOf("_"));
