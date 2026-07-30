@@ -441,6 +441,13 @@ const agentOptions = computed(() => {
     .filter((a) => !q || a.label.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
 });
 
+function finishAssigned(agent: { name: string; label: string }) {
+  optimisticAssignee.value = agent;
+  toast.success(__("Assigned to {0}").replace("{0}", agent.label));
+  assignees?.value?.reload?.();
+  activities?.value?.reload?.();
+}
+
 async function assignOne(agent: { name: string; label: string }) {
   if (!props.ticket?.name) return;
   assignOpen.value = false;
@@ -449,19 +456,22 @@ async function assignOne(agent: { name: string; label: string }) {
       doctype: "HD Ticket",
       name: props.ticket.name,
       assign_to: [agent.name],
-      // notify is intentionally OFF. It makes assign_to.add send the assignment
-      // email synchronously; the site's outgoing SMTP (office365) is currently
-      // failing, so notify:1 made the whole assignment fail ("couldn't assign").
-      // Re-enable `notify: agent.name === auth.userId ? 0 : 1` once outgoing
-      // email works so the assignee gets emailed.
-      notify: 0,
+      // Email the assignee (from ap@, an allowed sender — the send is queued
+      // async, so it never blocks the assignment). Skip emailing yourself.
+      notify: agent.name === auth.userId ? 0 : 1,
     });
-    optimisticAssignee.value = agent;
-    toast.success(__("Assigned to {0}").replace("{0}", agent.label));
-    assignees?.value?.reload?.();
-    activities?.value?.reload?.();
+    finishAssigned(agent);
   } catch (e) {
-    toast.error(__("Couldn't assign. Try again."));
+    // Belt-and-suspenders: the assignment persists before the notification step,
+    // so if it actually landed, treat as success even if the notify errored.
+    try {
+      await assignees?.value?.reload?.();
+    } catch {}
+    if ((assignees?.value?.data || []).some((a: any) => a.name === agent.name)) {
+      finishAssigned(agent);
+    } else {
+      toast.error(__("Couldn't assign. Try again."));
+    }
   }
 }
 </script>
