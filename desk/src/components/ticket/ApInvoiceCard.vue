@@ -143,7 +143,7 @@
           </div>
         </template>
         <template #body>
-          <div class="min-w-[220px] rounded-lg bg-surface-white p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+          <div class="min-w-[240px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
             <input
               v-model="agentSearch"
               :placeholder="__('Search agents…')"
