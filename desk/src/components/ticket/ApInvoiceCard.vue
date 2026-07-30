@@ -442,15 +442,15 @@ async function assignOne(agent: { name: string; label: string }) {
       doctype: "HD Ticket",
       name: props.ticket.name,
       assign_to: [agent.name],
-      // Email the assignee — unless someone assigned it to themselves.
-      notify: agent.name === auth.userId ? 0 : 1,
+      // notify is intentionally OFF. It makes assign_to.add send the assignment
+      // email synchronously; the site's outgoing SMTP (office365) is currently
+      // failing, so notify:1 made the whole assignment fail ("couldn't assign").
+      // Re-enable `notify: agent.name === auth.userId ? 0 : 1` once outgoing
+      // email works so the assignee gets emailed.
+      notify: 0,
     });
     optimisticAssignee.value = agent;
-    toast.success(
-      agent.name === auth.userId
-        ? __("Assigned to {0}").replace("{0}", agent.label)
-        : __("Assigned to {0} · emailed").replace("{0}", agent.label)
-    );
+    toast.success(__("Assigned to {0}").replace("{0}", agent.label));
     assignees?.value?.reload?.();
     activities?.value?.reload?.();
   } catch (e) {
