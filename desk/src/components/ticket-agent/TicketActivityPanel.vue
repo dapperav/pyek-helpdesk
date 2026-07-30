@@ -84,16 +84,15 @@ const communicationAreaRef = ref<InstanceType<typeof CommunicationArea> | null>(
 const telephonyStore = useTelephonyStore();
 const { isCallingEnabled } = storeToRefs(telephonyStore);
 
-// AP tickets carry ap_vendor; on those, lead with an invoice-verify tab (index 0 =
-// the default landing tab) so Nedra opens straight into the side-by-side view.
+// AP tickets carry ap_vendor. On those we add an invoice-verify tab, placed
+// SECOND (after Activity) — Activity stays the default landing tab (index 0) so
+// Nedra reads the thread first, then moves to Invoice to verify. Keeping Activity
+// at index 0 (the native default) also means any re-render that falls back to the
+// default lands on Activity, not away from the tab she picked.
 const isAP = computed(() => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc);
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
-  const _tabs: TabObject[] = [];
-  if (isAP.value) {
-    _tabs.push({ name: "invoice", label: "Invoice", icon: LucideFileText });
-  }
-  _tabs.push(
+  const _tabs: TabObject[] = [
     {
       name: "activity",
       label: "Activity",
@@ -108,8 +107,13 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       name: "comment",
       label: "Comments",
       icon: CommentIcon,
-    }
-  );
+    },
+  ];
+
+  if (isAP.value) {
+    // After Activity, before Emails.
+    _tabs.splice(1, 0, { name: "invoice", label: "Invoice", icon: LucideFileText });
+  }
 
   if (isCallingEnabled.value) {
     _tabs.push({
