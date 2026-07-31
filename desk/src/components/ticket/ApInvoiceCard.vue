@@ -114,68 +114,8 @@
         {{ __("Download for Intacct") }}
       </a>
 
-      <!-- Assign (independent of verify — Nedra can route a ticket without
-           verifying first). Solid-navy CTA when unassigned; once assigned it shows
-           the person with a Change control. Picking someone assigns + emails them
-           (self-assign is silent). -->
-      <Popover class="w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
-        <template #target="{ togglePopover }">
-          <button
-            v-if="!assigneeNames.length"
-            class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white"
-            style="background-color: #1b2a4a"
-            @click="togglePopover()"
-          >
-            <LucideUserPlus class="size-4" />
-            {{ __("Assign") }}
-          </button>
-          <div
-            v-else
-            class="flex items-center justify-between gap-2 rounded-lg border border-outline-gray-2 px-2.5 py-1.5"
-          >
-            <span class="flex min-w-0 items-center gap-1.5 text-sm">
-              <UserAvatar :name="assigneeNames[0]" size="sm" />
-              <span class="truncate text-ink-gray-8">{{ assigneeLabel }}</span>
-            </span>
-            <button
-              class="shrink-0 text-xs font-medium hover:underline"
-              style="color: #2563eb"
-              @click="togglePopover()"
-            >
-              {{ __("Change") }}
-            </button>
-          </div>
-        </template>
-        <template #body>
-          <div class="min-w-[240px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
-            <input
-              v-model="agentSearch"
-              :placeholder="__('Search agents…')"
-              class="mb-1 w-full rounded-md border-none bg-surface-gray-2 px-2 py-1.5 text-sm outline-none focus:ring-0"
-            />
-            <div class="max-h-56 overflow-y-auto">
-              <button
-                v-for="a in agentOptions"
-                :key="a.name"
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
-                @click="assignOne(a)"
-              >
-                <UserAvatar :name="a.name" size="sm" />
-                <span class="truncate">{{ a.label }}</span>
-              </button>
-              <div
-                v-if="!agentOptions.length"
-                class="px-2 py-3 text-center text-sm text-ink-gray-5"
-              >
-                {{ __("No agents found") }}
-              </div>
-            </div>
-          </div>
-        </template>
-      </Popover>
-
-      <!-- Priority — moved up from the old Details card into a CTA button coloured
-           by level (Urgent red → Low gray). Opens a small picker. -->
+      <!-- Priority — a CTA button coloured by level (Urgent red → Low gray).
+           Opens a small picker. -->
       <Popover class="w-full" placement="bottom" :show="priorityOpen" @update:show="(v) => (priorityOpen = v)">
         <template #target="{ togglePopover }">
           <button
@@ -212,8 +152,9 @@
         </template>
       </Popover>
 
-      <!-- Verify — decoupled from assign. Own green button that becomes the
-           "Verified by …" pill once stamped. -->
+      <!-- Verify — decoupled from assign. Explicit "Click to mark verified" label:
+           a plain "Mark verified" read as an already-done status at a glance.
+           Becomes the "Verified by …" pill once stamped. -->
       <div
         v-if="isVerified"
         class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
@@ -230,8 +171,65 @@
         @click="markVerified()"
       >
         <LucideCheck class="size-4" />
-        {{ verifying ? __("Saving…") : __("Mark verified") }}
+        {{ verifying ? __("Saving…") : __("Click to mark verified") }}
       </button>
+
+      <!-- Assign (independent of verify). Sits UNDER Verify per Nedra's layout.
+           Solid-navy CTA when unassigned; once assigned it shows the person in a
+           full-size row (same height as the CTAs) with a Change control — the whole
+           row opens the picker. Picking someone assigns + emails them (self silent). -->
+      <Popover class="w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
+        <template #target="{ togglePopover }">
+          <button
+            v-if="!assigneeNames.length"
+            class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white"
+            style="background-color: #1b2a4a"
+            @click="togglePopover()"
+          >
+            <LucideUserPlus class="size-4" />
+            {{ __("Assign") }}
+          </button>
+          <button
+            v-else
+            class="flex w-full items-center justify-between gap-2 rounded-lg border border-outline-gray-2 py-2 px-3 hover:border-outline-gray-3"
+            @click="togglePopover()"
+          >
+            <span class="flex min-w-0 items-center gap-2 text-base-medium text-ink-gray-8">
+              <UserAvatar :name="assigneeNames[0]" size="sm" />
+              <span class="truncate">{{ assigneeLabel }}</span>
+            </span>
+            <span class="shrink-0 text-xs font-medium" style="color: #2563eb">
+              {{ __("Change") }}
+            </span>
+          </button>
+        </template>
+        <template #body>
+          <div class="min-w-[240px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+            <input
+              v-model="agentSearch"
+              :placeholder="__('Search agents…')"
+              class="mb-1 w-full rounded-md border-none bg-surface-gray-2 px-2 py-1.5 text-sm outline-none focus:ring-0"
+            />
+            <div class="max-h-56 overflow-y-auto">
+              <button
+                v-for="a in agentOptions"
+                :key="a.name"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
+                @click="assignOne(a)"
+              >
+                <UserAvatar :name="a.name" size="sm" />
+                <span class="truncate">{{ a.label }}</span>
+              </button>
+              <div
+                v-if="!agentOptions.length"
+                class="px-2 py-3 text-center text-sm text-ink-gray-5"
+              >
+                {{ __("No agents found") }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </Popover>
 
       <!-- View the invoice PDF (mobile only — jumps to the Emails tab where
            attachments live; on desktop the Invoice tab already shows it). -->
