@@ -32,10 +32,20 @@ def rescan(ticket: str):
     # arbitrary ids.
     frappe.has_permission("HD Ticket", "read", doc=ticket, throw=True)
 
-    token = frappe.conf.get("rescan_token")
+    # Token comes from site_config if set, else the "Rescan Token" field on the
+    # HD Settings single (an admin-only, server-read field — never sent to the
+    # browser). FC's site-config UI only allows preset keys, so HD Settings is the
+    # practical place to paste it.
+    token = frappe.conf.get("rescan_token") or frappe.db.get_single_value(
+        "HD Settings", "rescan_token"
+    )
     if not token:
         return {"ok": False, "error": _("Invoice scanning isn't configured yet.")}
-    url = frappe.conf.get("rescan_url") or DEFAULT_RESCAN_URL
+    url = (
+        frappe.conf.get("rescan_url")
+        or frappe.db.get_single_value("HD Settings", "rescan_url")
+        or DEFAULT_RESCAN_URL
+    )
 
     try:
         resp = requests.post(
@@ -60,3 +70,30 @@ def rescan(ticket: str):
     except ValueError:
         data = {}
     return {"ok": True, "rescanned": data.get("rescanned", 0)}
+
+
+def ensure_rescan_field():
+    """Idempotently add a 'Rescan Token' field to HD Settings so the shared secret
+    can be pasted in the admin (System-Manager only, server-read — never sent to the
+    browser). FC's site-config UI only allows preset keys, so this is where the token
+    lives. Runs on after_migrate. Data (not Password) so `get_single_value` returns it
+    verbatim to match the enricher's X-Auth-Token."""
+    from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+    create_custom_fields(
+        {
+            "HD Settings": [
+                {
+                    "fieldname": "rescan_token",
+                    "label": "Rescan Token",
+                    "fieldtype": "Data",
+                    "description": (
+                        "Shared secret (X-Auth-Token) for the AP invoice enricher's "
+                        "/rescan endpoint. Paste the value of the enricher's "
+                        "RESCAN_TOKEN Railway variable here."
+                    ),
+                }
+            ]
+        },
+        ignore_validate=True,
+    )
