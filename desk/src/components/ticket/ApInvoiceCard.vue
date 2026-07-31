@@ -665,9 +665,27 @@ function finishAssigned(agent: { name: string; label: string }) {
   activities?.value?.reload?.();
 }
 
+// Routing to an approver moves the ticket to "Pending Approval" so it leaves
+// Nedra's All Open working queue and lands in the approval queue. Self-assign
+// (keeping it to work) does NOT change the status. Non-fatal: the assignment has
+// already succeeded, so a failed status write just leaves the old status.
+function setPendingApproval() {
+  if (!props.ticket?.name) return;
+  if (ticketRes?.value?.setValue) {
+    ticketRes.value.setValue.submit({ status: "Pending Approval" });
+  } else {
+    call("frappe.client.set_value", {
+      doctype: "HD Ticket",
+      name: props.ticket.name,
+      fieldname: { status: "Pending Approval" },
+    }).catch(() => {});
+  }
+}
+
 async function assignOne(agent: { name: string; label: string }) {
   if (!props.ticket?.name) return;
   assignOpen.value = false;
+  const toOther = agent.name !== auth.userId;
   try {
     await call("frappe.desk.form.assign_to.add", {
       doctype: "HD Ticket",
@@ -675,8 +693,9 @@ async function assignOne(agent: { name: string; label: string }) {
       assign_to: [agent.name],
       // Email the assignee (from ap@, an allowed sender — the send is queued
       // async, so it never blocks the assignment). Skip emailing yourself.
-      notify: agent.name === auth.userId ? 0 : 1,
+      notify: toOther ? 1 : 0,
     });
+    if (toOther) setPendingApproval();
     finishAssigned(agent);
   } catch (e) {
     // Belt-and-suspenders: the assignment persists before the notification step,
@@ -685,6 +704,7 @@ async function assignOne(agent: { name: string; label: string }) {
       await assignees?.value?.reload?.();
     } catch {}
     if ((assignees?.value?.data || []).some((a: any) => a.name === agent.name)) {
+      if (toOther) setPendingApproval();
       finishAssigned(agent);
     } else {
       toast.error(__("Couldn't assign. Try again."));
