@@ -312,9 +312,22 @@ const assignee = computed(() => {
   const email = Array.isArray(arr) ? arr[0] : null;
   if (!email) return null;
   const u = getUser(email);
+  // Prefer a real full name from the store (has a space); otherwise the store
+  // only has the email local-part ("corey.windhorst"), so derive a proper name
+  // from the firstname.lastname convention → "Corey Windhorst".
+  const full = u?.full_name;
+  const name =
+    full && full.includes(" ")
+      ? full
+      : String(email)
+          .split("@")[0]
+          .split(/[._-]+/)
+          .filter(Boolean)
+          .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(" ");
   return {
     email,
-    name: u?.full_name || String(email).split("@")[0],
+    name,
     image: u?.user_image,
     extra: Array.isArray(arr) && arr.length > 1 ? arr.length - 1 : 0,
   };
