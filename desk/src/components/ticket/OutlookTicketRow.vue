@@ -125,11 +125,15 @@
                 :theme="f.theme"
                 variant="subtle"
               />
-              <MultipleAvatar
-                v-if="row._assign"
-                :avatars="row._assign"
-                :hide-name="true"
-              />
+              <span
+                v-if="assignee"
+                class="flex shrink-0 items-center gap-1 rounded-full bg-surface-gray-2 py-0.5 pl-0.5 pr-2"
+                :title="__('Assigned to') + ' ' + assignee.name"
+              >
+                <Avatar :image="assignee.image" :label="assignee.name" size="xs" shape="circle" />
+                <span class="max-w-[110px] truncate text-xs text-ink-gray-7">{{ assignee.name }}</span>
+                <span v-if="assignee.extra" class="text-xs text-ink-gray-5">+{{ assignee.extra }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -201,12 +205,15 @@
                 :theme="f.theme"
                 variant="subtle"
               />
-              <MultipleAvatar
-                v-if="row._assign"
-                class="shrink-0"
-                :avatars="row._assign"
-                :hide-name="true"
-              />
+              <span
+                v-if="assignee"
+                class="flex shrink-0 items-center gap-1 rounded-full bg-surface-gray-2 py-0.5 pl-0.5 pr-2"
+                :title="__('Assigned to') + ' ' + assignee.name"
+              >
+                <Avatar :image="assignee.image" :label="assignee.name" size="xs" shape="circle" />
+                <span class="max-w-[110px] truncate text-xs text-ink-gray-7">{{ assignee.name }}</span>
+                <span v-if="assignee.extra" class="text-xs text-ink-gray-5">+{{ assignee.extra }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -253,12 +260,15 @@
             :theme="dueTheme"
             variant="subtle"
           />
-          <MultipleAvatar
-            v-if="row._assign"
-            class="shrink-0"
-            :avatars="row._assign"
-            :hide-name="true"
-          />
+          <span
+            v-if="assignee"
+            class="flex shrink-0 items-center gap-1 rounded-full bg-surface-gray-2 py-0.5 pl-0.5 pr-2"
+            :title="__('Assigned to') + ' ' + assignee.name"
+          >
+            <Avatar :image="assignee.image" :label="assignee.name" size="xs" shape="circle" />
+            <span class="max-w-[110px] truncate text-xs text-ink-gray-7">{{ assignee.name }}</span>
+            <span v-if="assignee.extra" class="text-xs text-ink-gray-5">+{{ assignee.extra }}</span>
+          </span>
         </div>
       </template>
     </div>
@@ -267,12 +277,12 @@
 </template>
 
 <script setup lang="ts">
-import { MultipleAvatar } from "@/components";
 import { useScreenSize } from "@/composables/screen";
 import { useAuthStore } from "@/stores/auth";
+import { useUserStore } from "@/stores/user";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
-import { Badge, dayjs } from "frappe-ui";
+import { Avatar, Badge, dayjs } from "frappe-ui";
 import { computed, ref } from "vue";
 import { useIsAp } from "@/composables/useIsAp";
 import LucideCheck from "~icons/lucide/check";
@@ -288,6 +298,27 @@ const emit = defineEmits<{
 const { userId } = useAuthStore();
 const { getStatus } = useTicketStatusStore();
 const { isMobileView } = useScreenSize();
+const { getUser } = useUserStore();
+
+// Assignee shown as a name pill on the row (first assignee if more than one).
+// `_assign` is a JSON array of user emails; resolve the full name via the store.
+const assignee = computed(() => {
+  let arr: any;
+  try {
+    arr = JSON.parse(props.row._assign || "[]");
+  } catch (e) {
+    return null;
+  }
+  const email = Array.isArray(arr) ? arr[0] : null;
+  if (!email) return null;
+  const u = getUser(email);
+  return {
+    email,
+    name: u?.full_name || String(email).split("@")[0],
+    image: u?.user_image,
+    extra: Array.isArray(arr) && arr.length > 1 ? arr.length - 1 : 0,
+  };
+});
 
 // --- Swipe-left to REVEAL an "Actions" button (mobile only) ----------------
 // Left-drag reveals the "Actions" button and HOLDS it open — it does NOT open
