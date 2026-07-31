@@ -25,6 +25,7 @@ after_install = "helpdesk.setup.install.after_install"
 after_migrate = [
     "helpdesk.search.build_index_in_background",
     "helpdesk.search.download_corpus",
+    "helpdesk.api.ap_rescan.ensure_rescan_field",
 ]
 
 # Full Text Search
