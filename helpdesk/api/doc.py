@@ -132,6 +132,12 @@ def get_list_data(
                 "description",
                 "modified",
                 "creation",
+                # Assignee for the row pill. MUST be appended here (before the
+                # data fetch below) — the std_fields loop that also lists _assign
+                # runs AFTER frappe.get_list, so without this the column is
+                # returned as metadata but never SELECTed into the row data, and
+                # every row falls back to "Unassigned".
+                "_assign",
             ):
                 if _pyek_field not in rows:
                     rows.append(_pyek_field)

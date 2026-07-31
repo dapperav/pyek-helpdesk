@@ -48,8 +48,32 @@
     v-else-if="options.outlookRows && list.data?.data.length > 0"
     class="flex-1 overflow-y-auto"
   >
+    <!-- Grouped view (e.g. by payment terms): a header per group, then its rows.
+         The default flat render iterates the raw data; when the saved view is a
+         group_by, iterate the grouped buckets from the `rows` computed instead. -->
+    <template v-if="isGrouped">
+      <div v-for="g in rows" :key="(g.group && g.group.value) || '__none'">
+        <div
+          v-if="g.rows.length"
+          class="sticky top-0 z-10 flex items-center gap-2 border-b border-outline-gray-1 bg-surface-gray-2 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-gray-7"
+        >
+          {{ (g.group && g.group.label) || __("No terms set") }}
+          <span class="font-normal text-ink-gray-5">{{ g.rows.length }}</span>
+        </div>
+        <OutlookTicketRow
+          v-for="row in g.rows"
+          :key="row.name"
+          :row="row"
+          :selected="outlookSelected.has(row.name)"
+          @click="openOutlookRow(row)"
+          @toggle="toggleOutlookSelect(row.name)"
+          @actions="actionTicket = row"
+        />
+      </div>
+    </template>
     <OutlookTicketRow
       v-for="row in list.data.data"
+      v-else
       :key="row.name"
       :row="row"
       :selected="outlookSelected.has(row.name)"
@@ -527,6 +551,10 @@ function selectBannerOptions(selections: Set<string>, unselectAll = () => {}) {
   return [...userActions, ...defaultActions];
 }
 
+const isGrouped = computed(
+  () =>
+    list.data?.view_type === "group_by" && !!list.data?.group_by_field?.name
+);
 const rows = computed(() => {
   if (!list.data?.data) return [];
   if (list.data.view_type === "group_by") {
