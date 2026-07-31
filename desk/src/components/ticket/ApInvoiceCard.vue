@@ -100,6 +100,36 @@
 
       <!-- Actions -->
       <div class="mt-3 flex flex-col gap-2">
+      <!-- Scan / attach the invoice. The enricher only auto-reads a ticket on first
+           ingest, so a vendor reply that arrives WITH an invoice (on a Query /
+           no-invoice ticket) is never read — Scan re-extracts the CURRENT
+           attachments on demand; Attach uploads a file Nedra has, then scans it. -->
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
+          :disabled="scanning"
+          @click="scanInvoice()"
+        >
+          <LucideScanLine class="size-4" />
+          {{ scanning ? __("Scanning…") : __("Scan invoice") }}
+        </button>
+        <button
+          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
+          :disabled="scanning"
+          @click="pickInvoiceFile()"
+        >
+          <LucidePaperclip class="size-4" />
+          {{ __("Attach") }}
+        </button>
+      </div>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="application/pdf,image/*"
+        class="hidden"
+        @change="onFilePicked"
+      />
+
       <!-- Download the invoice already named for Intacct (same-origin: the browser
            saves it with this name, so no manual rename). Solid-blue primary CTA —
            this is the action Nedra takes on every invoice. -->
@@ -273,6 +303,8 @@ import LucideFileText from "~icons/lucide/file-text";
 import LucideUserPlus from "~icons/lucide/user-plus";
 import LucideFlag from "~icons/lucide/flag";
 import LucideChevronDown from "~icons/lucide/chevron-down";
+import LucideScanLine from "~icons/lucide/scan-line";
+import LucidePaperclip from "~icons/lucide/paperclip";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
@@ -386,6 +418,87 @@ function copyFilename() {
   navigator.clipboard.writeText(filename.value);
   copied.value = true;
   setTimeout(() => (copied.value = false), 1400);
+}
+
+// --- scan / attach invoice ---
+// Scan re-extracts the ticket's CURRENT attachments via the enricher (server-side
+// proxy keeps the token off the browser). Attach uploads a file first, then scans.
+const scanning = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+async function reloadAfterScan() {
+  // Pull the freshly-written fields back: enricher-only fields via `extra`, the
+  // core ap_* fields via the shared ticket doc.
+  try {
+    await extra.reload();
+  } catch (e) {
+    /* noop */
+  }
+  try {
+    await ticketRes?.value?.reload?.();
+  } catch (e) {
+    /* noop */
+  }
+}
+
+async function scanInvoice() {
+  if (scanning.value || !props.ticket?.name) return;
+  scanning.value = true;
+  try {
+    const res = await call("helpdesk.api.ap_rescan.rescan", {
+      ticket: props.ticket.name,
+    });
+    if (res?.ok) {
+      await reloadAfterScan();
+      toast.success(__("Invoice scanned"));
+    } else {
+      toast.error(res?.error || __("Scan failed. Try again."));
+    }
+  } catch (e) {
+    toast.error(__("Scan failed. Try again."));
+  } finally {
+    scanning.value = false;
+  }
+}
+
+function pickInvoiceFile() {
+  if (scanning.value) return;
+  fileInput.value?.click();
+}
+
+async function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // let the same file be re-picked later
+  if (!file || !props.ticket?.name) return;
+  scanning.value = true;
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("is_private", "1");
+    form.append("doctype", "HD Ticket");
+    form.append("docname", props.ticket.name);
+    const r = await fetch("/api/method/upload_file", {
+      method: "POST",
+      headers: { "X-Frappe-CSRF-Token": (window as any).csrf_token || "" },
+      body: form,
+    });
+    if (!r.ok) throw new Error("upload failed");
+    toast.success(__("Invoice attached — scanning…"));
+    const res = await call("helpdesk.api.ap_rescan.rescan", {
+      ticket: props.ticket.name,
+    });
+    if (res?.ok) {
+      await reloadAfterScan();
+      toast.success(__("Invoice scanned"));
+    } else {
+      toast.error(res?.error || __("Attached, but the scan failed."));
+    }
+  } catch (err) {
+    toast.error(__("Couldn't attach the file. Try again."));
+  } finally {
+    scanning.value = false;
+  }
 }
 
 // --- verify + assign ---
