@@ -98,66 +98,52 @@
         </div>
       </div>
 
+      <!-- Actions -->
+      <div class="mt-3 flex flex-col gap-2">
       <!-- Download the invoice already named for Intacct (same-origin: the browser
-           saves it with this name, so no manual rename). -->
+           saves it with this name, so no manual rename). Solid-blue primary CTA —
+           this is the action Nedra takes on every invoice. -->
       <a
         v-if="invoiceUrl"
         :href="invoiceUrl"
         :download="downloadName || undefined"
-        class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 active:bg-surface-gray-2"
+        class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white"
+        style="background-color: #2563eb"
       >
         <LucideDownload class="size-4" />
         {{ __("Download for Intacct") }}
       </a>
 
-      <!-- Verify + assign. Clicking marks verified immediately, then opens the agent
-           list; picking someone assigns the ticket and emails them (self-assign is
-           silent). Once verified, the same control reopens the list to (re)assign. -->
-      <Popover class="mt-2 w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
+      <!-- Assign (independent of verify — Nedra can route a ticket without
+           verifying first). Solid-navy CTA when unassigned; once assigned it shows
+           the person with a Change control. Picking someone assigns + emails them
+           (self-assign is silent). -->
+      <Popover class="w-full" placement="bottom" :show="assignOpen" @update:show="(v) => (assignOpen = v)">
         <template #target="{ togglePopover }">
-          <!-- Not verified: one action button -->
           <button
-            v-if="!isVerified"
-            class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white disabled:opacity-60"
-            style="background-color: #16a34a"
-            :disabled="verifying"
-            @click="onVerifyAssign(togglePopover)"
+            v-if="!assigneeNames.length"
+            class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white"
+            style="background-color: #1b2a4a"
+            @click="togglePopover()"
           >
-            <LucideCheck class="size-4" />
-            {{ verifying ? __("Saving…") : __("Mark verified and assign") }}
+            <LucideUserPlus class="size-4" />
+            {{ __("Assign") }}
           </button>
-
-          <!-- Verified: compact "Verified" chip, then a clear "Assigned to …" row
-               with a Change/Assign control. Kept on their own lines + truncated so
-               nothing runs off the sidebar. -->
-          <div v-else class="flex flex-col gap-2">
-            <div
-              class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
-              style="background-color: #f0fdf4; color: #15803d"
+          <div
+            v-else
+            class="flex items-center justify-between gap-2 rounded-lg border border-outline-gray-2 px-2.5 py-1.5"
+          >
+            <span class="flex min-w-0 items-center gap-1.5 text-sm">
+              <UserAvatar :name="assigneeNames[0]" size="sm" />
+              <span class="truncate text-ink-gray-8">{{ assigneeLabel }}</span>
+            </span>
+            <button
+              class="shrink-0 text-xs font-medium hover:underline"
+              style="color: #2563eb"
+              @click="togglePopover()"
             >
-              <LucideCircleCheck class="size-4 shrink-0" />
-              <span class="truncate">{{ verifiedLabel }}</span>
-            </div>
-            <div
-              class="flex items-center justify-between gap-2 rounded-lg border border-outline-gray-2 px-2.5 py-1.5"
-            >
-              <span class="flex min-w-0 items-center gap-1.5 text-sm">
-                <template v-if="assigneeNames.length">
-                  <UserAvatar :name="assigneeNames[0]" size="sm" />
-                  <span class="truncate text-ink-gray-8">{{ assigneeLabel }}</span>
-                </template>
-                <template v-else>
-                  <LucideUserPlus class="size-4 shrink-0 text-ink-gray-5" />
-                  <span class="text-ink-gray-5">{{ __("Unassigned") }}</span>
-                </template>
-              </span>
-              <button
-                class="shrink-0 text-xs text-ink-gray-6 underline hover:text-ink-gray-9"
-                @click="togglePopover()"
-              >
-                {{ assigneeNames.length ? __("Change") : __("Assign") }}
-              </button>
-            </div>
+              {{ __("Change") }}
+            </button>
           </div>
         </template>
         <template #body>
@@ -188,16 +174,76 @@
         </template>
       </Popover>
 
+      <!-- Priority — moved up from the old Details card into a CTA button coloured
+           by level (Urgent red → Low gray). Opens a small picker. -->
+      <Popover class="w-full" placement="bottom" :show="priorityOpen" @update:show="(v) => (priorityOpen = v)">
+        <template #target="{ togglePopover }">
+          <button
+            class="flex w-full items-center justify-between gap-2 rounded-lg py-2 px-3 text-base-medium text-white"
+            :style="{ backgroundColor: priorityColor(currentPriority) }"
+            @click="togglePopover()"
+          >
+            <span class="flex items-center gap-2">
+              <LucideFlag class="size-4" />
+              {{ __("Priority") }}
+            </span>
+            <span class="flex items-center gap-1">
+              {{ currentPriority || __("Set") }}
+              <LucideChevronDown class="size-4" />
+            </span>
+          </button>
+        </template>
+        <template #body>
+          <div class="min-w-[180px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+            <button
+              v-for="p in priorityOptions"
+              :key="p"
+              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
+              @click="setPriority(p)"
+            >
+              <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: priorityColor(p) }" />
+              <span class="truncate">{{ p }}</span>
+              <LucideCheck v-if="p === currentPriority" class="ml-auto size-4 text-ink-gray-6" />
+            </button>
+            <div v-if="!priorityOptions.length" class="px-2 py-3 text-center text-sm text-ink-gray-5">
+              {{ __("No priorities found") }}
+            </div>
+          </div>
+        </template>
+      </Popover>
+
+      <!-- Verify — decoupled from assign. Own green button that becomes the
+           "Verified by …" pill once stamped. -->
+      <div
+        v-if="isVerified"
+        class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
+        style="background-color: #f0fdf4; color: #15803d"
+      >
+        <LucideCircleCheck class="size-4 shrink-0" />
+        <span class="truncate">{{ verifiedLabel }}</span>
+      </div>
+      <button
+        v-else
+        class="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-base-medium disabled:opacity-60"
+        style="border-color: #16a34a; color: #15803d"
+        :disabled="verifying"
+        @click="markVerified()"
+      >
+        <LucideCheck class="size-4" />
+        {{ verifying ? __("Saving…") : __("Mark verified") }}
+      </button>
+
       <!-- View the invoice PDF (mobile only — jumps to the Emails tab where
            attachments live; on desktop the Invoice tab already shows it). -->
       <button
         v-if="isMobileView"
-        class="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
+        class="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
         @click="$emit('view-pdf')"
       >
         <LucideFileText class="size-4" />
         {{ __("View invoice") }}
       </button>
+      </div>
     </div>
   </div>
 </template>
@@ -206,7 +252,7 @@
 import { parkColor, parkLabel } from "@/config/parks";
 import { useScreenSize } from "@/composables/screen";
 import { useAuthStore } from "@/stores/auth";
-import { ActivitiesSymbol, AssigneeSymbol } from "@/types";
+import { ActivitiesSymbol, AssigneeSymbol, TicketSymbol } from "@/types";
 import { __ } from "@/translation";
 import {
   Popover,
@@ -226,6 +272,8 @@ import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideDownload from "~icons/lucide/download";
 import LucideFileText from "~icons/lucide/file-text";
 import LucideUserPlus from "~icons/lucide/user-plus";
+import LucideFlag from "~icons/lucide/flag";
+import LucideChevronDown from "~icons/lucide/chevron-down";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
@@ -237,6 +285,10 @@ const auth = useAuthStore();
 // persists via the API call).
 const assignees = inject(AssigneeSymbol, undefined);
 const activities = inject(ActivitiesSymbol, undefined);
+// Present in the ticket-detail context (desktop + mobile) so a priority change
+// updates the shared ticket doc reactively; absent contexts fall back to a plain
+// set_value write below.
+const ticketRes = inject(TicketSymbol, undefined);
 
 // AP tickets carry ap_vendor; IT/HR don't → the whole card no-ops there.
 const isAP = computed(() => props.ticket && "ap_vendor" in props.ticket);
@@ -385,11 +437,64 @@ async function markVerified() {
   }
 }
 
-// "Verify now, then pick (skippable)": stamp verified immediately, then open the
-// agent list so she can route it (or close to leave it verified + unassigned).
-function onVerifyAssign(togglePopover: () => void) {
-  markVerified();
-  togglePopover();
+// --- priority (moved up from the Details card into a CTA button) ---
+const priorityOpen = ref(false);
+// Optimistic value so the button relabels/recolours instantly on pick.
+const optimisticPriority = ref("");
+const currentPriority = computed(
+  () => optimisticPriority.value || props.ticket?.priority || ""
+);
+const priorityRes = createListResource({
+  doctype: "HD Ticket Priority",
+  fields: ["name"],
+  pageLength: 20,
+  auto: true,
+});
+const priorityOptions = computed(() =>
+  (priorityRes.data || []).map((p: any) => p.name)
+);
+const PRIORITY_COLORS: Record<string, string> = {
+  Urgent: "#dc2626",
+  High: "#ea580c",
+  Medium: "#d97706",
+  Low: "#64748b",
+};
+function priorityColor(p: string) {
+  return PRIORITY_COLORS[p] || "#64748b";
+}
+async function setPriority(name: string) {
+  priorityOpen.value = false;
+  if (!name || !props.ticket?.name || name === currentPriority.value) return;
+  const prev = optimisticPriority.value;
+  optimisticPriority.value = name; // instant relabel/recolour
+  const ok = () => {
+    toast.success(__("Priority set to {0}").replace("{0}", name));
+    activities?.value?.reload?.();
+  };
+  const fail = () => {
+    optimisticPriority.value = prev; // revert to the real value
+    toast.error(__("Couldn't update priority. Try again."));
+  };
+  // Prefer the shared ticket resource so ticket.doc stays in sync everywhere
+  // (its onError signals a failed save — await alone wouldn't); fall back to a
+  // direct write if this card renders without the resource.
+  if (ticketRes?.value?.setValue) {
+    ticketRes.value.setValue.submit(
+      { priority: name },
+      { onSuccess: ok, onError: fail }
+    );
+  } else {
+    try {
+      await call("frappe.client.set_value", {
+        doctype: "HD Ticket",
+        name: props.ticket.name,
+        fieldname: { priority: name },
+      });
+      ok();
+    } catch (e) {
+      fail();
+    }
+  }
 }
 
 const assignOpen = ref(false);

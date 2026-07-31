@@ -95,39 +95,9 @@
         </Section>
       </div>
 
-      <!-- AP: Priority + Assignee in a matching card at the bottom (moved out of the
-           top block so Ticket Info sits directly under the invoice card). -->
-      <div
-        v-if="isAP"
-        class="mx-5 mt-3 rounded-xl border border-outline-gray-2 bg-surface-white p-3.5"
-      >
-        <div class="mb-3 text-base-semibold text-ink-gray-8">{{ __("Details") }}</div>
-        <div
-          v-for="(section, index) in coreFields"
-          :key="index"
-          class="mb-3"
-        >
-          <template v-for="field in section.fields">
-            <Link
-              v-if="field.visible"
-              :key="field.fieldname"
-              :ref="(el) => setFieldRef(field.fieldname, el)"
-              class="form-control-core w-full"
-              :id="field.fieldname"
-              :page-length="10"
-              :label="field.label"
-              :placeholder="field.placeholder"
-              :doctype="field.doctype"
-              :modelValue="field.value"
-              :required="field.required"
-              @update:model-value="
-                (val:string) => handleFieldUpdate(field.fieldname, val, true)
-              "
-            />
-          </template>
-        </div>
-        <AssignTo />
-      </div>
+      <!-- AP: Priority + Assignee are NOT shown here — Priority moved into the
+           invoice-card CTA buttons and Assignee is handled by the card's Assign
+           action (the old Details Assignee widget was removed per Nedra). -->
 
       <!-- AP: recent comments on this ticket (click to jump to it in the thread).
            Self-guards on ap_vendor + comment presence. -->
