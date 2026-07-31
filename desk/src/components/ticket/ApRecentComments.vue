@@ -64,6 +64,7 @@ import { timeAgo } from "@/utils";
 import { useStorage } from "@vueuse/core";
 import { Avatar } from "frappe-ui";
 import { computed, inject, nextTick } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import { useRoute, useRouter } from "vue-router";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import Section from "../Section.vue";
@@ -77,9 +78,7 @@ const router = useRouter();
 // Persisted collapse state; default open — this is a quick-glance panel.
 const opened = useStorage("apRecentCommentsOpen", true, localStorage);
 
-const isAP = computed(
-  () => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc
-);
+const isAP = useIsAp(() => ticket.value?.doc);
 
 // Strip HTML from the stored comment body for a plain-text preview.
 function stripHtml(html: string) {

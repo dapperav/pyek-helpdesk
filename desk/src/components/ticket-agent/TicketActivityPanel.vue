@@ -68,6 +68,7 @@ import {
 import { Button, Tabs } from "frappe-ui";
 import { storeToRefs } from "pinia";
 import { computed, ComputedRef, inject, ref } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import { TicketAgentActivities } from "../ticket";
 import ApVerifyPane from "../ticket/ApVerifyPane.vue";
 import LucideFileText from "~icons/lucide/file-text";
@@ -89,7 +90,7 @@ const { isCallingEnabled } = storeToRefs(telephonyStore);
 // Nedra reads the thread first, then moves to Invoice to verify. Keeping Activity
 // at index 0 (the native default) also means any re-render that falls back to the
 // default lands on Activity, not away from the tab she picked.
-const isAP = computed(() => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc);
+const isAP = useIsAp(() => ticket.value?.doc);
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
   const _tabs: TabObject[] = [

@@ -195,6 +195,7 @@ import {
   ref,
   watchEffect,
 } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 
 import { CommunicationArea, LayoutHeader } from "@/components";
 import {
@@ -280,9 +281,7 @@ const ticket = computed(() => ticketComposable.value.ticket);
 const assignees = computed(() => ticketComposable.value.assignees);
 const contact = computed(() => ticketComposable.value.contact);
 // AP tickets (ap_vendor present) have one inbox — no POS/IT move button.
-const isAP = computed(
-  () => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc
-);
+const isAP = useIsAp(() => ticket.value?.doc);
 const activities = computed(() => ticketComposable.value.activities);
 
 const customizations: Resource<Customizations> = createResource({

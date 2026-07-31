@@ -263,6 +263,7 @@ import {
   toast,
 } from "frappe-ui";
 import { computed, inject, ref, watch } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import UserAvatar from "../UserAvatar.vue";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import LucideFileX from "~icons/lucide/file-x";
@@ -291,7 +292,7 @@ const activities = inject(ActivitiesSymbol, undefined);
 const ticketRes = inject(TicketSymbol, undefined);
 
 // AP tickets carry ap_vendor; IT/HR don't → the whole card no-ops there.
-const isAP = computed(() => props.ticket && "ap_vendor" in props.ticket);
+const isAP = useIsAp(() => props.ticket);
 
 const vendor = computed(() => props.ticket?.ap_vendor || "");
 const park = computed(() => parkLabel(props.ticket?.pyek_property));

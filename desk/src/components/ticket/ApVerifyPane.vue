@@ -43,6 +43,7 @@ import { ActivitiesSymbol, TicketSymbol } from "@/types";
 import { __ } from "@/translation";
 import { createResource } from "frappe-ui";
 import { computed, inject } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import LucideFileText from "~icons/lucide/file-text";
 import LucideFileX from "~icons/lucide/file-x";
 import LucideExternalLink from "~icons/lucide/external-link";
@@ -51,7 +52,7 @@ const ticketRef = inject(TicketSymbol)!;
 const activities = inject(ActivitiesSymbol, undefined);
 
 const ticket = computed<Record<string, any>>(() => ticketRef.value?.doc || {});
-const isAP = computed(() => "ap_vendor" in ticket.value);
+const isAP = useIsAp(() => ticketRef.value?.doc);
 
 // Machine pointer to the exact PDF the fields came from — not a template field, so
 // self-fetch it. Falls back to the largest attached PDF if the pointer isn't set yet.

@@ -274,6 +274,7 @@ import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import { Badge, dayjs } from "frappe-ui";
 import { computed, ref } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import LucideCheck from "~icons/lucide/check";
 import LucideMoreHorizontal from "~icons/lucide/more-horizontal";
 
@@ -540,9 +541,7 @@ const snippet = computed(() => {
 // status/flags, instead of the requester/preview layout. Keyed off the KEY being
 // present (not its value), so portal-link tickets with no vendor still render
 // AP-style.
-const isAP = computed(
-  () => "ap_vendor" in props.row || "ap_doc_type" in props.row
-);
+const isAP = useIsAp(() => props.row);
 const park = computed(() => props.row.pyek_property || "");
 const amountLabel = computed(() => {
   const a = props.row.ap_amount;
@@ -578,7 +577,7 @@ const apFlags = computed(() => {
   if (props.row.ap_duplicate) flags.push({ label: "Duplicate", theme: "red" });
   if (props.row.ap_missing_invoice)
     flags.push({ label: "Missing", theme: "orange" });
-  else if ("ap_vendor" in props.row && !props.row.ap_vendor)
+  else if (isAP.value && !props.row.ap_vendor)
     flags.push({ label: "Via link", theme: "gray" });
   return flags;
 });

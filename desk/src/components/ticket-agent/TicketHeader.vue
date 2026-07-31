@@ -121,6 +121,7 @@ import {
   watchEffect,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useIsAp } from "@/composables/useIsAp";
 import LucideMerge from "~icons/lucide/merge";
 import { IndicatorIcon } from "../icons";
 import MoveTeamButton from "./MoveTeamButton.vue";
@@ -147,7 +148,7 @@ const customizations = inject(CustomizationSymbol)!;
 const activities = inject(ActivitiesSymbol)!;
 const showSubjectDialog = ref(false);
 // AP tickets (ap_vendor present) have one inbox — no POS/IT move button.
-const isAP = computed(() => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc);
+const isAP = useIsAp(() => ticket.value?.doc);
 
 const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
 const statusDropdown = computed(() => {
