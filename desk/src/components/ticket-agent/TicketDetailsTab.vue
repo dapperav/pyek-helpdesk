@@ -179,6 +179,7 @@ import {
 import { useStorage } from "@vueuse/core";
 import { dayjs, Tooltip } from "frappe-ui";
 import { computed, inject, ref, watch } from "vue";
+import { useIsAp } from "@/composables/useIsAp";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
@@ -201,9 +202,7 @@ const { getStatus, colorMap } = useTicketStatusStore();
 // AP tickets carry ap_vendor; on those we strip the confusing generic meta
 // (Ticket Type / Customer / Team) from this panel and keep only Priority — AP has
 // one inbox, so team/customer are meaningless and Nedra was mis-clicking them.
-const isAP = computed(
-  () => !!ticket.value?.doc && "ap_vendor" in ticket.value.doc
-);
+const isAP = useIsAp(() => ticket.value?.doc);
 
 // ticket_type, priority, customer, agent_group
 const coreFields = computed(() => {
