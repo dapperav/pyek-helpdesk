@@ -205,6 +205,8 @@
                 :theme="f.theme"
                 variant="subtle"
               />
+              <!-- Assignee — always shown so ownership reads at a glance next to
+                   the status/due badges; a dashed "Unassigned" chip when empty. -->
               <span
                 v-if="assignee"
                 class="flex shrink-0 items-center gap-1 rounded-full bg-surface-gray-2 py-0.5 pl-0.5 pr-2"
@@ -213,6 +215,14 @@
                 <Avatar :image="assignee.image" :label="assignee.name" size="xs" shape="circle" />
                 <span class="max-w-[110px] truncate text-xs text-ink-gray-7">{{ assignee.name }}</span>
                 <span v-if="assignee.extra" class="text-xs text-ink-gray-5">+{{ assignee.extra }}</span>
+              </span>
+              <span
+                v-else
+                class="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-outline-gray-3 px-2 py-0.5 text-xs text-ink-gray-5"
+                :title="__('Unassigned')"
+              >
+                <LucideUserPlus class="size-3" />
+                {{ __("Unassigned") }}
               </span>
             </div>
           </div>
@@ -287,6 +297,7 @@ import { computed, ref } from "vue";
 import { useIsAp } from "@/composables/useIsAp";
 import LucideCheck from "~icons/lucide/check";
 import LucideMoreHorizontal from "~icons/lucide/more-horizontal";
+import LucideUserPlus from "~icons/lucide/user-plus";
 
 const props = defineProps<{ row: Record<string, any>; selected?: boolean }>();
 const emit = defineEmits<{

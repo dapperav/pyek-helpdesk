@@ -863,6 +863,14 @@ function handleViewChanges() {
   defaultParams.order_by = currentView.order_by || "modified desc";
   defaultParams.columns = currentView.columns;
   defaultParams.rows = currentView.rows;
+  // Carry a saved view's group-by config through to the list request so a
+  // "group_by" HD View actually groups (the backend groups only when it receives
+  // view.view_type == "group_by" + view.group_by_field). Absent/normal views map
+  // to "list", so existing views are unchanged.
+  defaultParams.view = defaultParams.view || {};
+  defaultParams.view.name = currentView.name;
+  defaultParams.view.view_type = currentView.type || "list";
+  defaultParams.view.group_by_field = currentView.group_by_field || null;
 
   if (route.query.filters) {
     try {

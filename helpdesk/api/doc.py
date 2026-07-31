@@ -322,7 +322,13 @@ def get_list_data(
 
         def get_options(fieldtype, options):
             if fieldtype == "Select":
-                return [option for option in options.split("\n")]
+                # The client groups rows by option.value / labels each group by
+                # option.label, so return {label, value} objects (not bare strings).
+                opts = [o for o in (options or "").split("\n") if o]
+                result = [{"label": o, "value": o} for o in opts]
+                if any(not d.get(group_by_field) for d in data):
+                    result.append({"label": "", "value": ""})
+                return result
             else:
                 has_empty_values = any([not d.get(group_by_field) for d in data])
                 options = list(set([d.get(group_by_field) for d in data]))
