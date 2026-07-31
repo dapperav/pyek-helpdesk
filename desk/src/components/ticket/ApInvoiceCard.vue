@@ -49,6 +49,10 @@
           <span class="text-ink-gray-5">{{ __("Doc type") }}</span>
           <span class="text-ink-gray-8">{{ ticket.ap_doc_type }}</span>
         </div>
+        <div v-if="currentTerms" class="flex items-center justify-between">
+          <span class="text-ink-gray-5">{{ __("Terms") }}</span>
+          <span class="text-ink-gray-8">{{ currentTerms }}</span>
+        </div>
       </div>
 
       <!-- Needs-review banner (hidden once verified). -->
@@ -182,27 +186,70 @@
         </template>
       </Popover>
 
-      <!-- Verify — decoupled from assign. Explicit "Click to mark verified" label:
-           a plain "Mark verified" read as an already-done status at a glance.
-           Becomes the "Verified by …" pill once stamped. -->
+      <!-- Payment terms — Net 10…90 or Personal Reimbursement. AI pre-fills most;
+           this picker lets Nedra change it. Net terms drive the due date (in the
+           enricher); Personal Reimbursement also marks the doc type so the ticket
+           lands in the Reimbursements queue. -->
+      <Popover class="w-full" placement="bottom" :show="termsOpen" @update:show="(v) => (termsOpen = v)">
+        <template #target="{ togglePopover }">
+          <button
+            class="flex w-full items-center justify-between gap-2 rounded-lg border border-outline-gray-2 py-2 px-3 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2"
+            @click="togglePopover()"
+          >
+            <span class="flex items-center gap-2">
+              <LucideCalendarClock class="size-4" />
+              {{ __("Terms") }}
+            </span>
+            <span class="flex items-center gap-1">
+              {{ currentTerms || __("Set") }}
+              <LucideChevronDown class="size-4" />
+            </span>
+          </button>
+        </template>
+        <template #body>
+          <div class="min-w-[220px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+            <button
+              v-for="t in TERMS_OPTIONS"
+              :key="t"
+              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
+              @click="setTerms(t)"
+            >
+              <span class="truncate">{{ t }}</span>
+              <LucideCheck v-if="t === currentTerms" class="ml-auto size-4 text-ink-gray-6" />
+            </button>
+          </div>
+        </template>
+      </Popover>
+
+      <!-- Verify — decoupled from assign. Light-blue CTA that becomes the green
+           "Verified by …" pill once stamped. Blocked until every Ticket Info field
+           is filled (invoice #/amount/date are relaxed for no-invoice tickets —
+           Missing Invoice / Personal Reimbursement). -->
       <div
         v-if="isVerified"
-        class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm"
+        class="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-base-medium"
         style="background-color: #f0fdf4; color: #15803d"
       >
         <LucideCircleCheck class="size-4 shrink-0" />
-        <span class="truncate">{{ verifiedLabel }}</span>
+        <span>{{ verifiedLabel }}</span>
       </div>
-      <button
-        v-else
-        class="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-base-medium disabled:opacity-60"
-        style="border-color: #16a34a; color: #15803d"
-        :disabled="verifying"
-        @click="markVerified()"
-      >
-        <LucideCheck class="size-4" />
-        {{ verifying ? __("Saving…") : __("Click to mark verified") }}
-      </button>
+      <template v-else>
+        <button
+          class="flex w-full items-center justify-center gap-2 rounded-lg py-2 px-3 text-base-medium disabled:opacity-60"
+          style="background-color: #dbeafe; color: #1d4ed8"
+          :disabled="verifying"
+          @click="attemptVerify()"
+        >
+          {{ verifying ? __("Saving…") : __("Click to mark verified") }}
+        </button>
+        <p
+          v-if="missingFields.length"
+          class="px-0.5 text-xs"
+          style="color: #b45309"
+        >
+          {{ __("Fill before verifying:") }} {{ missingFields.join(", ") }}
+        </p>
+      </template>
 
       <!-- Assign (independent of verify). Sits UNDER Verify per Nedra's layout.
            Solid-navy CTA when unassigned; once assigned it shows the person in a
@@ -305,6 +352,7 @@ import LucideFlag from "~icons/lucide/flag";
 import LucideChevronDown from "~icons/lucide/chevron-down";
 import LucideScanLine from "~icons/lucide/scan-line";
 import LucidePaperclip from "~icons/lucide/paperclip";
+import LucideCalendarClock from "~icons/lucide/calendar-clock";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
@@ -517,7 +565,11 @@ watch(
 );
 const isVerified = computed(() => localVerified.value);
 const verifiedLabel = computed(() => {
-  const who = (localVerifiedBy.value || "").split("@")[0];
+  // Prefer the agent's proper display name ("Nedra Kennedy") over the email
+  // local-part; the pill is full-width now so the whole label + date fits.
+  const who =
+    displayName(localVerifiedBy.value) ||
+    (localVerifiedBy.value || "").split("@")[0];
   const when = localVerifiedOn.value ? dayjs(localVerifiedOn.value).format("MM/DD/YYYY") : "";
   if (who && when) return __("Verified by {0} · {1}").replace("{0}", who).replace("{1}", when);
   return __("Verified");
@@ -547,6 +599,113 @@ async function markVerified() {
   } finally {
     verifying.value = false;
   }
+}
+
+// --- payment terms ---
+// Net 10…90 or Personal Reimbursement. The enricher AI pre-fills most of these;
+// this picker lets Nedra change it. Optimistic value for an instant relabel.
+const TERMS_OPTIONS = [
+  "Net 10",
+  "Net 15",
+  "Net 20",
+  "Net 30",
+  "Net 60",
+  "Net 90",
+  "Personal Reimbursement",
+];
+const termsOpen = ref(false);
+const optimisticTerms = ref("");
+const currentTerms = computed(
+  () => optimisticTerms.value || props.ticket?.ap_payment_terms || ""
+);
+async function setTerms(name: string) {
+  termsOpen.value = false;
+  if (!name || !props.ticket?.name || name === currentTerms.value) return;
+  const prev = optimisticTerms.value;
+  optimisticTerms.value = name; // instant relabel
+  // Personal Reimbursement also marks the doc type Reimbursement so the ticket
+  // lands in the existing Reimbursements queue (Net terms leave the doc type as-is).
+  const fields: Record<string, any> = { ap_payment_terms: name };
+  if (name === "Personal Reimbursement") fields.ap_doc_type = "Reimbursement";
+  const ok = () => {
+    toast.success(__("Terms set to {0}").replace("{0}", name));
+    activities?.value?.reload?.();
+  };
+  const fail = () => {
+    optimisticTerms.value = prev;
+    toast.error(__("Couldn't update terms. Try again."));
+  };
+  if (ticketRes?.value?.setValue) {
+    ticketRes.value.setValue.submit(fields, { onSuccess: ok, onError: fail });
+  } else {
+    try {
+      await call("frappe.client.set_value", {
+        doctype: "HD Ticket",
+        name: props.ticket.name,
+        fieldname: fields,
+      });
+      ok();
+    } catch (e) {
+      fail();
+    }
+  }
+}
+
+// --- verify gate ---
+// The same fields shown in the "Ticket Info" panel must be filled before a ticket
+// can be marked verified. Invoice-specific fields (invoice #, amount, invoice date)
+// are relaxed for tickets that legitimately have no invoice — Missing Invoice or a
+// Personal Reimbursement.
+const REQUIRED_FIELDS: {
+  field: string;
+  label: string;
+  invoiceOnly?: boolean;
+}[] = [
+  { field: "pyek_property", label: __("Property") },
+  { field: "ap_received_date", label: __("Received Date") },
+  { field: "ap_invoice_date", label: __("Invoice Date"), invoiceOnly: true },
+  { field: "pyek_requested_due_date", label: __("Requested Due Date") },
+  { field: "ap_doc_type", label: __("AP Doc Type") },
+  { field: "ap_vendor", label: __("Vendor") },
+  { field: "ap_invoice_number", label: __("Invoice Number"), invoiceOnly: true },
+  { field: "ap_amount", label: __("Amount"), invoiceOnly: true },
+  { field: "ap_payment_terms", label: __("Payment Terms") },
+];
+const isReimbursement = computed(
+  () =>
+    currentTerms.value === "Personal Reimbursement" ||
+    props.ticket?.ap_doc_type === "Reimbursement"
+);
+const relaxInvoiceFields = computed(
+  () => isMissing.value || isReimbursement.value
+);
+function fieldFilled(field: string): boolean {
+  // Payment terms is optimistic-aware; everything else reads the doc.
+  if (field === "ap_payment_terms") return !!currentTerms.value;
+  const v = props.ticket?.[field];
+  if (field === "ap_amount")
+    return v !== null && v !== undefined && v !== "" && Number(v) > 0;
+  return v !== null && v !== undefined && String(v).trim() !== "";
+}
+const missingFields = computed(() =>
+  REQUIRED_FIELDS.filter(
+    (f) => !(f.invoiceOnly && relaxInvoiceFields.value)
+  )
+    .filter((f) => !fieldFilled(f.field))
+    .map((f) => f.label)
+);
+function attemptVerify() {
+  if (verifying.value || isVerified.value) return;
+  if (missingFields.value.length) {
+    toast.error(
+      __("Fill these fields before verifying: {0}").replace(
+        "{0}",
+        missingFields.value.join(", ")
+      )
+    );
+    return;
+  }
+  markVerified();
 }
 
 // --- priority (moved up from the Details card into a CTA button) ---
