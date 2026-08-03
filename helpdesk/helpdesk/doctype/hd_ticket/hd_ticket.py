@@ -42,6 +42,47 @@ from helpdesk.utils import (
 from ..hd_notification.utils import clear as clear_notifications
 from ..hd_service_level_agreement.utils import get_sla
 
+# Automated/bot senders and subjects whose inbound mail should NOT get a
+# "We've received your request" auto-acknowledgement — the same traffic the AI
+# enricher skips (no-reply monitoring, refund work orders, auto-replies, bounces).
+# Sending an ack to these just bounces noise back at no-reply mailboxes or loops
+# into work-order inboxes. These generic defaults intentionally mirror the
+# enricher's built-ins (the two repos are independent, so kept in sync by hand);
+# org-specific patterns live in the HD Settings fields pyek_ai_excluded_senders /
+# pyek_ai_excluded_subjects and are unioned in at runtime.
+_AUTOMATED_SENDER_DEFAULTS = (
+    "no-reply@",
+    "noreply@",
+    "no_reply@",
+    "do-not-reply@",
+    "donotreply@",
+    "mailer-daemon@",
+    "postmaster@",
+    "notifications@",
+    "notification@",
+)
+_AUTOMATED_SUBJECT_DEFAULTS = (
+    "automatic reply",
+    "out of office",
+    "undeliverable",
+    "delivery status notification",
+    "mail delivery failed",
+    "returning online",
+)
+
+
+def _split_ack_patterns(raw) -> list:
+    """Split a newline/comma-separated HD Settings pattern string into normalized
+    lowercase entries (mirrors the enricher's config.parse_sender_patterns)."""
+    if not raw:
+        return []
+    out = []
+    for chunk in str(raw).replace("\n", ",").split(","):
+        p = chunk.strip().lower()
+        if p:
+            out.append(p)
+    return out
+
 
 class HDTicket(Document):
     @property
@@ -184,6 +225,7 @@ class HDTicket(Document):
             not self.via_customer_portal
             and not frappe.flags.initial_sync
             and send_ack_email
+            and not self._suppress_acknowledgement()
         ):
             self.send_acknowledgement_email()
 
@@ -858,6 +900,32 @@ class HDTicket(Document):
             )
         except Exception as e:
             frappe.throw(_(e))
+
+    def _suppress_acknowledgement(self) -> bool:
+        """True when the auto-acknowledgement should be skipped because the ticket
+        came from an automated/bot sender or has an automated subject — the same
+        senders/subjects the AI enricher skips. Prevents "We've received your
+        request" bounce-backs to no-reply monitoring, refund work orders, auto-
+        replies and bounces. Fails open (sends the ack) on any lookup error.
+        """
+        try:
+            _, addr = parseaddr(self.raised_by or "")
+            sender = (addr or self.raised_by or "").lower()
+            subject = (self.subject or "").lower()
+
+            sender_patterns = list(_AUTOMATED_SENDER_DEFAULTS) + _split_ack_patterns(
+                frappe.db.get_single_value("HD Settings", "pyek_ai_excluded_senders")
+            )
+            if any(p in sender for p in sender_patterns):
+                return True
+
+            subject_patterns = list(_AUTOMATED_SUBJECT_DEFAULTS) + _split_ack_patterns(
+                frappe.db.get_single_value("HD Settings", "pyek_ai_excluded_subjects")
+            )
+            return any(p in subject for p in subject_patterns)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "HD ack suppression check failed")
+            return False
 
     def send_acknowledgement_email(self):
         acknowledgement_email_content = frappe.db.get_single_value(
