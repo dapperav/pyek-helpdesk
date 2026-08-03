@@ -38,11 +38,68 @@
       </div>
     </div>
 
-    <!-- Scrollable sections: Ticket Info + Recent / Similar Tickets -->
+    <!-- Scrollable sections: AI Assist + Ticket Info + Recent / Similar Tickets -->
     <div
       class="border-t flex-1 min-h-0 overflow-y-auto divide-y-[1px]"
-      v-if="Boolean(customFields.length) || showRecentSimilarTickets"
+      v-if="hasAI || Boolean(customFields.length) || showRecentSimilarTickets"
     >
+      <!-- AI Assist (enricher output, read-only) -->
+      <div v-if="hasAI">
+        <Section label="AI Assist" v-model:opened="openedSections.aiAssist">
+          <template #header="{ opened, toggle }">
+            <div
+              class="flex gap-2.5 items-center justify-between sticky top-0 bg-surface-base z-10 px-4 py-4 cursor-pointer"
+              @click="toggle"
+            >
+              <span class="flex items-center gap-2">
+                <span
+                  class="grid place-items-center size-5 rounded bg-surface-gray-3 text-ink-gray-7"
+                >
+                  <LucideSparkles class="size-3" />
+                </span>
+                <span class="text-ink-gray-8 text-base-semibold select-none">
+                  {{ __("AI Assist") }}
+                </span>
+              </span>
+              <LucideChevronRight
+                class="size-4 text-ink-gray-6"
+                :class="{ 'rotate-90': opened }"
+              />
+            </div>
+          </template>
+          <div class="px-4 pb-4 space-y-3">
+            <p
+              v-if="ai.summary"
+              class="text-sm text-ink-gray-7 leading-relaxed"
+            >
+              {{ ai.summary }}
+            </p>
+            <div class="space-y-1.5" v-if="aiFields.length">
+              <div
+                v-for="row in aiFields"
+                :key="row.key"
+                class="flex items-center gap-2 text-sm"
+              >
+                <span class="w-16 shrink-0 text-ink-gray-5">{{ row.label }}</span>
+                <span
+                  v-if="row.color"
+                  class="inline-flex items-center gap-1.5 font-medium text-ink-gray-8 min-w-0"
+                >
+                  <span
+                    class="size-2 rounded-full shrink-0"
+                    :style="{ backgroundColor: row.color }"
+                  />
+                  <span class="truncate">{{ row.value }}</span>
+                </span>
+                <span v-else class="font-medium text-ink-gray-8 truncate">
+                  {{ row.value }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Section>
+      </div>
+
       <!-- Ticket Info (custom fields) -->
       <div v-if="Boolean(customFields.length)">
         <Section label="Ticket Info" v-model:opened="openedSections.ticketInfo">
@@ -156,6 +213,8 @@ import { useStorage } from "@vueuse/core";
 import { dayjs, Tooltip } from "frappe-ui";
 import { computed, inject, ref } from "vue";
 import LucideChevronRight from "~icons/lucide/chevron-right";
+import LucideSparkles from "~icons/lucide/sparkles";
+import { parkColor, parkLabel } from "@/config/parks";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
 import AssignTo from "./AssignTo.vue";
@@ -236,6 +295,7 @@ const customFields = computed(() => {
 const openedSections = useStorage(
   "openedSections",
   {
+    aiAssist: true,
     ticketInfo: false,
     recentTickets: false,
     similarTickets: false,
@@ -243,6 +303,46 @@ const openedSections = useStorage(
   localStorage,
   { mergeDefaults: true }
 );
+
+// AI Assist: the enricher-written fields, surfaced read-only (Phase 1). Wires the
+// otherwise-orphaned pyek_summary and shows request type / park / category /
+// system / due alongside it. Values come straight off the ticket doc.
+const ai = computed(() => {
+  const d = ticket.value?.doc || {};
+  return {
+    summary: d.pyek_summary || "",
+    requestType: d.pyek_request_type || "",
+    park: d.pyek_property || "",
+    category: d.pyek_category || "",
+    system: d.pyek_system || "",
+    dueDate: d.pyek_requested_due_date || "",
+  };
+});
+
+const hasAI = computed(() => {
+  const a = ai.value;
+  return Boolean(
+    a.summary || a.requestType || a.park || a.category || a.system || a.dueDate
+  );
+});
+
+const aiFields = computed(() => {
+  const a = ai.value;
+  const rows: { key: string; label: string; value: string; color?: string }[] = [];
+  if (a.requestType)
+    rows.push({ key: "request", label: __("Request"), value: a.requestType });
+  if (a.park) {
+    const label = parkLabel(a.park);
+    rows.push({ key: "park", label: __("Park"), value: label, color: parkColor(label) });
+  }
+  if (a.category)
+    rows.push({ key: "category", label: __("Category"), value: a.category });
+  if (a.system)
+    rows.push({ key: "system", label: __("System"), value: a.system });
+  if (a.dueDate)
+    rows.push({ key: "due", label: __("Due"), value: formatDate(a.dueDate) });
+  return rows;
+});
 
 const sections = computed(() => {
   if (recentSimilarTickets.value.loading || !recentSimilarTickets.value.data) {
