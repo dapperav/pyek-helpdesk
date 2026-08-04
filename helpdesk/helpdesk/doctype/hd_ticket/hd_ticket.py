@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import timedelta
 from email.utils import parseaddr
+from html import escape as html_escape
 
 import frappe
 from bs4 import BeautifulSoup, Comment
@@ -13,7 +14,7 @@ from frappe.desk.form.assign_to import get as get_assignees
 from frappe.model.document import Document
 from frappe.permissions import add_permission, update_permission_property
 from frappe.query_builder import DocType, Order
-from frappe.utils import add_to_date, cint, getdate, now_datetime
+from frappe.utils import add_to_date, cint, get_datetime, getdate, now_datetime
 from pypika.functions import Count
 from pypika.queries import Query
 from pypika.terms import Criterion
@@ -69,6 +70,25 @@ _AUTOMATED_SUBJECT_DEFAULTS = (
     "mail delivery failed",
     "returning online",
 )
+
+
+
+# Deferred acknowledgement (see _defer_or_send_acknowledgement). The requester's one
+# email says what we understood the request to be, which needs the AI enricher's
+# pyek_summary — written by a separate worker up to a minute after insert. So the ack
+# is marked pending here and sent by send_pending_acknowledgements() once the summary
+# lands. pyek_ack_state is a hidden Custom Field provisioned by the enricher repo's
+# setup_ack_state.py; tickets predating it read back NULL and are never picked up.
+ACK_STATE_FIELD = "pyek_ack_state"
+ACK_PENDING = "pending"
+ACK_SENT = "sent"
+ACK_FALLBACK = "fallback"
+# How long to wait for enrichment before giving up and sending the plain
+# acknowledgement instead. The enricher polls every 60s; this leaves room for a
+# retry or a briefly-down worker without leaving the requester in silence.
+ACK_ENRICHMENT_GRACE_SECONDS = 5 * 60
+# Bound the sweep so one slow cycle can't fan out into a huge mail batch.
+ACK_SWEEP_BATCH = 50
 
 
 def _split_ack_patterns(raw) -> list:
@@ -227,7 +247,7 @@ class HDTicket(Document):
             and send_ack_email
             and not self._suppress_acknowledgement()
         ):
-            self.send_acknowledgement_email()
+            self._defer_or_send_acknowledgement()
 
     def capture_ticket_created_telemetry_events(self):
         if self.subject == "Welcome to Helpdesk":
@@ -927,6 +947,116 @@ class HDTicket(Document):
             frappe.log_error(frappe.get_traceback(), "HD ack suppression check failed")
             return False
 
+    def _defer_or_send_acknowledgement(self):
+        """Hand the acknowledgement to the scheduled sweep instead of sending now.
+
+        The requester's one email should say what we understood the request to be,
+        and that needs the enricher's pyek_summary — which is written by a separate
+        worker up to a minute after insert. So mark the ticket pending and let
+        send_pending_acknowledgements() send it once the summary exists.
+
+        Falls back to sending immediately if the marker can't be written (e.g. the
+        pyek_ack_state field isn't provisioned on this site): a missing field must
+        never cost the requester their acknowledgement, or break ticket creation.
+        """
+        try:
+            self.db_set(ACK_STATE_FIELD, ACK_PENDING, update_modified=False)
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(), "HD ack deferral failed; sending immediately"
+            )
+            self.send_acknowledgement_email()
+
+    def send_confirmation_summary_email(self):
+        """The upgraded acknowledgement: what we understood, so the requester can
+        correct us early instead of after an agent has built the wrong thing.
+
+        Deliberately omits the IT troubleshooting steps — those are the agent's
+        internal checklist (revoking tokens, confirming approval with a system
+        owner) and don't belong in requester-facing mail. What IS included is the
+        list of details we still need, since that's the whole point of asking now.
+        """
+        frappe.sendmail(
+            recipients=[self.raised_by],
+            subject=_("Ticket #{0}: Here's what we understood").format(self.name),
+            message=self._build_confirmation_summary(),
+            reference_doctype="HD Ticket",
+            reference_name=self.name,
+            now=True,
+            expose_recipients="header",
+            email_headers={"X-Auto-Generated": "hd-acknowledgement"},
+        )
+
+    def _build_confirmation_summary(self) -> str:
+        summary = html_escape(self.get("pyek_summary") or "")
+        understood = _("Here's what we understood")
+        parts = [
+            f"<p>{_('Thanks for getting in touch — your request is logged as ticket')} "
+            f"<strong>#{self.name}</strong>.</p>",
+            f"<p><strong>{understood}:</strong><br>{summary}</p>",
+        ]
+
+        details, missing = self._confirmation_details()
+        if details:
+            rows = "".join(
+                f"<li>{html_escape(label)}: <strong>{html_escape(value)}</strong></li>"
+                for label, value in details
+            )
+            parts.append(f"<ul>{rows}</ul>")
+
+        if missing:
+            items = "".join(f"<li>{html_escape(m)}</li>" for m in missing)
+            parts.append(
+                f"<p>{_('To get started we still need')}:</p><ul>{items}</ul>"
+            )
+
+        parts.append(
+            f"<p>{_('If any of that is wrong, just reply to this email and we will correct it.')}</p>"
+        )
+        return "".join(parts)
+
+    def _confirmation_details(self):
+        """(detail rows, missing items) pulled from whichever enricher branch ran.
+
+        POS tickets carry a build sheet whose extracted fields are exactly the
+        "did we get this right" list. IT tickets carry the access request. Returns
+        empty lists when pyek_suggestions is absent or malformed — the summary
+        paragraph alone is still a useful acknowledgement.
+        """
+        raw = self.get("pyek_suggestions")
+        if not raw:
+            return [], []
+        try:
+            data = json.loads(raw) or {}
+        except (ValueError, TypeError):
+            return [], []
+
+        details = []
+        build_sheet = data.get("build_sheet") or {}
+        it_assist = data.get("it_assist") or {}
+        branch = build_sheet or it_assist
+
+        for field in build_sheet.get("fields") or []:
+            if isinstance(field, dict) and field.get("label") and field.get("value"):
+                details.append((str(field["label"]), str(field["value"])))
+
+        access = it_assist.get("access_request") or {}
+        if isinstance(access, dict):
+            for key, label in (
+                ("system", _("System")),
+                ("user", _("User")),
+                ("scope", _("Access level")),
+            ):
+                if access.get(key):
+                    details.append((label, str(access[key])))
+
+        missing = [
+            str(m)
+            for m in (branch.get("missing") or [])
+            if isinstance(m, str) and m.strip()
+        ]
+        return details, missing
+
     def send_acknowledgement_email(self):
         acknowledgement_email_content = frappe.db.get_single_value(
             "HD Settings", "acknowledgement_email_content"
@@ -1467,6 +1597,73 @@ def remove_guest_ticket_creation_permission():
 
 
 customer_not_allowed_fields = ["customer"]
+
+
+def send_pending_acknowledgements():
+    """Send the deferred requester acknowledgement for tickets marked pending.
+
+    Scheduled (see hooks.scheduler_events). Each pending ticket gets exactly one
+    email: the confirmation summary once the enricher has written pyek_summary, or
+    the plain acknowledgement if enrichment hasn't arrived within the grace window.
+    Either way the state moves off "pending", so no ticket is mailed twice.
+
+    Only tickets explicitly marked pending at insert are considered, so historical
+    tickets — which read back NULL — are never re-acknowledged.
+    """
+    if not frappe.db.get_single_value("HD Settings", "send_acknowledgement_email"):
+        return
+
+    try:
+        pending = frappe.get_all(
+            "HD Ticket",
+            filters={
+                ACK_STATE_FIELD: ACK_PENDING,
+                # Upper-bound the retry window: a ticket that keeps failing to send
+                # is abandoned (left "pending" for diagnosis) rather than retried
+                # every tick forever. Also keeps the batch small.
+                "creation": (">", add_to_date(now_datetime(), hours=-24)),
+            },
+            fields=["name", "creation", "pyek_enriched", "pyek_summary"],
+            order_by="creation asc",
+            limit=ACK_SWEEP_BATCH,
+        )
+    except Exception:
+        # Most likely pyek_ack_state isn't provisioned on this site. Log once per
+        # run rather than failing the whole scheduler tick.
+        frappe.log_error(frappe.get_traceback(), "HD ack sweep: could not list pending")
+        return
+
+    now = now_datetime()
+    for row in pending:
+        enriched = bool(row.get("pyek_enriched")) and bool(row.get("pyek_summary"))
+        waited = (now - get_datetime(row.get("creation"))).total_seconds()
+        if not enriched and waited < ACK_ENRICHMENT_GRACE_SECONDS:
+            continue  # still within the window — try again next tick
+
+        try:
+            doc = frappe.get_doc("HD Ticket", row["name"])
+            # Re-check suppression: the HD Settings pattern lists are editable, so a
+            # sender may have been excluded between insert and now.
+            if doc._suppress_acknowledgement():
+                doc.db_set(ACK_STATE_FIELD, ACK_FALLBACK, update_modified=False)
+                frappe.db.commit()
+                continue
+            if enriched:
+                doc.send_confirmation_summary_email()
+                state = ACK_SENT
+            else:
+                doc.send_acknowledgement_email()
+                state = ACK_FALLBACK
+            doc.db_set(ACK_STATE_FIELD, state, update_modified=False)
+            frappe.db.commit()
+        except Exception:
+            # Leave the ticket pending so the next tick retries it, but roll back the
+            # partial transaction so one bad ticket can't poison the rest of the batch.
+            frappe.db.rollback()
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"HD ack sweep failed for {row.get('name')}",
+            )
 
 
 def close_tickets_after_n_days():
