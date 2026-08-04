@@ -96,6 +96,111 @@
                 </span>
               </div>
             </div>
+
+            <!-- Build sheet (POS request types, Phase 2) -->
+            <div
+              v-if="buildSheet && buildSheet.fields.length"
+              class="border-t border-outline-gray-1 pt-3 space-y-1.5"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+              >
+                {{ __("Build sheet") }}
+              </p>
+              <div
+                v-for="(f, i) in buildSheet.fields"
+                :key="i"
+                class="flex items-start gap-2 text-sm"
+              >
+                <span class="w-24 shrink-0 text-ink-gray-5">{{ f.label }}</span>
+                <span class="font-medium text-ink-gray-8 min-w-0 break-words">
+                  {{ f.value }}
+                </span>
+              </div>
+              <div
+                v-if="buildSheet.due_date"
+                class="flex items-center gap-2 text-sm"
+              >
+                <span class="w-24 shrink-0 text-ink-gray-5">{{ __("Due") }}</span>
+                <span class="font-medium text-ink-gray-8">
+                  {{ formatDate(buildSheet.due_date) }}
+                </span>
+                <span
+                  v-if="buildSheet.urgency === 'high'"
+                  class="text-xs px-1.5 py-0.5 rounded bg-surface-red-2 text-ink-red-6 font-medium"
+                >
+                  {{ __("Urgent") }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Completeness -->
+            <div
+              v-if="buildSheet && buildSheet.missing.length"
+              class="flex items-start gap-2 rounded bg-surface-amber-1 px-2.5 py-2 text-sm"
+            >
+              <LucideTriangleAlert
+                class="size-4 shrink-0 text-ink-amber-6 mt-px"
+              />
+              <span class="text-ink-gray-7">
+                <span class="font-medium text-ink-gray-8"
+                  >{{ __("Missing") }}:</span
+                >
+                {{ buildSheet.missing.join(", ") }} —
+                {{ __("confirm before building.") }}
+              </span>
+            </div>
+
+            <!-- Buy-ticket artifact -->
+            <div v-if="artifactUrls.length" class="space-y-1">
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+              >
+                {{ __("Buy-ticket link") }}
+              </p>
+              <a
+                v-for="(url, i) in artifactUrls"
+                :key="i"
+                :href="url"
+                target="_blank"
+                rel="noopener"
+                class="block text-sm text-ink-blue-5 hover:underline break-all"
+              >
+                {{ url }}
+              </a>
+            </div>
+
+            <!-- Suggested reply (lazy, Phase 2c) -->
+            <div
+              v-if="buildSheet"
+              class="border-t border-outline-gray-1 pt-3 space-y-2"
+            >
+              <div class="flex items-center justify-between">
+                <span
+                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+                >
+                  {{ __("Suggested reply") }}
+                </span>
+                <Button
+                  v-if="!replyDraft"
+                  :label="__('Generate')"
+                  variant="subtle"
+                  @click="generateReply"
+                />
+              </div>
+              <template v-if="replyDraft">
+                <div
+                  class="rounded border border-outline-gray-2 bg-surface-gray-1 p-2.5 text-sm text-ink-gray-8 whitespace-pre-wrap"
+                >
+                  {{ replyDraft }}
+                </div>
+                <Button
+                  :label="replyCopied ? __('Copied') : __('Copy reply')"
+                  variant="subtle"
+                  @click="copyReply"
+                />
+              </template>
+            </div>
           </div>
         </Section>
       </div>
@@ -210,10 +315,11 @@ import {
   TicketSymbol,
 } from "@/types";
 import { useStorage } from "@vueuse/core";
-import { dayjs, Tooltip } from "frappe-ui";
+import { Button, dayjs, Tooltip } from "frappe-ui";
 import { computed, inject, ref } from "vue";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import LucideSparkles from "~icons/lucide/sparkles";
+import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import { parkColor, parkLabel } from "@/config/parks";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
@@ -275,6 +381,8 @@ const customFields = computed(() => {
     "agent_group",
     "subject",
     "status",
+    // Rendered by the AI Assist panel, not as a raw JSON field in Ticket Info.
+    "pyek_suggestions",
   ];
   customFields = customFields.filter((f) => !_coreFields.includes(f.fieldname));
   let _customFields = customFields
@@ -319,10 +427,30 @@ const ai = computed(() => {
   };
 });
 
+// Phase 2: the POS build sheet, parsed from pyek_suggestions JSON.
+const buildSheet = computed(() => {
+  const raw = ticket.value?.doc?.pyek_suggestions;
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw)?.build_sheet || null;
+  } catch {
+    return null;
+  }
+});
+
+const artifactUrls = computed(() =>
+  String(buildSheet.value?.artifact || "")
+    .split(/\s+/)
+    .map((u) => u.trim())
+    .filter((u) => u.startsWith("http"))
+);
+
 const hasAI = computed(() => {
   const a = ai.value;
-  return Boolean(
-    a.summary || a.requestType || a.park || a.category || a.system || a.dueDate
+  return (
+    Boolean(
+      a.summary || a.requestType || a.park || a.category || a.system || a.dueDate
+    ) || Boolean(buildSheet.value)
   );
 });
 
@@ -343,6 +471,40 @@ const aiFields = computed(() => {
     rows.push({ key: "due", label: __("Due"), value: formatDate(a.dueDate) });
   return rows;
 });
+
+// Phase 2c: compose a suggested reply from the build sheet (buy-ticket links for
+// promos/packages, else a "here's what was set up" confirmation), and offer copy.
+const replyDraft = ref("");
+const replyCopied = ref(false);
+
+function generateReply() {
+  const bs = buildSheet.value;
+  if (!bs) return;
+  const lines = ["Hi,", ""];
+  if (artifactUrls.value.length) {
+    lines.push(
+      artifactUrls.value.length > 1 ? "Here are the links:" : "Here's the link:"
+    );
+    artifactUrls.value.forEach((u) => lines.push(u));
+  } else if (bs.fields?.length) {
+    lines.push("Done — here's what was set up:");
+    bs.fields.forEach((f) => lines.push(`• ${f.label}: ${f.value}`));
+  }
+  if (bs.missing?.length) {
+    lines.push("");
+    lines.push(`Before I can finish, could you confirm: ${bs.missing.join(", ")}?`);
+  }
+  lines.push("", "Thanks!");
+  replyDraft.value = lines.join("\n");
+}
+
+function copyReply() {
+  if (!navigator.clipboard) return;
+  navigator.clipboard.writeText(replyDraft.value).then(() => {
+    replyCopied.value = true;
+    setTimeout(() => (replyCopied.value = false), 1500);
+  });
+}
 
 const sections = computed(() => {
   if (recentSimilarTickets.value.loading || !recentSimilarTickets.value.data) {
