@@ -689,10 +689,71 @@ def get_recent_similar_tickets(ticket: str):
         return {"recent_tickets": [], "similar_tickets": []}
 
     recent_tickets = get_recent_tickets(ticket)
-    # Update this with TextBlob or SQLite Vector Search
-    similar_tickets = []
-    # print('\n\n',recent_tickets,'\n\n')
+    similar_tickets = get_similar_tickets(ticket)
     return {"recent_tickets": recent_tickets, "similar_tickets": similar_tickets}
+
+
+def get_similar_tickets(ticket: str, limit: int = 4) -> list:
+    """FTS (SQLite) over indexed tickets/comments/replies to surface similar
+    RESOLVED or CLOSED tickets — the "learn from past tickets" signal for the
+    sidebar. Matches on subject + the AI summary, resolves comment/communication
+    hits back to their ticket, keeps only resolved/closed, and preserves search
+    rank. Fails soft (returns []) if the search index isn't built yet."""
+    meta = frappe.db.get_value(
+        "HD Ticket", ticket, ["subject", "pyek_summary"], as_dict=True
+    )
+    if not meta:
+        return []
+    query = " ".join(
+        p for p in [meta.get("subject"), meta.get("pyek_summary")] if p
+    ).strip()
+    if len(query) < 2:
+        return []
+
+    try:
+        from helpdesk.search_sqlite import HelpdeskSearch
+
+        search = HelpdeskSearch()
+        if not search.index_exists():
+            return []
+        response = search.search(query, filters={})
+    except Exception:
+        return []
+
+    results = (
+        response.get("results", []) if isinstance(response, dict) else (response or [])
+    )
+    ordered_names = []
+    seen = {ticket}
+    for hit in results:
+        dt = hit.get("doctype")
+        if dt == "HD Ticket":
+            name = hit.get("name") or hit.get("id")
+        elif dt == "HD Ticket Comment":
+            name = hit.get("reference_ticket")
+        elif dt == "Communication":
+            name = hit.get("reference_name")
+        else:
+            name = None
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ordered_names.append(name)
+
+    if not ordered_names:
+        return []
+
+    rows = frappe.get_all(
+        "HD Ticket",
+        filters={
+            "name": ["in", ordered_names],
+            "status": ["in", ["Resolved", "Closed"]],
+        },
+        fields=["name", "subject", "creation", "status"],
+    )
+    rank = {n: i for i, n in enumerate(ordered_names)}
+    rows.sort(key=lambda r: rank.get(r["name"], 10**6))
+    return rows[:limit]
 
 
 def get_recent_tickets(ticket: str):
