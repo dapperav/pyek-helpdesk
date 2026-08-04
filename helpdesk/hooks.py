@@ -36,6 +36,10 @@ scheduler_events = {
     "all": [
         "helpdesk.search.build_index_if_not_exists",
         "helpdesk.search.download_corpus",
+        # Sends the deferred requester acknowledgement once the AI enricher has
+        # written its summary (or falls back to the plain ack). Runs on the "all"
+        # tick so the requester waits minutes, not an hour.
+        "helpdesk.helpdesk.doctype.hd_ticket.hd_ticket.send_pending_acknowledgements",
     ],
     "daily": [
         "helpdesk.helpdesk.doctype.hd_ticket.hd_ticket.close_tickets_after_n_days"
