@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 
 import frappe
@@ -693,6 +694,27 @@ def get_recent_similar_tickets(ticket: str):
     return {"recent_tickets": recent_tickets, "similar_tickets": similar_tickets}
 
 
+_SIMILAR_STOPWORDS = {
+    "the", "and", "for", "with", "need", "needs", "please", "new", "conf",
+    "confirmation", "order", "help", "support", "request", "ticket", "our",
+    "this", "that", "you", "your", "have", "has", "from",
+}
+
+
+def _similar_keywords(text: str, limit: int = 6) -> list:
+    """Alphabetic keywords from text (drops numbers, ids, currency, punctuation,
+    stopwords) — the FTS AND-matches tokens, so only content-bearing words help."""
+    out = []
+    for tok in re.findall(r"[A-Za-z]{3,}", text or ""):
+        w = tok.lower()
+        if w in _SIMILAR_STOPWORDS or w in out:
+            continue
+        out.append(w)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def get_similar_tickets(ticket: str, limit: int = 4) -> list:
     """FTS (SQLite) over indexed tickets/comments/replies to surface similar
     RESOLVED or CLOSED tickets — the "learn from past tickets" signal for the
@@ -704,9 +726,13 @@ def get_similar_tickets(ticket: str, limit: int = 4) -> list:
     )
     if not meta:
         return []
-    query = " ".join(
-        p for p in [meta.get("subject"), meta.get("pyek_summary")] if p
-    ).strip()
+    # The FTS AND-matches every token, so a raw subject+summary (full of order
+    # numbers, amounts and [BR-] ids that no other ticket shares) matches
+    # nothing. Build the query from cleaned keywords instead.
+    keywords = _similar_keywords(meta.get("subject"))
+    if len(keywords) < 2:
+        keywords += _similar_keywords(meta.get("pyek_summary"))
+    query = " ".join(keywords[:6])
     if len(query) < 2:
         return []
 
