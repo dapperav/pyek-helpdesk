@@ -134,20 +134,100 @@
               </div>
             </div>
 
-            <!-- Completeness -->
+            <!-- IT assist: the agent's checklist for this ticket (Phase 3a/3c) -->
             <div
-              v-if="buildSheet && buildSheet.missing.length"
+              v-if="itAssist?.steps?.length"
+              class="border-t border-outline-gray-1 pt-3 space-y-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <p
+                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+                >
+                  {{ __("Suggested steps") }}
+                </p>
+                <span
+                  v-if="itAssist.urgency === 'high'"
+                  class="text-xs px-1.5 py-0.5 rounded bg-surface-red-2 text-ink-red-6 font-medium"
+                >
+                  {{ __("Urgent") }}
+                </span>
+              </div>
+              <ol class="space-y-1.5">
+                <li
+                  v-for="(step, i) in itAssist.steps"
+                  :key="i"
+                  class="flex items-start gap-2 text-sm"
+                >
+                  <span
+                    class="grid place-items-center size-4 shrink-0 mt-px rounded-full bg-surface-gray-3 text-ink-gray-6 text-xs"
+                  >
+                    {{ i + 1 }}
+                  </span>
+                  <span class="text-ink-gray-7 min-w-0 break-words">
+                    {{ step }}
+                  </span>
+                </li>
+              </ol>
+              <div
+                v-if="itAssist.due_date"
+                class="flex items-center gap-2 text-sm"
+              >
+                <span class="w-24 shrink-0 text-ink-gray-5">{{ __("By") }}</span>
+                <span class="font-medium text-ink-gray-8">
+                  {{ formatDate(itAssist.due_date) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- IT assist: the access change being asked for -->
+            <div
+              v-if="accessRows.length"
+              class="border-t border-outline-gray-1 pt-3 space-y-1.5"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+              >
+                {{ __("Access request") }}
+              </p>
+              <div
+                v-for="row in accessRows"
+                :key="row.key"
+                class="flex items-start gap-2 text-sm"
+              >
+                <span class="w-24 shrink-0 text-ink-gray-5">{{ row.label }}</span>
+                <span class="font-medium text-ink-gray-8 min-w-0 break-words">
+                  {{ row.value }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Completeness (both branches) -->
+            <div
+              v-if="missing.items.length"
               class="flex items-start gap-2 rounded bg-surface-amber-1 px-2.5 py-2 text-sm"
             >
               <LucideTriangleAlert
                 class="size-4 shrink-0 text-ink-amber-6 mt-px"
               />
-              <span class="text-ink-gray-7">
+              <span class="text-ink-gray-7 min-w-0">
                 <span class="font-medium text-ink-gray-8"
                   >{{ __("Missing") }}:</span
                 >
-                {{ buildSheet.missing.join(", ") }} —
-                {{ __("confirm before building.") }}
+                <template v-if="missing.inline">
+                  {{ missing.items.join(", ") }} — {{ missing.hint }}
+                </template>
+                <template v-else>
+                  {{ missing.hint }}
+                  <span class="mt-1 block space-y-0.5">
+                    <span
+                      v-for="(item, i) in missing.items"
+                      :key="i"
+                      class="block break-words"
+                    >
+                      • {{ item }}
+                    </span>
+                  </span>
+                </template>
               </span>
             </div>
 
@@ -170,9 +250,9 @@
               </a>
             </div>
 
-            <!-- Suggested reply (lazy, Phase 2c) -->
+            <!-- Suggested reply (lazy, Phase 2c/3c — POS and IT) -->
             <div
-              v-if="buildSheet"
+              v-if="buildSheet || itAssist"
               class="border-t border-outline-gray-1 pt-3 space-y-2"
             >
               <div class="flex items-center justify-between">
@@ -427,15 +507,34 @@ const ai = computed(() => {
   };
 });
 
-// Phase 2: the POS build sheet, parsed from pyek_suggestions JSON.
-const buildSheet = computed(() => {
+// pyek_suggestions holds one key per enricher branch: build_sheet for POS request
+// types, it_assist for IT ones. Parse once; a ticket only ever has one of them.
+const suggestions = computed(() => {
   const raw = ticket.value?.doc?.pyek_suggestions;
   if (!raw) return null;
   try {
-    return JSON.parse(raw)?.build_sheet || null;
+    return JSON.parse(raw) || null;
   } catch {
     return null;
   }
+});
+
+// Phase 2: the POS build sheet.
+const buildSheet = computed(() => suggestions.value?.build_sheet || null);
+
+// Phase 3a: the IT action checklist — steps, the access request, what's missing.
+const itAssist = computed(() => suggestions.value?.it_assist || null);
+
+// Access-request rows, shown only for the parts the enricher could fill.
+const accessRows = computed(() => {
+  const a = itAssist.value?.access_request;
+  if (!a) return [];
+  return [
+    { key: "action", label: __("Action"), value: a.action },
+    { key: "user", label: __("User"), value: a.user },
+    { key: "system", label: __("System"), value: a.system },
+    { key: "scope", label: __("Scope"), value: a.scope },
+  ].filter((r) => Boolean(r.value));
 });
 
 const artifactUrls = computed(() =>
@@ -450,8 +549,26 @@ const hasAI = computed(() => {
   return (
     Boolean(
       a.summary || a.requestType || a.park || a.category || a.system || a.dueDate
-    ) || Boolean(buildSheet.value)
+    ) ||
+    Boolean(buildSheet.value) ||
+    Boolean(itAssist.value)
   );
+});
+
+// Completeness flag, shared by both branches. The POS build sheet returns short
+// field labels ("quantity", "year") which read best on one line; the IT branch
+// returns whole questions, which need their own lines — so pick by item length
+// rather than hard-coding a layout per branch.
+const missing = computed(() => {
+  const raw = (buildSheet.value || itAssist.value)?.missing;
+  const items: string[] = Array.isArray(raw) ? raw : [];
+  return {
+    items,
+    inline: items.every((i) => i.length < 40),
+    hint: buildSheet.value
+      ? __("confirm before building.")
+      : __("ask the requester."),
+  };
 });
 
 const aiFields = computed(() => {
@@ -472,27 +589,47 @@ const aiFields = computed(() => {
   return rows;
 });
 
-// Phase 2c: compose a suggested reply from the build sheet (buy-ticket links for
-// promos/packages, else a "here's what was set up" confirmation), and offer copy.
+// Phase 2c / 3c: compose a suggested reply locally — buy-ticket links or a "here's
+// what was set up" confirmation for POS, a "here's what I'm doing" for IT — and offer
+// copy. Deliberately no AI call: this is assembled from what the enricher already
+// wrote, so opening a ticket and clicking Generate costs nothing.
 const replyDraft = ref("");
 const replyCopied = ref(false);
 
 function generateReply() {
   const bs = buildSheet.value;
-  if (!bs) return;
+  const it = itAssist.value;
+  if (!bs && !it) return;
   const lines = ["Hi,", ""];
-  if (artifactUrls.value.length) {
-    lines.push(
-      artifactUrls.value.length > 1 ? "Here are the links:" : "Here's the link:"
-    );
-    artifactUrls.value.forEach((u) => lines.push(u));
-  } else if (bs.fields?.length) {
-    lines.push("Done — here's what was set up:");
-    bs.fields.forEach((f) => lines.push(`• ${f.label}: ${f.value}`));
+  if (bs) {
+    if (artifactUrls.value.length) {
+      lines.push(
+        artifactUrls.value.length > 1 ? "Here are the links:" : "Here's the link:"
+      );
+      artifactUrls.value.forEach((u) => lines.push(u));
+    } else if (bs.fields?.length) {
+      lines.push("Done — here's what was set up:");
+      bs.fields.forEach((f) => lines.push(`• ${f.label}: ${f.value}`));
+    }
+  } else if (it) {
+    // Deliberately does NOT list it.steps: those are the agent's internal checklist
+    // (revoking tokens, confirming approval with a system owner) and don't belong in
+    // a requester-facing reply. State the outcome instead.
+    const a = it.access_request;
+    if (a?.system) {
+      const who = a.user ? ` for ${a.user}` : "";
+      const scope = a.scope ? ` (${a.scope})` : "";
+      lines.push(`I'm taking care of the ${a.system} access${who}${scope}.`);
+    } else {
+      lines.push("Thanks for flagging this — I'm looking into it now.");
+    }
   }
-  if (bs.missing?.length) {
+  const missingItems: string[] = (bs || it)?.missing || [];
+  if (missingItems.length) {
     lines.push("");
-    lines.push(`Before I can finish, could you confirm: ${bs.missing.join(", ")}?`);
+    lines.push(
+      `Before I can finish, could you confirm: ${missingItems.join("; ")}?`
+    );
   }
   lines.push("", "Thanks!");
   replyDraft.value = lines.join("\n");
