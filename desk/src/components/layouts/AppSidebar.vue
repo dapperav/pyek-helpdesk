@@ -62,33 +62,39 @@
                   <component :is="device.modifierIcon" class="h-3 w-3" />
                   <span class="text-sm">K</span>
                 </span>
-                <Badge
-                  v-else-if="item.badge"
-                  class="me-2"
-                  :label="item.badge > 9 ? '9+' : item.badge"
-                  theme="gray"
-                  variant="subtle"
-                />
-                <Dropdown
-                  v-else-if="item.view"
-                  side="right"
-                  align="start"
-                  :options="viewActions(item.view, viewDialogConfig)"
-                >
-                  <template #default="{ open }">
-                    <Button
-                      variant="ghost"
-                      icon="lucide-more-horizontal"
-                      class="me-1 !size-6 rounded !text-ink-gray-7"
-                      :class="
-                        open
-                          ? 'opacity-100'
-                          : 'opacity-0 group-hover/sidebar-item:opacity-100'
-                      "
-                      @click.stop
-                    />
-                  </template>
-                </Dropdown>
+                <!-- Badge and the per-view kebab are NOT exclusive: a view row
+                     shows its count at rest and swaps to the kebab on hover, so
+                     adding counts doesn't cost Nedra the edit/duplicate menu. -->
+                <template v-else>
+                  <Badge
+                    v-if="item.badge"
+                    class="me-2"
+                    :class="item.view && 'group-hover/sidebar-item:hidden'"
+                    :label="badgeLabel(item)"
+                    theme="gray"
+                    variant="subtle"
+                  />
+                  <Dropdown
+                    v-if="item.view"
+                    side="right"
+                    align="start"
+                    :options="viewActions(item.view, viewDialogConfig)"
+                  >
+                    <template #default="{ open }">
+                      <Button
+                        variant="ghost"
+                        icon="lucide-more-horizontal"
+                        class="me-1 !size-6 rounded !text-ink-gray-7"
+                        :class="
+                          open
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover/sidebar-item:opacity-100'
+                        "
+                        @click.stop
+                      />
+                    </template>
+                  </Dropdown>
+                </template>
               </template>
             </SidebarItem>
           </nav>
@@ -123,6 +129,7 @@ import ViewModal from "@/components/ViewModal.vue";
 import {
   Badge,
   Button,
+  createResource,
   Dropdown,
   ScrollArea,
   Sidebar,
@@ -272,11 +279,50 @@ const sections = computed(() => {
   return result;
 });
 
+// PYEK: count badges on the sidebar views, so Nedra can see how full each queue
+// is without opening it. ONE request for every view (public + private) — a call
+// per view would be ~13 on the AP portal alone. Counting happens server-side in
+// get_view_counts, which reuses the list's own count path so a badge can never
+// disagree with the list it labels.
+const countedViews = computed(() =>
+  [...(publicViews.value || []), ...(pinnedViews.value || [])].map((v) => v.name)
+);
+const viewCounts = createResource({
+  url: "helpdesk.api.doc.get_view_counts",
+  makeParams: () => ({ views: JSON.stringify(countedViews.value) }),
+});
+
+// Counts drift as tickets arrive and get resolved, and the sidebar never
+// unmounts, so refresh on navigation — but throttled, or opening ten tickets in
+// a row would fire ten count sweeps. Stale-by-a-minute is fine for a queue size.
+const COUNT_MAX_AGE_MS = 60_000;
+let countsFetchedAt = 0;
+function refreshCounts(force = false) {
+  if (isCustomerPortal.value || !countedViews.value.length) return;
+  const now = Date.now();
+  if (!force && now - countsFetchedAt < COUNT_MAX_AGE_MS) return;
+  countsFetchedAt = now;
+  viewCounts.fetch();
+}
+watch(countedViews, () => refreshCounts(true), { immediate: true });
+watch(() => route.fullPath, () => refreshCounts());
+
+function badgeLabel(item: any) {
+  // A view shows its real size — an AP queue routinely holds dozens, so the
+  // notification badge's 9+ cap would make every queue look identical.
+  if (item.view) return String(item.badge);
+  return item.badge > 9 ? "9+" : item.badge;
+}
+
 function parseViews(views: any[]) {
   return views.map((view) => ({
     label: view.label,
     icon: getIcon(view.icon),
     isActive: activeItem.value === view.name,
+    // Deliberately falsy-checked downstream: an empty queue and a not-yet-loaded
+    // count both render NO badge. A queue with nothing in it needs no attention,
+    // and it avoids flashing a 0 on every page load before the counts land.
+    badge: viewCounts.data?.[view.name],
     onClick: () =>
       selectItem(
         view.name,

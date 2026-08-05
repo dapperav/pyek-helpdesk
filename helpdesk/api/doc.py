@@ -406,6 +406,51 @@ def get_list_data(
 
 
 @frappe.whitelist()
+def get_view_counts(views: list | str = None) -> dict:
+    """PYEK: row count per saved view, for the sidebar count badges.
+
+    One call for the whole sidebar — the alternative is a request per view, and the
+    AP portal alone shows ~13. Counting mirrors the list's own `total_count` (same
+    COUNT_NAME + `frappe.get_list`), so a badge can never disagree with the list it
+    labels, and permissions come out the same way: `frappe.get_list` enforces them,
+    so a badge can't reveal rows the user isn't allowed to see.
+
+    Each view is counted against its OWN `dt` — the sidebar is not ticket-only, and
+    counting a Contact view against HD Ticket would either be wrong or throw on an
+    unknown fieldname. Views are read through `frappe.get_list` too, so a name the
+    user can't see is skipped rather than counted, and a view whose filters are
+    broken returns no key at all (logged, not raised) — one bad view must never
+    blank out the whole sidebar.
+    """
+    names = frappe.parse_json(views or "[]")
+    if not names:
+        return {}
+
+    counts = {}
+    for view in frappe.get_list(
+        "HD View", filters={"name": ["in", names]}, fields=["name", "dt", "filters"]
+    ):
+        doctype = view.dt or "HD Ticket"
+        try:
+            check_permissions(doctype, None)
+            filters = frappe.parse_json(view.filters or "{}")
+            # Same normalisation the list does, so `@me` views (My queue, Assigned
+            # & active) resolve to the session user instead of counting literally
+            # nothing, and __assigned_on is translated out of the filter set.
+            handle_at_me_support(filters)
+            handle_assigned_on_filter(filters, doctype)
+            counts[view.name] = frappe.get_list(
+                doctype, fields=[COUNT_NAME], filters=filters
+            )[0].get("count", 0)
+        except Exception:
+            frappe.log_error(
+                title="Sidebar view count failed",
+                message=f"view={view.name} dt={doctype}",
+            )
+    return counts
+
+
+@frappe.whitelist()
 @redis_cache()
 def get_filterable_fields(
     doctype: str,
