@@ -1,9 +1,10 @@
 <template>
   <!-- AP invoice working card (mobile + desktop ticket detail). Renders only for
        AP tickets (the ap_vendor field is present); on IT/HR it renders nothing.
-       Park is READ-ONLY here — it's edited on the Property field in Details; this
-       card watches that field and rewrites the Intacct filename to match. Also hosts
-       the invoice-verify actions: download-pre-named + mark-verified-and-assign. -->
+       Park is READ-ONLY here — it's edited on the Property field in Details. The
+       Intacct filename is derived live from Property/Invoice Date/Vendor/Amount, so
+       correcting any of them in the sidebar renames the file straight away. Also
+       hosts the invoice-verify actions: download-pre-named + mark-verified-and-assign. -->
   <div v-if="isAP" class="px-5 pt-4">
     <div class="rounded-xl border border-outline-gray-2 bg-surface-white p-3.5">
       <!-- Header: vendor + park (read-only) -->
@@ -83,7 +84,7 @@
         {{ __("No invoice attached") }}
       </div>
 
-      <!-- Intacct filename (park token follows the Property field) -->
+      <!-- Intacct filename (derived from the current Property/Date/Vendor/Amount) -->
       <div
         v-if="filename"
         class="mt-2.5 rounded-lg border border-outline-gray-2 px-2.5 py-2"
@@ -425,8 +426,10 @@ const isDuplicate = computed(
   () => Number(props.ticket?.ap_duplicate ?? extra.data?.ap_duplicate) === 1
 );
 
-// Enricher-set filename (may carry a stale park token). We display a live copy
-// with the CURRENT park token swapped in — see `filename` below.
+// The enricher writes ap_proposed_filename ONCE, at first extraction, and never
+// revisits it (enrich.py fills it only when empty so a human edit is never
+// clobbered), so it goes stale the moment anyone corrects a field. Kept only as a
+// fallback for legacy tickets whose AP fields never populated.
 const storedFilename = ref<string>("");
 watch(
   () => props.ticket?.ap_proposed_filename || extra.data?.ap_proposed_filename,
@@ -436,26 +439,45 @@ watch(
   { immediate: true }
 );
 
-// The Intacct filename shown/copied ALWAYS reflects the current park (edited on
-// the Property field): swap the stored name's first (park) token to the current
-// pyek_property. Purely COMPUTED — NO write — so it never races the Property
-// field's own save.
+// Vendor token: stripped to A-Z0-9, uppercased, capped at 24 chars. Mirrors the
+// enricher's _short() so a hand-typed "Suter Law" and an AI-extracted "SUTERLAW"
+// produce the same token.
+function vendorToken(value: unknown): string {
+  const tok = String(value ?? "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 24);
+  return tok || "VENDOR";
+}
+
+// The Intacct filename shown/copied is DERIVED from the live doc fields on every
+// render, never read back from the stored value. Property, Invoice Date, Vendor
+// and Amount are all human-editable in the sidebar, so a correction to any of
+// them has to show up here at once; previously only the park token was live and
+// the other three stayed frozen at whatever the first extraction guessed.
+// Convention (Corey): ParkName_InvoiceDate_VendorName_Amount, no commas — same
+// shape and same placeholders as the enricher's _filename().
+// Purely COMPUTED — NO write — so it can never race a field's own save.
 const filename = computed(() => {
-  const stored = storedFilename.value;
-  if (!stored) return "";
   const code = props.ticket?.pyek_property;
-  if (!code || !stored.includes("_")) return stored;
-  return code + stored.slice(stored.indexOf("_"));
+  const date = props.ticket?.ap_invoice_date;
+  const vend = props.ticket?.ap_vendor;
+  const amt = props.ticket?.ap_amount;
+  // Nothing to derive from (legacy ticket, fields never populated): show whatever
+  // the enricher stored, and let the row hide itself when that's empty too.
+  if (!code && !date && !vend && !amt) return storedFilename.value;
+  const day = date ? dayjs(date) : null;
+  const dateTok = day && day.isValid() ? day.format("MMDDYYYY") : "NODATE";
+  const n = Number(amt);
+  const amtTok =
+    amt !== null && amt !== undefined && amt !== "" && !Number.isNaN(n)
+      ? n.toFixed(2)
+      : "0.00";
+  return `${code || "NOPARK"}_${dateTok}_${vendorToken(vend)}_${amtTok}.pdf`;
 });
-// Download needs ONE clean name: multi-invoice emails store a joined
-// "name1 ; name2", so take the primary (first) segment before swapping the park.
-const downloadName = computed(() => {
-  const first = (storedFilename.value || "").split(" ; ")[0].trim();
-  if (!first) return "";
-  const code = props.ticket?.pyek_property;
-  if (!code || !first.includes("_")) return first;
-  return code + first.slice(first.indexOf("_"));
-});
+// Download needs ONE clean name. The derived name is always singular, but the
+// legacy fallback can still be a joined "name1 ; name2" — take the primary.
+const downloadName = computed(() => filename.value.split(" ; ")[0].trim());
 
 // Exact attachment the fields were read from (for the download link).
 const invoiceUrl = computed(() => extra.data?.ap_invoice_file || "");
