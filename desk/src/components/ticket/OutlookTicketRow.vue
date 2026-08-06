@@ -103,6 +103,12 @@
             </div>
             <div class="flex items-center gap-2">
               <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">{{ senderEmail }}</span>
+              <!-- Received then due, in that order: the pair reads as the
+                   invoice's clock (arrived → owed) on the narrow layout. -->
+              <span
+                v-if="receivedLabel"
+                class="shrink-0 text-xs text-ink-gray-5"
+              >{{ __("Rec'd") }} {{ receivedLabel }}</span>
               <span
                 v-if="dueLabel"
                 class="shrink-0 text-xs font-medium"
@@ -165,6 +171,14 @@
                contact card takes flex-1), amount/park + status/due/flags stacked
                and right-justified so the numbers line up down the right side. -->
           <div class="flex shrink-0 flex-col items-end gap-1">
+            <!-- Received date sits on its own line at the top right, where the
+                 date lives in every mail client, so it reads down the column
+                 without competing with the amount. -->
+            <span
+              v-if="receivedLabel"
+              class="shrink-0 text-xs text-ink-gray-5"
+              :title="__('Received') + ' ' + receivedLabel"
+            >{{ __("Rec'd") }} {{ receivedLabel }}</span>
             <div class="flex items-center justify-end gap-2">
               <span
                 v-if="isHighPriority"
@@ -508,6 +522,18 @@ const dateLabel = computed(() => {
   if (d.isSame(now, "day")) return d.format("h:mm A");
   if (d.isSame(now, "year")) return d.format("MMM D");
   return d.format("M/D/YY");
+});
+
+// --- Received date (AP only) ---
+// `ap_received_date` is the date the sender actually emailed ap@ (enricher-set
+// from the email's Date header), which is what AP works the queue by — NOT
+// `modified`, which any edit bumps. Deliberately absolute (no "2 days ago"):
+// Corey reconciles these against invoice dates, so a real date is the useful
+// form. Same M/D/YY shape as the other AP dates on the card.
+const receivedLabel = computed(() => {
+  if (!props.row.ap_received_date) return "";
+  const d = dayjs(props.row.ap_received_date);
+  return d.isValid() ? d.format("M/D/YY") : "";
 });
 
 // --- Priority indicator ---
