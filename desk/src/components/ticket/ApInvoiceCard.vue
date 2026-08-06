@@ -139,7 +139,7 @@
            saves it with this name, so no manual rename). Solid-blue primary CTA —
            this is the action Nedra takes on every invoice. -->
       <a
-        v-if="invoiceUrl"
+        v-if="invoiceUrl && invoices.length <= 1"
         :href="invoiceUrl"
         :download="downloadName || undefined"
         class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white"
@@ -148,6 +148,52 @@
         <LucideDownload class="size-4" />
         {{ __("Download for Intacct") }}
       </a>
+
+      <!-- Several invoices on one email: each is its own document to key into
+           Intacct, so each downloads separately under its OWN park/date/vendor/amount
+           name. One button saves them all; the list below downloads them one at a
+           time and shows the per-invoice amount, because the ticket's ap_amount is
+           only ever the primary's (or a hand-typed total) and would be the wrong
+           number to stamp on the other files. -->
+      <template v-else-if="invoices.length > 1">
+        <button
+          class="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-base-medium text-white disabled:opacity-60"
+          style="background-color: #2563eb"
+          :disabled="downloadingAll"
+          @click="downloadAll()"
+        >
+          <LucideDownload class="size-4" />
+          {{
+            downloadingAll
+              ? __("Saving…")
+              : __("Download all {0} for Intacct").replace("{0}", String(invoices.length))
+          }}
+        </button>
+        <div class="flex flex-col gap-1 rounded-lg border border-outline-gray-2 p-1.5">
+          <button
+            v-for="(inv, i) in invoices"
+            :key="inv.fileUrl"
+            class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-gray-2"
+            :title="inv.downloadName"
+            @click="downloadOne(inv)"
+          >
+            <LucideDownload class="size-3.5 shrink-0 text-ink-gray-5" />
+            <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-7">
+              {{ __("Invoice") }} {{ i + 1 }} · {{ inv.fileName }}
+            </span>
+            <LucideTriangleAlert
+              v-if="!inv.readable"
+              class="size-3.5 shrink-0"
+              style="color: #b45309"
+              :title="__('Could not be read automatically — check the name')"
+            />
+            <span
+              v-if="inv.amount !== null"
+              class="shrink-0 text-xs font-medium text-ink-gray-8"
+            >{{ moneyLabel(inv.amount) }}</span>
+          </button>
+        </div>
+      </template>
 
       <!-- Priority — a CTA button coloured by level (Urgent red → Low gray).
            Opens a small picker. -->
@@ -340,6 +386,7 @@ import {
 } from "frappe-ui";
 import { computed, inject, ref, watch } from "vue";
 import { useIsAp } from "@/composables/useIsAp";
+import { useApInvoices, useHasApInvoicesField } from "@/composables/useApInvoices";
 import UserAvatar from "../UserAvatar.vue";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import LucideFileX from "~icons/lucide/file-x";
@@ -400,6 +447,8 @@ const isOverdue = computed(
 
 const isMissing = computed(() => Number(props.ticket?.ap_missing_invoice) === 1);
 
+const hasInvoicesField = useHasApInvoicesField();
+
 // Enricher-set machine fields the detail payload doesn't carry — self-fetch them.
 const extra = createResource({
   url: "frappe.client.get_value",
@@ -411,6 +460,8 @@ const extra = createResource({
       "ap_duplicate",
       "ap_needs_review",
       "ap_invoice_file",
+      // Only once the enricher has created it — see useHasApInvoicesField.
+      ...(hasInvoicesField.value ? ["ap_invoices"] : []),
       "ap_verified",
       "ap_verified_by",
       "ap_verified_on",
@@ -481,6 +532,52 @@ const downloadName = computed(() => filename.value.split(" ; ")[0].trim());
 
 // Exact attachment the fields were read from (for the download link).
 const invoiceUrl = computed(() => extra.data?.ap_invoice_file || "");
+
+// --- multi-invoice download ---
+// Every invoice on the ticket, each with its own Intacct name. One element for the
+// ordinary single-invoice ticket, in which case the plain link above is used instead.
+const invoices = useApInvoices(
+  () => props.ticket,
+  () => extra.data
+);
+const moneyLabel = (n: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+// Same-origin /private/files URLs, so the anchor's `download` attribute is honoured
+// and the browser saves the file under the Intacct name with no manual rename.
+function saveAs(url: string, name: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function downloadOne(inv: { fileUrl: string; downloadName: string }) {
+  saveAs(inv.fileUrl, inv.downloadName);
+}
+
+const downloadingAll = ref(false);
+async function downloadAll() {
+  if (downloadingAll.value) return;
+  downloadingAll.value = true;
+  try {
+    // Staggered: browsers drop programmatic downloads fired in the same tick, and
+    // Chrome's "allow multiple downloads" prompt needs the clicks spread out to
+    // associate them with the gesture. 400ms is comfortably enough in practice.
+    for (const inv of invoices.value) {
+      saveAs(inv.fileUrl, inv.downloadName);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    toast.success(
+      __("Saved {0} invoices").replace("{0}", String(invoices.value.length))
+    );
+  } finally {
+    downloadingAll.value = false;
+  }
+}
 
 const copied = ref(false);
 function copyFilename() {
