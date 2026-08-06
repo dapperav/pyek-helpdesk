@@ -792,6 +792,14 @@ def get_similar_tickets(ticket: str, limit: int = 4) -> list:
 # articles) and scoring in Python keeps the matching logic in one readable place;
 # revisit with a real index if the KB ever outgrows this.
 _KB_SCAN_LIMIT = 200
+# How much longer one word may be than the other and still count as the same stem.
+# Covers plurals and -ing/-ed ("book"/"booking"), stops short of joining distinct
+# words ("pass"/"password").
+_KB_INFLECTION_SLACK = 3
+# Keep only articles scoring near the best match. Generic vocabulary — "access"
+# appears in several SOP titles — otherwise pads every result out to `limit` with
+# tangential hits, and a panel that's mostly noise gets ignored.
+_KB_RELATIVE_FLOOR = 0.5
 
 
 def _kb_keyword_hits(keywords: list, words: set) -> int:
@@ -800,14 +808,21 @@ def _kb_keyword_hits(keywords: list, words: set) -> int:
     Plain `kw in text` was wrong: it counted "day" inside "birthdays" and "cab"
     inside "cabanas", which is how an unrelated booking-limits SOP kept surfacing.
     Exact set membership alone would be too strict (it misses "consignment" vs
-    "consignments"), so a prefix match either way is allowed for keywords of 4+
-    characters — long enough that a shared prefix means a shared word stem.
+    "consignments"), so a prefix match either way is allowed — but only to absorb
+    inflection, never to bridge two different words.
+
+    Hence the length cap: a bare 4+ char prefix rule matched "pass" (as in season
+    pass) against "password" and put the 1Password SOP on a promo ticket. Requiring
+    the words to be within a few characters keeps refund/refunds and
+    consignment/consignments while rejecting pass/password.
     """
     hits = 0
     for kw in keywords:
         for word in words:
             if word == kw or (
-                len(kw) >= 4 and (word.startswith(kw) or kw.startswith(word))
+                len(kw) >= 4
+                and abs(len(word) - len(kw)) <= _KB_INFLECTION_SLACK
+                and (word.startswith(kw) or kw.startswith(word))
             ):
                 hits += 1
                 break
@@ -887,6 +902,9 @@ def get_kb_matches(ticket: str, limit: int = 3) -> list:
         scored.append((title_hits * 3 + body_hits, article))
 
     scored.sort(key=lambda pair: -pair[0])
+    if scored:
+        floor = scored[0][0] * _KB_RELATIVE_FLOOR
+        scored = [pair for pair in scored if pair[0] >= floor]
     return [
         {
             "name": article["name"],
