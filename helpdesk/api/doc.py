@@ -154,6 +154,16 @@ def get_list_data(
                     "ap_invoice_number",
                     "ap_missing_invoice",
                     "ap_duplicate",
+                    # Date the sender actually emailed ap@ (enricher-set from the
+                    # email's Date header, NOT Frappe's ingest time). Corey works
+                    # his queue by when a bill arrived, so the row has to show it.
+                    # Own has_field guard — the field post-dates the original AP
+                    # rollout, so a site that hasn't got it yet must not 500.
+                    *(
+                        ("ap_received_date",)
+                        if frappe.get_meta("HD Ticket").has_field("ap_received_date")
+                        else ()
+                    ),
                     # M365 profile photo for internal senders (populated by the
                     # enricher). Own has_field guard so it flows only once the
                     # field exists; harmless no-op until the photo pipeline adds it.
@@ -172,10 +182,22 @@ def get_list_data(
     # frontend paginates by growing page_length from the top (no offset), so a
     # top-down order is sufficient. A `<=` date filter excludes NULLs, so the two
     # buckets are disjoint (no dedup needed).
+    #
+    # ONLY when the caller hasn't asked for a specific sort. The float is a smart
+    # DEFAULT, not an override: because the due-soon bucket is itself capped at
+    # page_length, a queue with enough due-soon tickets fills the entire first page
+    # with them and the requested order never gets a row — so picking "Received
+    # date" or "Due date" in the Sort control appeared to do nothing at all
+    # (Corey, 2026-08-06, on the Reimbursements view: 20 of 29 tickets were due
+    # inside the cutoff, so `_rest` was computed and then sliced away entirely).
+    # An empty order_by means "no preference" (saved views store NULL), so it keeps
+    # the float; anything else is a deliberate choice and wins outright.
+    _order_by_norm = " ".join((order_by or "").lower().split())
     _pyek_due_sort = (
         doctype == "HD Ticket"
         and not show_customer_portal_fields
         and view_type != "group_by"
+        and _order_by_norm in ("", "modified desc")
     )
     if _pyek_due_sort:
         from frappe.utils import add_days, today
