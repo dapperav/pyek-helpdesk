@@ -687,11 +687,17 @@ def get_ticket_contact(ticket: str):
 def get_recent_similar_tickets(ticket: str):
     frappe.has_permission("HD Ticket", "read", str(ticket), throw=True)
     if not frappe.db.exists("HD Ticket", ticket):
-        return {"recent_tickets": [], "similar_tickets": []}
+        return {"recent_tickets": [], "similar_tickets": [], "kb_matches": []}
 
     recent_tickets = get_recent_tickets(ticket)
     similar_tickets = get_similar_tickets(ticket)
-    return {"recent_tickets": recent_tickets, "similar_tickets": similar_tickets}
+    # Agent-gated inside get_kb_matches — these include internal Draft SOPs.
+    kb_matches = get_kb_matches(ticket)
+    return {
+        "recent_tickets": recent_tickets,
+        "similar_tickets": similar_tickets,
+        "kb_matches": kb_matches,
+    }
 
 
 _SIMILAR_STOPWORDS = {
@@ -780,6 +786,117 @@ def get_similar_tickets(ticket: str, limit: int = 4) -> list:
     rank = {n: i for i, n in enumerate(ordered_names)}
     rows.sort(key=lambda r: rank.get(r["name"], 10**6))
     return rows[:limit]
+
+
+# Cap on how much of the KB is scanned per call. The SOP set is small (tens of
+# articles) and scoring in Python keeps the matching logic in one readable place;
+# revisit with a real index if the KB ever outgrows this.
+_KB_SCAN_LIMIT = 200
+
+
+def _kb_keyword_hits(keywords: list, words: set) -> int:
+    """How many keywords appear in `words`, matching whole words, not substrings.
+
+    Plain `kw in text` was wrong: it counted "day" inside "birthdays" and "cab"
+    inside "cabanas", which is how an unrelated booking-limits SOP kept surfacing.
+    Exact set membership alone would be too strict (it misses "consignment" vs
+    "consignments"), so a prefix match either way is allowed for keywords of 4+
+    characters — long enough that a shared prefix means a shared word stem.
+    """
+    hits = 0
+    for kw in keywords:
+        for word in words:
+            if word == kw or (
+                len(kw) >= 4 and (word.startswith(kw) or kw.startswith(word))
+            ):
+                hits += 1
+                break
+    return hits
+
+
+def get_kb_matches(ticket: str, limit: int = 3) -> list:
+    """Internal SOP articles relevant to this ticket, for the agent-side panel.
+
+    AGENT-ONLY, and the gate is load-bearing. The seeded SOPs are Draft on purpose:
+    `status` is this app's only visibility control on an article, and the public
+    endpoints (api/knowledge_base.get_article, whitelisted allow_guest=True) deny
+    anything that isn't Published. This function deliberately reads Draft articles,
+    so returning them to a non-agent would route around that gate. The caller,
+    get_recent_similar_tickets, only checks HD Ticket read permission — which a
+    contact satisfies for their own ticket — so the is_agent() check must live here.
+
+    Reads HD Article directly rather than going through HelpdeskSearch, because
+    search.py indexes status="Published" only, which makes the internal SOPs
+    invisible to that index. Fails soft: retrieval is a convenience, never a reason
+    for the sidebar to error.
+    """
+    if not is_agent():
+        return []
+
+    meta = frappe.db.get_value(
+        "HD Ticket", ticket, ["subject", "pyek_summary"], as_dict=True
+    )
+    if not meta:
+        return []
+
+    keywords = _similar_keywords(meta.get("subject"), limit=8)
+    for kw in _similar_keywords(meta.get("pyek_summary"), limit=8):
+        if kw not in keywords:
+            keywords.append(kw)
+    if not keywords:
+        return []
+
+    try:
+        articles = frappe.get_all(
+            "HD Article",
+            filters={"status": ["!=", "Archived"]},
+            fields=["name", "title", "status", "category", "content"],
+            limit=_KB_SCAN_LIMIT,
+        )
+    except Exception:
+        return []
+
+    categories = {
+        c["name"]: c["category_name"]
+        for c in frappe.get_all(
+            "HD Article Category", fields=["name", "category_name"], limit=100
+        )
+    }
+
+    scored = []
+    for article in articles:
+        title = (article.get("title") or "").lower()
+        try:
+            body = BeautifulSoup(article.get("content") or "", "html.parser").get_text(" ")
+        except Exception:
+            body = article.get("content") or ""
+        body = body.lower()
+
+        title_hits = _kb_keyword_hits(keywords, set(re.findall(r"[a-z]{3,}", title)))
+        body_hits = _kb_keyword_hits(keywords, set(re.findall(r"[a-z]{3,}", body)))
+        # Require the ticket's vocabulary to appear in the article TITLE. Body-only
+        # matches proved to be noise: on a sample of real tickets, every correct SOP
+        # had a title hit, while every wrong suggestion matched on body text alone —
+        # and raw score can't separate them (a correct match scored the same 5 as an
+        # unrelated one). SOP titles are descriptive, so this holds up, and it errs
+        # toward showing nothing. That's the right bias: a wrong suggestion is worse
+        # than none, because it teaches agents to ignore the panel.
+        if not title_hits:
+            continue
+        # Body hits then rank among the candidates that cleared the title gate.
+        scored.append((title_hits * 3 + body_hits, article))
+
+    scored.sort(key=lambda pair: -pair[0])
+    return [
+        {
+            "name": article["name"],
+            "title": article["title"],
+            "status": article["status"],
+            "category": categories.get(article.get("category")),
+            "score": score,
+        }
+        for score, article in scored[:limit]
+    ]
 
 
 def get_recent_tickets(ticket: str):

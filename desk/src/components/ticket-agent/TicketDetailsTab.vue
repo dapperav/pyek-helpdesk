@@ -250,6 +250,41 @@
               </a>
             </div>
 
+            <!-- Relevant internal SOPs (Phase 4b, agent-only from the backend) -->
+            <div
+              v-if="kbMatches.length"
+              class="border-t border-outline-gray-1 pt-3 space-y-1.5"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+              >
+                {{ __("Relevant SOPs") }}
+              </p>
+              <router-link
+                v-for="article in kbMatches"
+                :key="article.name"
+                :to="{ name: 'Article', params: { articleId: article.name } }"
+                class="flex items-start gap-2 text-sm group"
+              >
+                <LucideBookOpen
+                  class="size-4 shrink-0 mt-0.5 text-ink-gray-5"
+                />
+                <span class="min-w-0">
+                  <span
+                    class="text-ink-blue-5 group-hover:underline break-words"
+                  >
+                    {{ article.title }}
+                  </span>
+                  <span
+                    v-if="article.category"
+                    class="ml-1.5 text-xs text-ink-gray-5"
+                  >
+                    {{ article.category }}
+                  </span>
+                </span>
+              </router-link>
+            </div>
+
             <!-- Suggested reply (lazy, Phase 2c/3c — POS and IT) -->
             <div
               v-if="buildSheet || itAssist"
@@ -397,6 +432,7 @@ import {
 import { useStorage } from "@vueuse/core";
 import { Button, dayjs, Tooltip } from "frappe-ui";
 import { computed, inject, ref } from "vue";
+import LucideBookOpen from "~icons/lucide/book-open";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import LucideSparkles from "~icons/lucide/sparkles";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
@@ -525,6 +561,14 @@ const buildSheet = computed(() => suggestions.value?.build_sheet || null);
 // Phase 3a: the IT action checklist — steps, the access request, what's missing.
 const itAssist = computed(() => suggestions.value?.it_assist || null);
 
+// Phase 4b: internal SOP articles matching this ticket. The backend gates these on
+// is_agent() and they include Draft articles, so this only ever renders for agents.
+// Returns nothing when no SOP is a genuine match, which is intended — a wrong
+// suggestion is worse than none.
+const kbMatches = computed(
+  () => recentSimilarTickets.value?.data?.kb_matches || []
+);
+
 // Access-request rows, shown only for the parts the enricher could fill.
 const accessRows = computed(() => {
   const a = itAssist.value?.access_request;
@@ -551,7 +595,8 @@ const hasAI = computed(() => {
       a.summary || a.requestType || a.park || a.category || a.system || a.dueDate
     ) ||
     Boolean(buildSheet.value) ||
-    Boolean(itAssist.value)
+    Boolean(itAssist.value) ||
+    Boolean(kbMatches.value.length)
   );
 });
 
