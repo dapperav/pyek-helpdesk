@@ -84,9 +84,14 @@
         {{ __("No invoice attached") }}
       </div>
 
-      <!-- Intacct filename (derived from the current Property/Date/Vendor/Amount) -->
+      <!-- Intacct filename (derived from the current Property/Date/Vendor/Amount).
+           Single-invoice tickets only. On a multi-invoice ticket this row is built
+           from the TICKET's amount — on #0680, Nedra's $1,262.83 total — so it names
+           no file you can actually download, and the per-invoice list below (which
+           carries each receipt's own amount) is the honest answer. Showing both just
+           invites "which one is that?". -->
       <div
-        v-if="filename"
+        v-if="filename && invoices.length <= 1"
         class="mt-2.5 rounded-lg border border-outline-gray-2 px-2.5 py-2"
       >
         <p class="mb-1 text-xs text-ink-gray-5">{{ __("Intacct filename") }}</p>
