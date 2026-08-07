@@ -52,9 +52,14 @@
       :class="isAP ? 'pb-4' : 'border-t divide-y-[1px]'"
       v-if="Boolean(customFields.length) || showRecentSimilarTickets || isAP"
     >
-      <!-- Ticket Info (custom fields) -->
+      <!-- Ticket Info (custom fields).
+           Hidden on AP: every field it showed (property, dates, doc type, terms,
+           vendor, invoice number, amount, missing invoice) is now an editable row in
+           the invoice card directly above, so this panel was a second, taller copy of
+           the same nine values — Terms and the invoice number appeared three times on
+           one screen. IT/HR keep it; they have no invoice card. -->
       <div
-        v-if="Boolean(customFields.length)"
+        v-if="Boolean(customFields.length) && !isAP"
         :class="
           isAP
             ? 'mx-5 mt-3 rounded-xl border border-outline-gray-2 bg-surface-white overflow-hidden'

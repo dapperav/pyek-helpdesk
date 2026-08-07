@@ -7,53 +7,94 @@
        hosts the invoice-verify actions: download-pre-named + mark-verified-and-assign. -->
   <div v-if="isAP" class="px-5 pt-4">
     <div class="rounded-xl border border-outline-gray-2 bg-surface-white p-3.5">
-      <!-- Header: vendor + park (read-only) -->
+      <!-- Header: vendor + park, both editable in place. Vendor stays the card's
+           title and the park stays a coloured chip, so the card keeps its shape —
+           this is the layout Mark wanted preserved; only the editing changed. -->
       <div class="mb-2.5 flex items-center justify-between gap-2">
-        <span class="truncate text-base-medium text-ink-gray-9">
-          {{ vendor || __("Invoice") }}
-        </span>
-        <span
-          v-if="park"
-          class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
-          :style="{ backgroundColor: parkColor(park) }"
+        <input
+          v-if="editingVendor"
+          ref="vendorInput"
+          v-model="vendorDraft"
+          class="min-w-0 flex-1 rounded border border-outline-gray-3 bg-surface-white px-1.5 py-0.5 text-base-medium text-ink-gray-9 outline-none focus:border-outline-gray-4"
+          @keydown.enter.prevent="commitVendor"
+          @keydown.esc.prevent="editingVendor = false"
+          @blur="commitVendor"
+        />
+        <button
+          v-else
+          class="min-w-0 flex-1 truncate rounded px-1 -ml-1 text-left text-base-medium hover:bg-surface-gray-2"
+          :class="vendor ? 'text-ink-gray-9' : 'text-ink-gray-4'"
+          @click="startEditVendor"
         >
-          {{ park }}
-        </span>
+          {{ vendor || __("Set vendor") }}
+        </button>
+
+        <!-- Park chip doubles as its own picker. -->
+        <Popover placement="bottom-end" :show="parkOpen" @update:show="(v) => (parkOpen = v)">
+          <template #target="{ togglePopover }">
+            <button
+              class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="park ? 'text-white' : 'border border-dashed border-outline-gray-3 text-ink-gray-5'"
+              :style="park ? { backgroundColor: parkColor(park) } : {}"
+              @click="togglePopover()"
+            >
+              {{ park || __("Park") }}
+            </button>
+          </template>
+          <template #body>
+            <div class="min-w-[150px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+              <button
+                v-for="opt in parkOptions"
+                :key="opt || '__blank'"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
+                @click="setPark(opt)"
+              >
+                <span
+                  v-if="opt"
+                  class="size-2.5 shrink-0 rounded-full"
+                  :style="{ backgroundColor: parkColor(opt) }"
+                />
+                <span class="truncate">{{ opt || __("Clear") }}</span>
+                <LucideCheck
+                  v-if="opt === ticket.pyek_property"
+                  class="ml-auto size-4 text-ink-gray-6"
+                />
+              </button>
+            </div>
+          </template>
+        </Popover>
       </div>
 
-      <!-- Fields -->
+      <!-- Fields — every row click-to-edit, and now the ONLY place these live. The
+           "Ticket Info" panel below the card showed the same nine values as editable
+           form controls, so each one appeared twice (Terms and the invoice number
+           three times); that panel is hidden on AP now. Rows always render, even when
+           empty, because a blank "Set" is how you discover you still owe a value —
+           the old card hid empty rows and the verify gate then failed for no visible
+           reason. -->
       <div class="flex flex-col gap-1.5 text-base">
-        <div class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Amount") }}</span>
-          <span class="font-medium text-ink-gray-9">{{ amountLabel }}</span>
-        </div>
-        <div v-if="receivedDate" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Received") }}</span>
-          <span class="text-ink-gray-8">{{ receivedDate }}</span>
-        </div>
-        <div v-if="ticket.ap_invoice_number" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Invoice #") }}</span>
-          <span class="text-ink-gray-8">{{ ticket.ap_invoice_number }}</span>
-        </div>
-        <div v-if="invoiceDate" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Invoice date") }}</span>
-          <span class="text-ink-gray-8">{{ invoiceDate }}</span>
-        </div>
-        <div v-if="dueDate" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Due date") }}</span>
-          <span
-            :class="isOverdue ? '' : 'text-ink-gray-8'"
-            :style="isOverdue ? { color: '#b91c1c' } : {}"
-          >{{ dueDate }}</span>
-        </div>
-        <div v-if="ticket.ap_doc_type" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Doc type") }}</span>
-          <span class="text-ink-gray-8">{{ ticket.ap_doc_type }}</span>
-        </div>
-        <div v-if="currentTerms" class="flex items-center justify-between">
-          <span class="text-ink-gray-5">{{ __("Terms") }}</span>
-          <span class="text-ink-gray-8">{{ currentTerms }}</span>
-        </div>
+        <ApField :ticket="ticket" fieldname="ap_amount" :label="__('Amount')" />
+        <ApField :ticket="ticket" fieldname="ap_received_date" :label="__('Received')" />
+        <ApField :ticket="ticket" fieldname="ap_invoice_number" :label="__('Invoice #')" />
+        <ApField :ticket="ticket" fieldname="ap_invoice_date" :label="__('Invoice date')" />
+        <ApField
+          :ticket="ticket"
+          fieldname="pyek_requested_due_date"
+          :label="__('Due date')"
+          :danger="isOverdue"
+        />
+        <ApField :ticket="ticket" fieldname="ap_doc_type" :label="__('Doc type')" />
+        <ApField
+          :ticket="ticket"
+          fieldname="ap_payment_terms"
+          :label="__('Terms')"
+          :also-set="termsSideEffects"
+        />
+        <ApField
+          :ticket="ticket"
+          fieldname="ap_missing_invoice"
+          :label="__('Missing invoice')"
+        />
       </div>
 
       <!-- Needs-review banner (hidden once verified). -->
@@ -263,40 +304,10 @@
         </template>
       </Popover>
 
-      <!-- Payment terms — Net 10…90 or Personal Reimbursement. AI pre-fills most;
-           this picker lets Nedra change it. Net terms drive the due date (in the
-           enricher); Personal Reimbursement also marks the doc type so the ticket
-           lands in the Reimbursements queue. -->
-      <Popover class="w-full" placement="bottom" :show="termsOpen" @update:show="(v) => (termsOpen = v)">
-        <template #target="{ togglePopover }">
-          <button
-            class="flex w-full items-center justify-between gap-2 rounded-lg border border-outline-gray-2 py-2 px-3 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2"
-            @click="togglePopover()"
-          >
-            <span class="flex items-center gap-2">
-              <LucideCalendarClock class="size-4" />
-              {{ __("Terms") }}
-            </span>
-            <span class="flex items-center gap-1">
-              {{ currentTerms || __("Set") }}
-              <LucideChevronDown class="size-4" />
-            </span>
-          </button>
-        </template>
-        <template #body>
-          <div class="min-w-[220px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
-            <button
-              v-for="t in TERMS_OPTIONS"
-              :key="t"
-              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-gray-8 hover:bg-surface-gray-2"
-              @click="setTerms(t)"
-            >
-              <span class="truncate">{{ t }}</span>
-              <LucideCheck v-if="t === currentTerms" class="ml-auto size-4 text-ink-gray-6" />
-            </button>
-          </div>
-        </template>
-      </Popover>
+      <!-- The Terms picker that used to sit here is gone: Terms is now an editable
+           row in the field list above, carrying the same Personal Reimbursement ->
+           doc type side effect. Keeping both would have left Terms on screen twice
+           in a change whose whole point was removing duplicates. -->
 
       <!-- Verify — decoupled from assign. Light-blue CTA that becomes the green
            "Verified by …" pill once stamped. Blocked until every Ticket Info field
@@ -391,7 +402,7 @@
 </template>
 
 <script setup lang="ts">
-import { parkColor, parkLabel } from "@/config/parks";
+import { parkColor } from "@/config/parks";
 import { useScreenSize } from "@/composables/screen";
 import { useAuthStore } from "@/stores/auth";
 import { ActivitiesSymbol, AssigneeSymbol, TicketSymbol } from "@/types";
@@ -404,9 +415,11 @@ import {
   dayjs,
   toast,
 } from "frappe-ui";
-import { computed, inject, ref, watch } from "vue";
+import { computed, inject, nextTick, ref, watch } from "vue";
+import { getMeta } from "@/stores/meta";
 import { useIsAp } from "@/composables/useIsAp";
 import { useApInvoices, useHasApInvoicesField } from "@/composables/useApInvoices";
+import ApField from "./ApField.vue";
 import UserAvatar from "../UserAvatar.vue";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import LucideFileX from "~icons/lucide/file-x";
@@ -420,7 +433,6 @@ import LucideFlag from "~icons/lucide/flag";
 import LucideChevronDown from "~icons/lucide/chevron-down";
 import LucideScanLine from "~icons/lucide/scan-line";
 import LucidePaperclip from "~icons/lucide/paperclip";
-import LucideCalendarClock from "~icons/lucide/calendar-clock";
 
 const props = defineProps<{ ticket: Record<string, any> }>();
 defineEmits<{ (e: "view-pdf"): void }>();
@@ -441,23 +453,68 @@ const ticketRes = inject(TicketSymbol, undefined);
 const isAP = useIsAp(() => props.ticket);
 
 const vendor = computed(() => props.ticket?.ap_vendor || "");
-const park = computed(() => parkLabel(props.ticket?.pyek_property));
+// parkLabel() maps blank -> "Unspecified", which is right for a read-only chip but
+// wrong for a picker (it would look like a real value). Show the raw code instead.
+const park = computed(() => props.ticket?.pyek_property || "");
 
-const amountLabel = computed(() => {
-  const n = Number(props.ticket?.ap_amount);
-  if (!props.ticket?.ap_amount || Number.isNaN(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
+// --- header editing (vendor + park) ---
+const { getField: getTicketField } = getMeta("HD Ticket");
+const parkOptions = computed(() => {
+  const raw = String((getTicketField("pyek_property") as any)?.options || "").split("\n");
+  const values = raw.filter((o) => o !== "");
+  return raw.some((o) => o === "") ? ["", ...values] : values;
 });
+const parkOpen = ref(false);
+function setPark(opt: string) {
+  parkOpen.value = false;
+  writeFields({ pyek_property: opt || null });
+}
 
-const fmt = (d?: string) => (d ? dayjs(d).format("MM/DD/YYYY") : "");
-const invoiceDate = computed(() => fmt(props.ticket?.ap_invoice_date));
-const dueDate = computed(() => fmt(props.ticket?.pyek_requested_due_date));
-// True date the sender emailed ap@ (enricher-set from the email's Date header, NOT
-// Frappe's ingest time). A template field, so it's on the doc and reacts to edits.
-const receivedDate = computed(() => fmt(props.ticket?.ap_received_date));
+const editingVendor = ref(false);
+const vendorDraft = ref("");
+const vendorInput = ref<HTMLInputElement | null>(null);
+function startEditVendor() {
+  vendorDraft.value = vendor.value;
+  editingVendor.value = true;
+  nextTick(() => {
+    vendorInput.value?.focus();
+    vendorInput.value?.select?.();
+  });
+}
+function commitVendor() {
+  if (!editingVendor.value) return;
+  editingVendor.value = false;
+  const v = vendorDraft.value.trim();
+  if (v === vendor.value) return;
+  writeFields({ ap_vendor: v || null });
+}
+
+// Personal Reimbursement also marks the doc type so the ticket lands in the
+// Reimbursements queue. Net terms leave the doc type alone.
+function termsSideEffects(value: any) {
+  return value === "Personal Reimbursement" ? { ap_doc_type: "Reimbursement" } : {};
+}
+
+// Shared write path for the header controls (ApField has its own copy for its rows).
+function writeFields(fields: Record<string, any>) {
+  const ok = () => activities?.value?.reload?.();
+  const fail = () => toast.error(__("Couldn't save. Try again."));
+  if (ticketRes?.value?.setValue) {
+    ticketRes.value.setValue.submit(fields, { onSuccess: ok, onError: fail });
+  } else {
+    call("frappe.client.set_value", {
+      doctype: "HD Ticket",
+      name: props.ticket?.name,
+      fieldname: fields,
+    })
+      .then(ok)
+      .catch(fail);
+  }
+}
+
+// The amount/date display formatters that lived here are gone — ApField renders and
+// formats every one of those rows now, so keeping local copies would just be a second
+// definition of the same formatting to drift out of sync.
 const isOverdue = computed(
   () =>
     !!props.ticket?.pyek_requested_due_date &&
@@ -741,54 +798,10 @@ async function markVerified() {
 }
 
 // --- payment terms ---
-// Net 10…90 or Personal Reimbursement. The enricher AI pre-fills most of these;
-// this picker lets Nedra change it. Optimistic value for an instant relabel.
-const TERMS_OPTIONS = [
-  "Net 10",
-  "Net 15",
-  "Net 20",
-  "Net 30",
-  "Net 60",
-  "Net 90",
-  "Personal Reimbursement",
-];
-const termsOpen = ref(false);
-const optimisticTerms = ref("");
-const currentTerms = computed(
-  () => optimisticTerms.value || props.ticket?.ap_payment_terms || ""
-);
-async function setTerms(name: string) {
-  termsOpen.value = false;
-  if (!name || !props.ticket?.name || name === currentTerms.value) return;
-  const prev = optimisticTerms.value;
-  optimisticTerms.value = name; // instant relabel
-  // Personal Reimbursement also marks the doc type Reimbursement so the ticket
-  // lands in the existing Reimbursements queue (Net terms leave the doc type as-is).
-  const fields: Record<string, any> = { ap_payment_terms: name };
-  if (name === "Personal Reimbursement") fields.ap_doc_type = "Reimbursement";
-  const ok = () => {
-    toast.success(__("Terms set to {0}").replace("{0}", name));
-    activities?.value?.reload?.();
-  };
-  const fail = () => {
-    optimisticTerms.value = prev;
-    toast.error(__("Couldn't update terms. Try again."));
-  };
-  if (ticketRes?.value?.setValue) {
-    ticketRes.value.setValue.submit(fields, { onSuccess: ok, onError: fail });
-  } else {
-    try {
-      await call("frappe.client.set_value", {
-        doctype: "HD Ticket",
-        name: props.ticket.name,
-        fieldname: fields,
-      });
-      ok();
-    } catch (e) {
-      fail();
-    }
-  }
-}
+// Editing moved to the Terms row in the field list (ApField owns the picker, the
+// optimistic relabel and the Personal Reimbursement -> doc type side effect). This
+// just reads the saved value for the verify gate and the reimbursement check below.
+const currentTerms = computed(() => props.ticket?.ap_payment_terms || "");
 
 // --- verify gate ---
 // The same fields shown in the "Ticket Info" panel must be filled before a ticket
