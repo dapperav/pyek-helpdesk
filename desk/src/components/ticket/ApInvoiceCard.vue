@@ -217,6 +217,30 @@
         </template>
         <template #body>
           <div class="min-w-[240px] rounded-lg bg-surface-elevation-2 p-1.5 shadow-2xl ring-1 ring-black ring-opacity-5">
+            <!-- Who's on it now, each removable. Assigning only ever ADDED before, so
+                 a mis-tap left two people on a ticket with nothing in the AP UI able
+                 to undo it — the core Assignee widget that could was removed from this
+                 sidebar. Listed above the search because unpicking the wrong person is
+                 the thing you came here to do when there are two. -->
+            <div v-if="assigneeNames.length" class="mb-1 border-b border-outline-gray-2 pb-1">
+              <div
+                v-for="n in assigneeNames"
+                :key="n"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-ink-gray-8"
+              >
+                <UserAvatar :name="n" size="sm" />
+                <span class="min-w-0 flex-1 truncate">{{ displayName(n) }}</span>
+                <button
+                  class="shrink-0 rounded p-0.5 text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-8 disabled:opacity-50"
+                  :disabled="unassigning === n"
+                  :aria-label="__('Remove {0}').replace('{0}', displayName(n))"
+                  :title="__('Remove')"
+                  @click.stop="unassignOne(n)"
+                >
+                  <LucideX class="size-3.5" />
+                </button>
+              </div>
+            </div>
             <input
               v-model="agentSearch"
               :placeholder="__('Search agents…')"
@@ -426,6 +450,7 @@ import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideDownload from "~icons/lucide/download";
 import LucideFileText from "~icons/lucide/file-text";
 import LucideUserPlus from "~icons/lucide/user-plus";
+import LucideX from "~icons/lucide/x";
 import LucideFlag from "~icons/lucide/flag";
 import LucideChevronDown from "~icons/lucide/chevron-down";
 import LucideScanLine from "~icons/lucide/scan-line";
@@ -971,6 +996,32 @@ function finishAssigned(agent: { name: string; label: string }) {
   toast.success(__("Assigned to {0}").replace("{0}", agent.label));
   assignees?.value?.reload?.();
   activities?.value?.reload?.();
+}
+
+// Take someone off the ticket. Assigning only ever added, so a mis-tap put two
+// people on a ticket and nothing in the AP sidebar could undo it. Uses the same
+// whitelisted endpoint as the core Assignee widget (it cancels the ToDo rather
+// than deleting it, so the assignment history survives).
+const unassigning = ref("");
+async function unassignOne(name: string) {
+  if (!props.ticket?.name || unassigning.value) return;
+  unassigning.value = name;
+  try {
+    await call("helpdesk.api.doc.remove_assignments", {
+      doctype: "HD Ticket",
+      name: props.ticket.name,
+      assignees: [name],
+    });
+    // Drop the optimistic value too, or a just-removed person lingers in the pill.
+    if (optimisticAssignee.value?.name === name) optimisticAssignee.value = null;
+    await assignees?.value?.reload?.();
+    activities?.value?.reload?.();
+    toast.success(__("Removed {0}").replace("{0}", displayName(name)));
+  } catch (e) {
+    toast.error(__("Couldn't remove them. Try again."));
+  } finally {
+    unassigning.value = "";
+  }
 }
 
 // Routing to an approver moves the ticket to "Pending Approval" so it leaves
