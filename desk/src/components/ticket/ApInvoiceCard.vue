@@ -237,6 +237,11 @@
                 class="px-2 py-3 text-center text-sm text-ink-gray-5"
               >
                 {{ __("No agents found") }}
+              </div>
+            </div>
+          </div>
+        </template>
+      </Popover>
 
       <!-- Download the invoice already named for Intacct (same-origin: the browser
            saves it with this name, so no manual rename). Solid-blue primary CTA —
@@ -380,12 +385,6 @@
             </button>
             <div v-if="!priorityOptions.length" class="px-2 py-3 text-center text-sm text-ink-gray-5">
               {{ __("No priorities found") }}
-            </div>
-          </div>
-        </template>
-      </Popover>
-
-              </div>
             </div>
           </div>
         </template>
