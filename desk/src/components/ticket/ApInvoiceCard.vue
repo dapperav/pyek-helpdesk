@@ -108,37 +108,14 @@
         </div>
       </div>
 
-      <!-- Actions -->
+      <!-- Actions, in two labelled zones. Seven control blocks stacked at identical
+           visual weight gave no clue where the working surface ended, so they're split
+           into the files you act on every ticket and the workflow state you set
+           occasionally. -->
       <div class="mt-3 flex flex-col gap-2">
-      <!-- Scan / attach the invoice. The enricher only auto-reads a ticket on first
-           ingest, so a vendor reply that arrives WITH an invoice (on a Query /
-           no-invoice ticket) is never read — Scan re-extracts the CURRENT
-           attachments on demand; Attach uploads a file Nedra has, then scans it. -->
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
-          :disabled="scanning"
-          @click="scanInvoice()"
-        >
-          <LucideScanLine class="size-4" />
-          {{ scanning ? __("Scanning…") : __("Scan invoice") }}
-        </button>
-        <button
-          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
-          :disabled="scanning"
-          @click="pickInvoiceFile()"
-        >
-          <LucidePaperclip class="size-4" />
-          {{ __("Attach") }}
-        </button>
-      </div>
-      <input
-        ref="fileInput"
-        type="file"
-        accept="application/pdf,image/*"
-        class="hidden"
-        @change="onFilePicked"
-      />
+      <p class="px-0.5 text-xs font-medium uppercase tracking-wide text-ink-gray-5">
+        {{ __("Invoice files") }}
+      </p>
 
       <!-- Download the invoice already named for Intacct (same-origin: the browser
            saves it with this name, so no manual rename). Solid-blue primary CTA —
@@ -199,6 +176,54 @@
           </button>
         </div>
       </template>
+
+      <!-- Scan / attach the invoice. The enricher only auto-reads a ticket on first
+           ingest, so a vendor reply that arrives WITH an invoice (on a Query /
+           no-invoice ticket) is never read — Scan re-extracts the CURRENT
+           attachments on demand; Attach uploads a file Nedra has, then scans it.
+           Below the download + file list deliberately: those are touched on every
+           ticket, these two are occasional repairs. -->
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
+          :disabled="scanning"
+          @click="scanInvoice()"
+        >
+          <LucideScanLine class="size-4" />
+          {{ scanning ? __("Scanning…") : __("Scan invoice") }}
+        </button>
+        <button
+          class="flex items-center justify-center gap-1.5 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 hover:bg-surface-gray-2 disabled:opacity-60"
+          :disabled="scanning"
+          @click="pickInvoiceFile()"
+        >
+          <LucidePaperclip class="size-4" />
+          {{ __("Attach") }}
+        </button>
+      </div>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="application/pdf,image/*"
+        class="hidden"
+        @change="onFilePicked"
+      />
+
+      <!-- View the invoice PDF (mobile only — jumps to the Emails tab where
+           attachments live; on desktop the Invoice tab already shows it). Belongs
+           with the files, not down among the workflow controls. -->
+      <button
+        v-if="isMobileView"
+        class="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
+        @click="$emit('view-pdf')"
+      >
+        <LucideFileText class="size-4" />
+        {{ __("View invoice") }}
+      </button>
+
+      <p class="mt-2 px-0.5 text-xs font-medium uppercase tracking-wide text-ink-gray-5">
+        {{ __("Workflow") }}
+      </p>
 
       <!-- Priority — a CTA button coloured by level (Urgent red → Low gray).
            Opens a small picker. -->
@@ -360,16 +385,6 @@
         </template>
       </Popover>
 
-      <!-- View the invoice PDF (mobile only — jumps to the Emails tab where
-           attachments live; on desktop the Invoice tab already shows it). -->
-      <button
-        v-if="isMobileView"
-        class="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-gray-2 py-2 text-base-medium text-ink-gray-8 active:bg-surface-gray-2"
-        @click="$emit('view-pdf')"
-      >
-        <LucideFileText class="size-4" />
-        {{ __("View invoice") }}
-      </button>
       </div>
     </div>
   </div>
