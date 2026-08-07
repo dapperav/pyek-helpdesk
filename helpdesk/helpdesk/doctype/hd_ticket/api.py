@@ -19,6 +19,9 @@ from helpdesk.api.doc import handle_at_me_support
 from helpdesk.consts import DEFAULT_TICKET_TEMPLATE
 from helpdesk.helpdesk.doctype.hd_form_script.hd_form_script import get_form_script
 from helpdesk.helpdesk.doctype.hd_settings.helpers import get_rendered_banner_msg
+from helpdesk.helpdesk.doctype.hd_ticket_activity.hd_ticket_activity import (
+    log_ticket_activity,
+)
 from helpdesk.helpdesk.doctype.hd_ticket_template.api import get_fields_meta
 from helpdesk.helpdesk.doctype.hd_ticket_template.api import get_one as get_template
 from helpdesk.utils import (
@@ -681,6 +684,51 @@ def get_ticket_contact(ticket: str):
         ["name", "email_id", "phone", "mobile_no", "image"],
         as_dict=1,
     )
+
+
+@frappe.whitelist()
+@agent_only
+def rerun_ai_enrichment(ticket: str):
+    """Ask the AI enricher to re-analyse this ticket. Agent-only.
+
+    For when the AI got it wrong — a mis-extracted price, a build sheet missing a
+    field. Until now the only remedy was someone clearing pyek_enriched by hand.
+
+    This doesn't do the work: it clears the processed flag so the enricher (a separate
+    Railway worker, polling roughly every minute) picks the ticket up again, and sets
+    pyek_rerun_requested so that pass regenerates the AI fields WITHOUT overwriting
+    priority and category. Those two are normally AI-owned on the first pass only,
+    which is what lets a manual re-triage stick — a re-run must not silently undo it.
+
+    Deliberately does NOT touch pyek_ack_state: the requester has already had their
+    confirmation email, and the sweep only picks up 'pending', so re-running can never
+    send a second one.
+
+    Logged as ticket activity so there's a record of who asked and when.
+    """
+    ticket = str(ticket)
+    frappe.has_permission("HD Ticket", "write", ticket, throw=True)
+    if not frappe.db.exists("HD Ticket", ticket):
+        frappe.throw(_("Ticket {0} not found").format(ticket), frappe.DoesNotExistError)
+
+    doc = frappe.get_doc("HD Ticket", ticket)
+    try:
+        # Single-field form, matching the proven usage elsewhere in this app.
+        doc.db_set("pyek_enriched", 0, update_modified=False)
+        doc.db_set("pyek_rerun_requested", 1, update_modified=False)
+    except Exception:
+        # Most likely the custom fields aren't provisioned on this site. Surface it
+        # rather than reporting a queued re-run that will never happen.
+        frappe.log_error(frappe.get_traceback(), f"AI re-run request failed for {ticket}")
+        frappe.throw(
+            _("Could not queue a re-run — the AI enrichment fields are missing on this site."),
+        )
+
+    log_ticket_activity(ticket, "requested an AI re-run")
+    return {
+        "queued": True,
+        "message": _("Queued — the AI will re-analyse this ticket within a minute or two."),
+    }
 
 
 @frappe.whitelist()
