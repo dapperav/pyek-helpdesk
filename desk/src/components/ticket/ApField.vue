@@ -5,12 +5,14 @@
        instead of turning into a form (which is what "Ticket Info" was, and why it
        got deleted in favour of this). -->
   <div class="flex items-center justify-between gap-2">
-    <span class="shrink-0 text-ink-gray-5">{{ label }}</span>
+    <!-- Label a touch darker than before so it reads at a glance next to a heavier
+         value; the value carries the weight since it's the thing being checked. -->
+    <span class="shrink-0 text-ink-gray-6">{{ label }}</span>
 
     <!-- Check: no edit mode, clicking just flips it. -->
     <button
       v-if="type === 'Check'"
-      class="rounded px-1 -mr-1 text-ink-gray-8 hover:bg-surface-gray-2"
+      class="rounded px-1 -mr-1 font-medium text-ink-gray-8 hover:bg-surface-gray-2"
       @click="save(current ? 0 : 1)"
     >
       {{ current ? __("Yes") : __("No") }}
@@ -25,7 +27,7 @@
     >
       <template #target="{ togglePopover }">
         <button
-          class="min-w-0 truncate rounded px-1 -mr-1 text-right hover:bg-surface-gray-2"
+          class="min-w-0 truncate rounded px-1 -mr-1 text-right font-medium hover:bg-surface-gray-2"
           :class="current ? 'text-ink-gray-8' : 'text-ink-gray-4'"
           @click="togglePopover()"
         >
@@ -63,7 +65,7 @@
     />
     <button
       v-else
-      class="min-w-0 truncate rounded px-1 -mr-1 text-right hover:bg-surface-gray-2"
+      class="min-w-0 truncate rounded px-1 -mr-1 text-right font-medium hover:bg-surface-gray-2"
       :class="danger ? '' : display ? 'text-ink-gray-8' : 'text-ink-gray-4'"
       :style="danger ? { color: '#b91c1c' } : {}"
       @click="startEdit"

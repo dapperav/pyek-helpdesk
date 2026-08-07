@@ -104,9 +104,9 @@
            invoice-card CTA buttons and Assignee is handled by the card's Assign
            action (the old Details Assignee widget was removed per Nedra). -->
 
-      <!-- AP: recent comments on this ticket (click to jump to it in the thread).
-           Self-guards on ap_vendor + comment presence. -->
-      <ApRecentComments />
+      <!-- AP: the recent-comments panel that sat here is gone — the invoice card's
+           Notes box lists the same comments and lets you add one, so this was the
+           read-only half of a control that now does both. -->
 
       <!-- Recent / Similar Tickets -->
       <template v-if="showRecentSimilarTickets">
@@ -191,7 +191,6 @@ import TicketField from "../TicketField.vue";
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
 import ApInvoiceCard from "@/components/ticket/ApInvoiceCard.vue";
-import ApRecentComments from "@/components/ticket/ApRecentComments.vue";
 
 const ticket = inject(TicketSymbol)!;
 const assignees = inject(AssigneeSymbol)!;

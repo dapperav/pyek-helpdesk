@@ -114,6 +114,37 @@ function isLikelyDocument(line: any, isPointer: boolean): boolean {
   );
 }
 
+/**
+ * Make every download name unique.
+ *
+ * Two attachments on one email can derive the SAME name whenever the tokens they'd
+ * differ on are missing — same vendor, same date, and neither amount read, so both
+ * land on NOPARK_<date>_<vendor>_0.00.pdf (real case: ticket 0027). Downloading them
+ * in sequence then either overwrites the first or leaves the browser to silently
+ * suffix "(1)", so one invoice quietly never arrives.
+ *
+ * Disambiguate with the invoice number the line actually refers to, which is the
+ * meaningful identifier when park and amount are blank; fall back to a counter when
+ * even that is missing, so the result is unique either way.
+ */
+function uniquifyNames(rows: ApInvoice[], numbers: (string | null)[]): ApInvoice[] {
+  const seen = new Map<string, number>();
+  return rows.map((r, i) => {
+    const taken = seen.get(r.downloadName) || 0;
+    seen.set(r.downloadName, taken + 1);
+    if (!taken) return r;
+    const stem = r.downloadName.replace(/\.pdf$/i, "");
+    const invNo = String(numbers[i] ?? "").trim();
+    const suffix = invNo ? `_${invNo}` : `_${taken + 1}`;
+    let name = `${stem}${suffix}.pdf`;
+    // The invoice number can itself repeat across lines — keep counting until free.
+    let n = taken;
+    while (seen.has(name)) name = `${stem}${suffix}_${++n}.pdf`;
+    seen.set(name, 1);
+    return { ...r, downloadName: name };
+  });
+}
+
 function parseLines(raw: unknown): any[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
@@ -171,27 +202,32 @@ export function useApInvoices(
       // #0680's per-diem becomes TTH_07262026_SUTERLAW_130.00.pdf rather than the
       // NOPARK_NODATE_VENDOR_130.00.pdf the raw line alone would give.
       const single = lines.length === 1;
-      return lines
-        .map((l, i) => {
-          const isPrimary = i === primaryIdx;
-          const src = single
-            ? live
-            : {
-                park: l.park ?? live.park,
-                date: l.invoice_date ?? live.date,
-                vendor: l.vendor ?? live.vendor,
-                amount: l.amount,
-              };
-          const amt = single ? t.ap_amount : l.amount;
-          return {
-            fileUrl: l.file_url,
-            fileName: l.file_name || String(l.file_url).split("/").pop() || "",
-            downloadName: intacctName(src),
-            amount: amt === null || amt === undefined || amt === "" ? null : Number(amt),
-            readable: l.readable !== false,
-            primary: isPrimary,
-          };
-        });
+      const rows = lines.map((l, i) => {
+        const isPrimary = i === primaryIdx;
+        const src = single
+          ? live
+          : {
+              park: l.park ?? live.park,
+              date: l.invoice_date ?? live.date,
+              vendor: l.vendor ?? live.vendor,
+              amount: l.amount,
+            };
+        const amt = single ? t.ap_amount : l.amount;
+        return {
+          fileUrl: l.file_url,
+          fileName: l.file_name || String(l.file_url).split("/").pop() || "",
+          downloadName: intacctName(src),
+          amount: amt === null || amt === undefined || amt === "" ? null : Number(amt),
+          readable: l.readable !== false,
+          primary: isPrimary,
+        };
+      });
+      // Two lines can derive an identical name when park/amount are both blank —
+      // downloading them in sequence would silently lose one.
+      return uniquifyNames(
+        rows,
+        lines.map((l) => l.invoice_number ?? t.ap_invoice_number ?? null)
+      );
     }
 
     // --- single-invoice fallbacks ---
