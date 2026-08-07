@@ -1006,9 +1006,18 @@ class HDTicket(Document):
 
         if missing:
             items = "".join(f"<li>{html_escape(m)}</li>" for m in missing)
-            parts.append(
-                f"<p>{_('To get started we still need')}:</p><ul>{items}</ul>"
-            )
+            # Directive, not a bare list: name the action (reply), say how many things
+            # are wanted, and say what happens once they do. "To get started we still
+            # need:" tended to get a partial answer — measured on consignment tickets,
+            # requesters leave out the same three fields every time, so the ask has to
+            # work first time or an agent chases it anyway.
+            if len(missing) == 1:
+                lead = _("Reply to this email with one more detail and we'll get started")
+            else:
+                lead = _("Reply to this email with these {0} details and we'll get started").format(
+                    len(missing)
+                )
+            parts.append(f"<p><strong>{lead}:</strong></p><ul>{items}</ul>")
 
         parts.append(
             f"<p>{_('If any of that is wrong, just reply to this email and we will correct it.')}</p>"
