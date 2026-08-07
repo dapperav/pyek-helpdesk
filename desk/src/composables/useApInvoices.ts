@@ -82,6 +82,38 @@ export function intacctName(parts: {
   return `${parts.park || "NOPARK"}_${dateTok}_${vendorToken(parts.vendor)}_${amtTok}.pdf`;
 }
 
+/**
+ * Is this attachment actually a document Nedra would key into Intacct?
+ *
+ * The enricher records EVERY attachment it tried to read, which is right for fidelity
+ * but wrong to show verbatim: AP emails carry signature logos and pasted screenshots,
+ * and Claude cheerfully "reads" a Pepsi logo — it comes back `readable: true` with
+ * doc_type "Other" and no amount. Listing those as "Invoice 2" and "Invoice 3" under
+ * the name NOPARK_NODATE_VENDOR_0.00.pdf would be worse than the single-file behaviour
+ * this replaces (real case: ticket 0005, one Cintas PDF plus two junk PNGs).
+ *
+ * So `readable` is NOT the discriminator. The rule instead:
+ *   - a PDF on an AP email is always a candidate document, even if unreadable — an
+ *     invoice Claude choked on is exactly the one a human needs to open;
+ *   - an image only counts when the AI actually pulled invoice data off it, which is
+ *     what separates a photographed receipt or bank slip from a footer logo;
+ *   - the attachment the ticket's own fields were read from always counts, whatever
+ *     it looks like — the scalars demonstrably came from it.
+ *
+ * Filtering happens at DISPLAY time, not in the enricher, so the stored data stays
+ * complete and this rule can be retuned without re-running (and re-paying for) the AI.
+ */
+function isLikelyDocument(line: any, isPointer: boolean): boolean {
+  if (isPointer) return true;
+  const name = String(line.file_name || line.file_url || "").toLowerCase();
+  if (name.endsWith(".pdf")) return true;
+  const hasAmount =
+    line.amount !== null && line.amount !== undefined && line.amount !== "";
+  return (
+    hasAmount || ["Invoice", "Statement", "Reimbursement"].includes(line.doc_type)
+  );
+}
+
 function parseLines(raw: unknown): any[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
@@ -111,9 +143,13 @@ export function useApInvoices(
       amount: t.ap_amount,
     };
 
-    const lines = parseLines(x.ap_invoices ?? t.ap_invoices);
+    const pointer = x.ap_invoice_file || "";
+    // Filter BEFORE resolving the primary — the index has to refer to the same array
+    // we map over, or a dropped line silently shifts which file counts as primary.
+    const lines = parseLines(x.ap_invoices ?? t.ap_invoices).filter(
+      (l) => l && l.file_url && isLikelyDocument(l, l.file_url === pointer)
+    );
     if (lines.length) {
-      const pointer = x.ap_invoice_file || "";
       // The backfill asserts no primary (it can't safely re-guess), so fall back to
       // matching the live ap_invoice_file pointer, then to the first line.
       let primaryIdx = lines.findIndex((l) => l?.primary);
@@ -122,7 +158,6 @@ export function useApInvoices(
       if (primaryIdx < 0) primaryIdx = 0;
 
       return lines
-        .filter((l) => l && l.file_url)
         .map((l, i) => {
           const isPrimary = i === primaryIdx;
           const src = isPrimary
