@@ -157,18 +157,32 @@ export function useApInvoices(
         primaryIdx = lines.findIndex((l) => l?.file_url === pointer);
       if (primaryIdx < 0) primaryIdx = 0;
 
+      // With exactly one invoice, the ticket's fields ARE that invoice, so the live
+      // values win outright and a sidebar correction renames the file at once (PR #56).
+      //
+      // With several, they are not. ap_amount is whatever describes the TICKET — on
+      // #0680 it's Nedra's hand-typed $1,262.83, the sum of five receipts — so stamping
+      // it on any single file reproduces exactly the bug Corey reported. The amount
+      // therefore ALWAYS comes from the line itself here.
+      //
+      // The other tokens fall back to the ticket, because they are genuinely
+      // ticket-level: the enricher records park per-attachment but reads it as null on
+      // nearly every receipt, and a per-receipt vendor/date is often missing too. So
+      // #0680's per-diem becomes TTH_07262026_SUTERLAW_130.00.pdf rather than the
+      // NOPARK_NODATE_VENDOR_130.00.pdf the raw line alone would give.
+      const single = lines.length === 1;
       return lines
         .map((l, i) => {
           const isPrimary = i === primaryIdx;
-          const src = isPrimary
+          const src = single
             ? live
             : {
-                park: l.park,
-                date: l.invoice_date,
-                vendor: l.vendor,
+                park: l.park ?? live.park,
+                date: l.invoice_date ?? live.date,
+                vendor: l.vendor ?? live.vendor,
                 amount: l.amount,
               };
-          const amt = isPrimary ? t.ap_amount : l.amount;
+          const amt = single ? t.ap_amount : l.amount;
           return {
             fileUrl: l.file_url,
             fileName: l.file_name || String(l.file_url).split("/").pop() || "",
