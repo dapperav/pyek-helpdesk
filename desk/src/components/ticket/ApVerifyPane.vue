@@ -29,24 +29,29 @@
       v-if="invoices.length > 1"
       class="flex shrink-0 gap-1.5 overflow-x-auto border-b border-outline-gray-2 px-4 py-2"
     >
+      <!-- Selected pill takes the sidebar navy (--surface-sidebar #1b2a4a) so "which
+           invoice am I looking at" reads at a glance and matches the app's brand
+           anchor; the rest sit in a light blue of the same family, which keeps them
+           legible as buttons rather than dead chips. -->
       <button
         v-for="(inv, i) in invoices"
         :key="inv.fileUrl"
-        class="flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
-        :class="
+        class="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors"
+        :style="
           i === selected
-            ? 'border-transparent bg-surface-gray-4 text-ink-gray-9'
-            : 'border-outline-gray-2 text-ink-gray-6 hover:bg-surface-gray-2'
+            ? { backgroundColor: '#1b2a4a', color: '#ffffff' }
+            : { backgroundColor: '#dbeafe', color: '#1d4ed8' }
         "
         :title="inv.fileName"
         @click="selected = i"
       >
         <span>{{ __("Invoice") }} {{ i + 1 }}</span>
         <span v-if="inv.amount !== null" class="font-medium">{{ money(inv.amount) }}</span>
+        <!-- Amber on white is unreadable against the navy, so lighten it when selected. -->
         <LucideTriangleAlert
           v-if="!inv.readable"
           class="size-3"
-          style="color: #b45309"
+          :style="{ color: i === selected ? '#fbbf24' : '#b45309' }"
           :title="__('Could not be read automatically')"
         />
       </button>
