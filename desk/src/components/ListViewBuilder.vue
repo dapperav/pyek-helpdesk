@@ -18,6 +18,21 @@
         v-if="isViewUpdated && canSaveView"
         @click="handleViewUpdate"
       />
+      <!-- PYEK: select-all for the Outlook list. Ticking rows one at a time to
+           bulk-close a queue was the only option before this. -->
+      <Button
+        v-if="options.outlookRows && outlookRowNames.length"
+        :label="
+          allOutlookSelected
+            ? __('Clear')
+            : __('Select all {0}').replace('{0}', String(outlookRowNames.length))
+        "
+        @click="toggleSelectAllOutlook"
+      >
+        <template #prefix>
+          <FeatherIcon name="check-square" class="h-4 w-4" />
+        </template>
+      </Button>
       <Reload @click="handleReload" :loading="list.loading" />
       <Filter />
       <SortBy :hide-label="isMobileView" />
@@ -29,6 +44,15 @@
     <div v-else class="flex justify-between items-center w-full">
       <Filter />
       <div class="flex items-center gap-2">
+        <Button
+          v-if="options.outlookRows && outlookRowNames.length"
+          :label="allOutlookSelected ? __('Clear') : __('All')"
+          @click="toggleSelectAllOutlook"
+        >
+          <template #prefix>
+            <FeatherIcon name="check-square" class="h-4 w-4" />
+          </template>
+        </Button>
         <Reload @click="handleReload" :loading="list.loading" />
         <SortBy :hide-label="isMobileView" />
       </div>
@@ -441,6 +465,25 @@ function toggleOutlookSelect(name: string) {
 }
 function clearOutlookSelection() {
   outlookSelected.value = new Set();
+}
+
+// PYEK: select-all. Corey had to tick tickets one at a time to bulk-close a queue.
+// It selects the rows currently LOADED, not every row the filter matches — the list
+// paginates by growing page_length, so claiming to have selected 500 tickets when 20
+// are on screen would be a lie, and bulk_set_status only ever receives the ids we hold.
+// The label carries the count so it's obvious what's about to change.
+const outlookRowNames = computed<string[]>(() =>
+  (list.data?.data || []).map((r: any) => r.name).filter(Boolean)
+);
+const allOutlookSelected = computed(
+  () =>
+    outlookRowNames.value.length > 0 &&
+    outlookRowNames.value.every((n) => outlookSelected.value.has(n))
+);
+function toggleSelectAllOutlook() {
+  outlookSelected.value = allOutlookSelected.value
+    ? new Set()
+    : new Set(outlookRowNames.value);
 }
 const bulkUpdating = ref(false);
 const bulkStatusOptions = computed(() =>
