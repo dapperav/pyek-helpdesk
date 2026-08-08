@@ -1,54 +1,83 @@
 <template>
-  <div class="flex h-full flex-col">
-    <div class="shrink-0 px-4 pb-4 flex flex-col">
-      <!-- User avatar with buttons -->
-      <TicketContact />
-      <!-- Core Fields -->
-      <div class="mt-4">
-        <div
-          v-for="(section, index) in coreFields"
-          :key="index"
-          :class="
-            section.group ? 'flex gap-2 items-start max-w-full mb-3' : 'mb-3'
-          "
-        >
-          <template v-for="field in section.fields">
-            <Link
-              v-if="field.visible"
-              :key="field.fieldname"
-              :ref="(el) => setFieldRef(field.fieldname, el)"
-              class="form-control-core"
-              :id="field.fieldname"
-              :class="section.group ? 'flex-1 min-w-0' : 'w-full'"
-              :page-length="10"
-              :label="field.label"
-              :placeholder="field.placeholder"
-              :doctype="field.doctype"
-              :modelValue="field.value"
-              :required="field.required"
-              @update:model-value="
-              (val:string) => handleFieldUpdate(field.fieldname, val,true)
-            "
-            />
+  <!-- A rail of cards rather than full-width blocks divided by hairlines. The
+       contact and the core fields used to live in a fixed block above the scroll
+       area, with the rest of the ticket's fields in a separate collapsed section
+       further down; they are one card now, so there is a single properties
+       surface instead of two. The trade-off is that contact and assignee scroll
+       with everything else, which the shorter panel makes affordable. -->
+  <div class="flex h-full flex-col bg-surface-gray-1">
+    <div class="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2.5">
+      <!-- Details: the contact plus every editable field, in one rhythm -->
+      <div class="rounded-lg border border-outline-gray-1 bg-surface-base shadow-sm">
+        <Section label="Details" v-model:opened="openedSections.details">
+          <template #header="{ opened, toggle }">
+            <div
+              class="flex items-center gap-2 px-3 py-2.5 cursor-pointer"
+              @click="toggle"
+            >
+              <span
+                class="grid place-items-center size-5 rounded bg-surface-gray-2 text-ink-gray-6"
+              >
+                <LucideInfo class="size-3" />
+              </span>
+              <span class="text-base font-semibold text-ink-gray-8 select-none">
+                {{ __("Details") }}
+              </span>
+              <LucideChevronRight
+                class="ml-auto size-4 shrink-0 text-ink-gray-5"
+                :class="{ 'rotate-90': opened }"
+              />
+            </div>
           </template>
-        </div>
-
-        <!-- Assignee component -->
-        <AssignTo />
+          <div class="px-3 pb-3">
+            <TicketContact />
+            <div class="mt-2 border-t border-outline-gray-1 pt-2 space-y-1">
+              <!-- Assignee stays its own component — it carries the agent search,
+                   avatars and availability dots — but wears the same row as the
+                   fields, with its outline flattened to match. -->
+              <div class="flex gap-2 items-center leading-5">
+                <div
+                  class="w-[106px] shrink-0 truncate text-base text-ink-gray-5"
+                >
+                  {{ __("Assignee") }}
+                </div>
+                <div
+                  class="assignee-row -m-0.5 min-h-[28px] flex-1 overflow-hidden p-0.5 text-base"
+                >
+                  <AssignTo hideLabel />
+                </div>
+              </div>
+              <template v-for="field in detailFields">
+                <TicketField
+                  v-if="field.visible"
+                  :key="field.fieldname"
+                  :ref="(el) => setFieldRef(field.fieldname, el)"
+                  :field="field"
+                  :value="field.value"
+                  @change="
+                    ({ fieldname, value }) =>
+                      handleFieldUpdate(
+                        fieldname,
+                        value,
+                        CORE_FIELDS.includes(fieldname)
+                      )
+                  "
+                />
+              </template>
+            </div>
+          </div>
+        </Section>
       </div>
-    </div>
 
-    <!-- Scrollable sections: AI Assist + Ticket Info + Recent / Similar Tickets -->
-    <div
-      class="border-t flex-1 min-h-0 overflow-y-auto divide-y-[1px]"
-      v-if="hasAI || Boolean(customFields.length) || showRecentSimilarTickets"
-    >
       <!-- AI Assist (enricher output, read-only) -->
-      <div v-if="hasAI">
+      <div
+        v-if="hasAI"
+        class="rounded-lg border border-outline-gray-1 bg-surface-base shadow-sm"
+      >
         <Section label="AI Assist" v-model:opened="openedSections.aiAssist">
           <template #header="{ opened, toggle }">
             <div
-              class="flex gap-2.5 items-center justify-between sticky top-0 bg-surface-base z-10 px-4 py-4 cursor-pointer"
+              class="flex gap-2.5 items-center justify-between px-3 py-2.5 cursor-pointer"
               @click="toggle"
             >
               <span class="flex items-center gap-2">
@@ -67,7 +96,7 @@
               />
             </div>
           </template>
-          <div class="px-4 pb-4">
+          <div class="px-3 pb-3">
             <!-- Identity + the re-run remedy, on one line. -->
             <div class="flex items-center gap-1.5 mb-2">
               <span
@@ -397,52 +426,13 @@
         </Section>
       </div>
 
-      <!-- Ticket Info (custom fields) -->
-      <div v-if="Boolean(customFields.length)">
-        <Section label="Ticket Info" v-model:opened="openedSections.ticketInfo">
-          <template #header="{ opened, toggle }">
-            <div
-              class="flex gap-2.5 items-center justify-between sticky top-0 bg-surface-base z-10 px-4 py-4 cursor-pointer"
-              @click="toggle"
-            >
-              <span class="flex items-center gap-2">
-                <span
-                  class="grid place-items-center size-5 rounded bg-surface-gray-3 text-ink-gray-7"
-                >
-                  <LucideInfo class="size-3" />
-                </span>
-                <span class="text-base font-semibold text-ink-gray-8 select-none">
-                  {{ __("Ticket Info") }}
-                </span>
-              </span>
-              <LucideChevronRight
-                class="size-4 text-ink-gray-6"
-                :class="{ 'rotate-90': opened }"
-              />
-            </div>
-          </template>
-          <div
-            class="space-y-1.5 px-4 mb-2 mt-0.5"
-            v-if="Boolean(customFields.length)"
-          >
-            <template v-for="field in customFields">
-              <TicketField
-                v-if="field.visible"
-                :key="field.fieldname"
-                :field="field"
-                :value="field.value"
-                @change="
-                  ({ fieldname, value }) => handleFieldUpdate(fieldname, value)
-                "
-              />
-            </template>
-          </div>
-        </Section>
-      </div>
-
       <!-- Recent / Similar Tickets -->
       <template v-if="showRecentSimilarTickets">
-        <div v-for="section in sections" :key="section.label">
+        <div
+          v-for="section in sections"
+          :key="section.label"
+          class="rounded-lg border border-outline-gray-1 bg-surface-base shadow-sm"
+        >
           <Section
             :label="section.label"
             :hideLabel="section.hideLabel"
@@ -450,7 +440,7 @@
           >
             <template #header="{ opened, toggle }">
               <div
-                class="flex gap-2.5 items-center justify-between sticky top-0 bg-surface-base z-10 px-4 py-4 cursor-pointer"
+                class="flex gap-2.5 items-center justify-between px-3 py-2.5 cursor-pointer"
                 @click="toggle"
               >
                 <Tooltip :text="section.tooltipMessage">
@@ -471,7 +461,7 @@
                 />
               </div>
             </template>
-            <ul class="px-4 pb-4 space-y-0.5">
+            <ul class="px-3 pb-3 space-y-0.5">
               <li
                 v-for="t in section.tickets"
                 :key="t.name"
@@ -509,7 +499,6 @@
 </template>
 
 <script setup lang="ts">
-import { Link } from "@/components";
 import { parseField } from "@/composables/formCustomisation";
 import { useNotifyTicketUpdate } from "@/composables/realtime";
 import { useShortcut } from "@/composables/shortcuts";
@@ -557,36 +546,29 @@ const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
 const dateFormat = window.date_format;
 const { getStatus, colorMap } = useTicketStatusStore();
 
-// ticket_type, priority, customer, agent_group
-const coreFields = computed(() => {
-  // TODO: to confirm whether customizations should apply to core fields as well
+// Priority and Team are HD Ticket's own fields rather than custom ones, so an edit
+// to either is worth announcing to anyone else viewing the ticket.
+const CORE_FIELDS = ["priority", "agent_group"];
+
+// One list for the whole Details card: the two core fields first, then the custom
+// fields. Both go through TicketField, which is what makes the card a single
+// rhythm — priority and agent_group used to be the only two drawn as boxed
+// controls with the label stacked above, while every field below them was already
+// label-left with a borderless control.
+const detailFields = computed(() => {
   const fieldsMeta = getFields();
-  if (!fieldsMeta || fieldsMeta.length === 0) {
-    return [];
-  }
-  // ticket_type and customer are upstream Frappe Helpdesk fields, built for a
-  // customer-support product. On this site they are set on 0 of 312 tickets —
-  // PMIT is an internal helpdesk with no customer accounts — so they were two
-  // permanently-empty controls eating roughly 140px at the top of every sidebar.
-  // Priority (312/312) and Team (306/312) earn their place and now share a row.
-  const _coreFields = [
-    { group: true, fields: [getField("priority"), getField("agent_group")] },
-  ];
-
-  _coreFields.forEach((section) => {
-    section.fields = section.fields.map((f) => {
-      f = parseField(f, ticket.value.doc);
-
-      // cant handle required depends on as we directly set the value in DB on change
-      f["required"] = f.reqd;
-      f["ref"] = f.fieldname;
-
-      f = getFieldInFormat(f, f);
-      f["visible"] = true;
-      return f;
-    });
-  });
-  return _coreFields;
+  if (!fieldsMeta || fieldsMeta.length === 0) return [];
+  const core = CORE_FIELDS.map((fieldname) => {
+    let meta = getField(fieldname);
+    if (!meta) return null;
+    meta = parseField(meta, ticket.value.doc);
+    meta["required"] = meta.reqd;
+    const f = getFieldInFormat({ fieldname }, meta);
+    // Always shown: an unset priority or team is exactly when you need the control.
+    f.visible = true;
+    return f;
+  }).filter(Boolean);
+  return [...core, ...customFields.value];
 });
 
 const customFields = computed(() => {
@@ -604,8 +586,10 @@ const customFields = computed(() => {
     "agent_group",
     "subject",
     "status",
-    // Rendered by the AI Assist panel, not as a raw JSON field in Ticket Info.
+    // Both rendered by the AI Assist card: the suggestions JSON is never shown
+    // raw, and the summary appears there in full rather than truncated here.
     "pyek_suggestions",
+    "pyek_summary",
   ];
   customFields = customFields.filter((f) => !_coreFields.includes(f.fieldname));
   let _customFields = customFields
@@ -634,12 +618,12 @@ const customFields = computed(() => {
 const openedSections = useStorage(
   "openedSections",
   {
+    details: true,
     aiAssist: true,
     // Folded by default. What you land on is the ask, the blocker and the button;
     // the detail is one click away and its count says whether it's worth the click.
     aiDetail: false,
     aiKb: false,
-    ticketInfo: false,
     recentTickets: false,
     similarTickets: false,
   },
@@ -1145,15 +1129,20 @@ useShortcut({ key: "t", shift: true }, () => {
 </script>
 
 <style scoped>
-:deep(.form-control-core button) {
-  @apply text-base rounded h-7 py-1.5 border border-outline-gray-2 bg-surface-base placeholder-ink-gray-4 hover:border-outline-gray-3 hover:shadow-sm focus:bg-surface-base focus:border-outline-gray-4 focus:shadow-sm focus:ring-0 focus-visible:ring-0 text-ink-gray-8 transition-colors w-full dark:[color-scheme:dark];
-}
-:deep(.form-control-core button > div) {
-  @apply truncate;
-}
+/* The .form-control-core rules that used to live here are gone with the boxed
+   Priority/Team controls — those fields render through TicketField now, which
+   brings its own quiet styling.
 
-:deep(.form-control-core div) {
-  width: 100%;
-  display: flex;
+   AssignTo draws an outline Button. Flatten it so the assignee row matches the
+   field rows either side of it, and let the outline come back on hover, which is
+   the same affordance TicketField uses for "this is editable". */
+:deep(.assignee-row button) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+:deep(.assignee-row button:hover) {
+  border-color: var(--outline-gray-2);
+  background: var(--surface-gray-1);
 }
 </style>
