@@ -20,7 +20,7 @@
               >
                 <LucideInfo class="size-3" />
               </span>
-              <span class="text-base font-semibold text-ink-gray-8 select-none">
+              <span class="text-base-semibold text-ink-gray-8 select-none">
                 {{ __("Details") }}
               </span>
               <LucideChevronRight
@@ -86,7 +86,7 @@
                 >
                   <LucideSparkles class="size-3" />
                 </span>
-                <span class="text-base font-semibold text-ink-gray-8 select-none">
+                <span class="text-base-semibold text-ink-gray-8 select-none">
                   {{ __("AI Assist") }}
                 </span>
               </span>
@@ -450,7 +450,7 @@
                     >
                       <component :is="section.icon" class="size-3" />
                     </span>
-                    <span class="text-base font-semibold text-ink-gray-8 select-none">
+                    <span class="text-base-semibold text-ink-gray-8 select-none">
                       {{ __(section.label) }}
                     </span>
                   </span>
