@@ -392,7 +392,7 @@
 
             <!-- One CTA, and it is the actual next action: chase the missing
                  details when something's blocking, otherwise draft the reply. -->
-            <template v-if="buildSheet || itAssist">
+            <template v-if="ai.summary || buildSheet || itAssist">
               <Button
                 v-if="!replyDraft"
                 class="w-full mt-3"
@@ -867,6 +867,9 @@ const missingOpen = ref(false);
 // runs generateReply, which already writes the "could you confirm" line.
 const ctaLabel = computed(() => {
   const n = missing.value.items.length;
+  // Named for what it actually produces. With no build sheet or checklist there is
+  // nothing to report back, so promising a "reply" would oversell an acknowledgement.
+  if (!buildSheet.value && !itAssist.value) return __("Draft acknowledgement");
   if (!n) return __("Draft reply");
   if (buildSheet.value) {
     return n === 1
@@ -962,7 +965,22 @@ const replyCopied = ref(false);
 function generateReply() {
   const bs = buildSheet.value;
   const it = itAssist.value;
-  if (!bs && !it) return;
+  // Summary-only tickets — the ones the enricher analysed but couldn't put in a
+  // build-sheet or IT branch, mostly request type "Other" — used to get no button
+  // at all, which is about a third of currently-classified tickets. They get a
+  // plain acknowledgement. Deliberately does NOT echo pyek_summary back: it's
+  // written in the third person for an agent to read ("Request to add daily
+  // utilization section…") and reads oddly returned to the person who wrote in.
+  if (!bs && !it) {
+    replyDraft.value = [
+      "Hi,",
+      "",
+      "Thanks for flagging this — I'm looking into it now and will follow up shortly.",
+      "",
+      "Thanks!",
+    ].join("\n");
+    return;
+  }
   const lines = ["Hi,", ""];
   if (bs) {
     if (artifactUrls.value.length) {
