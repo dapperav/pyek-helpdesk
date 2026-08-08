@@ -92,7 +92,7 @@
               @click="goToTicket(ticket.name)"
             >
               <!-- ID -->
-              <div class="text-ink-gray-6 font-base">{{ ticket.name }}</div>
+              <div class="text-ink-gray-6">{{ ticket.name }}</div>
 
               <!-- Subject -->
               <div class="truncate font-medium max-w-[90%]">

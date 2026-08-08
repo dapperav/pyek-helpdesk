@@ -36,10 +36,10 @@
           @click="handleSearchArticleClick(a)"
           target="_blank"
         >
-          <dt class="font-base">{{ a.subject }} - {{ a.headings }}</dt>
+          <dt>{{ a.subject }} - {{ a.headings }}</dt>
           <!-- eslint-disable-next-line vue/no-v-html -->
           <dd
-            class="font-base text-p-sm text-ink-gray-5 line-clamp-1"
+            class="text-p-sm text-ink-gray-5 line-clamp-1"
             v-html="a.description"
           ></dd>
         </RouterLink>
@@ -54,8 +54,8 @@
   >
     <LucideSearch class="size-8 text-ink-gray-3" />
     <div class="flex items-center flex-col justify-center">
-      <p class="font-base">No answers found</p>
-      <span class="font-base text-p-sm text-ink-gray-5 text-center"
+      <p>No answers found</p>
+      <span class="text-p-sm text-ink-gray-5 text-center"
         >Rephrase the question and try again with some keywords</span
       >
     </div>
@@ -66,8 +66,8 @@
   >
     <LucideSearch class="size-8 text-ink-gray-3" />
     <div class="flex items-center flex-col justify-center">
-      <p class="font-base">Searching...</p>
-      <span class="font-base text-p-sm text-ink-gray-5 text-center"
+      <p>Searching...</p>
+      <span class="text-p-sm text-ink-gray-5 text-center"
         >Please wait while we search for the answers</span
       >
     </div>
