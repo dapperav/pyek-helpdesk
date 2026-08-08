@@ -1,35 +1,37 @@
 <template>
-  <div class="mt-4 flex items-center justify-start gap-2.5">
-    <Avatar :label="contact.data?.name" :image="contactImage" size="2xl" />
-    <div class="flex flex-col gap-1.5">
-      <Tooltip :text="contact.data?.name || contact.data?.email_id">
-        <div class="flex gap-2 items-center">
-          <p class="text-ink-gray-8 text-2xl-medium max-w-[170px] truncate">
-            {{ contact.data?.name || contact.data?.email_id }}
-          </p>
-          <ExternalLinkIcon
-            v-if="!contact.loading"
-            class="size-4 text-ink-gray-6 cursor-pointer"
-            @click="openContact(contact.data.name)"
-          />
-        </div>
-      </Tooltip>
-      <div class="flex gap-1.5" v-if="isCallingEnabled">
-        <Tooltip :text="contact.data?.email_id">
-          <!-- Email Button -->
-          <Button size="sm" @click="toggleEmailBox()">
-            <template #icon>
-              <EmailIcon class="size-4" />
-            </template>
-          </Button>
-          <!-- Call Button -->
-          <Button size="sm" v-if="isCallingEnabled" @click="callContact">
-            <template #icon>
-              <PhoneIcon class="size-4" />
-            </template>
-          </Button>
-        </Tooltip>
+  <!-- One line. The name was on its own row under a 2xl avatar, which cost about
+       56px to restate something the email header shows a few inches to the left.
+       The avatar still binds Contact.image, so a synced profile photo appears
+       here with no further change. -->
+  <div class="mt-3 flex items-center gap-2">
+    <Avatar :label="contact.data?.name" :image="contactImage" size="lg" />
+    <Tooltip :text="contact.data?.name || contact.data?.email_id">
+      <div class="flex gap-1.5 items-center min-w-0">
+        <p class="text-base font-medium text-ink-gray-8 max-w-[180px] truncate">
+          {{ contact.data?.name || contact.data?.email_id }}
+        </p>
+        <ExternalLinkIcon
+          v-if="!contact.loading"
+          class="size-3.5 shrink-0 text-ink-gray-5 cursor-pointer hover:text-ink-gray-8"
+          @click="openContact(contact.data.name)"
+        />
       </div>
+    </Tooltip>
+    <div class="flex gap-1.5 ml-auto" v-if="isCallingEnabled">
+      <Tooltip :text="contact.data?.email_id">
+        <!-- Email Button -->
+        <Button size="sm" @click="toggleEmailBox()">
+          <template #icon>
+            <EmailIcon class="size-4" />
+          </template>
+        </Button>
+        <!-- Call Button -->
+        <Button size="sm" v-if="isCallingEnabled" @click="callContact">
+          <template #icon>
+            <PhoneIcon class="size-4" />
+          </template>
+        </Button>
+      </Tooltip>
     </div>
     <SetContactPhoneModal
       v-model="showPhoneModal"

@@ -564,10 +564,13 @@ const coreFields = computed(() => {
   if (!fieldsMeta || fieldsMeta.length === 0) {
     return [];
   }
+  // ticket_type and customer are upstream Frappe Helpdesk fields, built for a
+  // customer-support product. On this site they are set on 0 of 312 tickets —
+  // PMIT is an internal helpdesk with no customer accounts — so they were two
+  // permanently-empty controls eating roughly 140px at the top of every sidebar.
+  // Priority (312/312) and Team (306/312) earn their place and now share a row.
   const _coreFields = [
-    { group: true, fields: [getField("ticket_type"), getField("priority")] },
-    { group: false, fields: [getField("customer")] },
-    { group: true, fields: [getField("agent_group")] },
+    { group: true, fields: [getField("priority"), getField("agent_group")] },
   ];
 
   _coreFields.forEach((section) => {
@@ -1130,10 +1133,8 @@ const showRecentSimilarTickets = computed(() => {
   );
 });
 
-useShortcut("t", () => {
-  fieldRefs.value?.ticket_type?.$el?.querySelector("button")?.click();
-});
-
+// No "t" shortcut for ticket_type any more — that field no longer renders here,
+// so the binding would have been a silent no-op.
 useShortcut("p", () => {
   fieldRefs.value?.priority?.$el?.querySelector("button")?.click();
 });
