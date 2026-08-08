@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import timedelta
 from email.utils import parseaddr
@@ -89,6 +90,24 @@ ACK_FALLBACK = "fallback"
 ACK_ENRICHMENT_GRACE_SECONDS = 5 * 60
 # Bound the sweep so one slow cycle can't fan out into a huge mail batch.
 ACK_SWEEP_BATCH = 50
+
+# --- Ubiquiti camera-drop auto-close -----------------------------------------
+# Ubiquiti mail is 106 of 314 tickets on this site, and 64 of those are a single
+# camera dropping and reconnecting: "Typhoon Texas Austin NVR's Cash Control has
+# gone offline." Nobody triages them, but they carry an SLA, so they were the
+# largest single contributor to SLA failure (63% of all failures came from
+# machine senders). They are closed on arrival instead.
+#
+# The match is deliberately NARROW and matches the POSSESSIVE form only. "the
+# NVR's Front Gate Scanner" is one camera; a bare "NVR has gone offline" would be
+# the recorder itself, and "Cowabunga Bay: Shadow Console Disconnected" is a whole
+# site — both must stay open, and neither matches. Anything unrecognised stays a
+# normal ticket, so an alert shape we have never seen fails safe rather than
+# closing silently. Validated against all 106 real Ubiquiti tickets: 64 match, and
+# every one of them is an offline/reconnected camera event.
+AUTO_CLOSE_SENDER_HINT = "ui.com"
+AUTO_CLOSE_SUBJECT_RE = re.compile(r"NVR['’ʼ]s\b", re.IGNORECASE)
+AUTO_CLOSE_FIELD = "pyek_auto_closed"
 
 
 def _split_ack_patterns(raw) -> list:
@@ -237,6 +256,8 @@ class HDTicket(Document):
         if self.get("description"):
             self.create_communication_via_contact(self.description, new_ticket=True)
             self.handle_inline_media_new_ticket()
+
+        self._auto_close_if_camera_alert()
 
         send_ack_email = frappe.db.get_single_value(
             "HD Settings", "send_acknowledgement_email"
@@ -946,6 +967,46 @@ class HDTicket(Document):
         except Exception:
             frappe.log_error(frappe.get_traceback(), "HD ack suppression check failed")
             return False
+
+    def _is_camera_drop_alert(self) -> bool:
+        """A single Ubiquiti camera going offline or coming back.
+
+        Narrow on purpose — see AUTO_CLOSE_SUBJECT_RE. Both halves must hold: the
+        sender is Ubiquiti AND the subject uses the possessive "NVR's <camera>".
+        A whole-recorder or whole-site alert matches neither and stays open.
+        """
+        _, addr = parseaddr(self.raised_by or "")
+        sender = (addr or self.raised_by or "").lower()
+        if AUTO_CLOSE_SENDER_HINT not in sender:
+            return False
+        return bool(AUTO_CLOSE_SUBJECT_RE.search(self.subject or ""))
+
+    def _auto_close_if_camera_alert(self):
+        """Close camera-drop alerts on arrival so they never enter the queue.
+
+        Flagged with pyek_auto_closed rather than closed silently, so "how often
+        did the Front Gate Scanner drop last month" is still answerable — the
+        record is kept, only the triage is skipped.
+
+        Never allowed to break ticket creation: if the marker field isn't
+        provisioned, or anything else fails, the ticket is left exactly as it
+        would have been and the error is logged.
+        """
+        try:
+            if not self._is_camera_drop_alert():
+                return
+            self.db_set("status", "Closed", update_modified=False)
+            try:
+                self.db_set(AUTO_CLOSE_FIELD, 1, update_modified=False)
+            except Exception:
+                # Field not provisioned yet — closing is still the right outcome,
+                # it just won't show up in the camera-drop report until it is.
+                frappe.log_error(
+                    frappe.get_traceback(), "HD auto-close marker not set"
+                )
+            log_ticket_activity(self.name, "auto-closed a camera offline alert")
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "HD camera auto-close failed")
 
     def _defer_or_send_acknowledgement(self):
         """Hand the acknowledgement to the scheduled sweep instead of sending now.
