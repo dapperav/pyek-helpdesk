@@ -79,6 +79,10 @@
     @update="ticket.reload()"
   />
   <TicketSubjectModal v-model="showSubjectDialog" />
+  <TicketResolutionModal
+    v-model="showResolutionDialog"
+    @closed="activities.reload()"
+  />
 </template>
 
 <script setup lang="ts">
@@ -126,6 +130,7 @@ import { IndicatorIcon } from "../icons";
 import MoveTeamButton from "./MoveTeamButton.vue";
 import TicketNavigation from "./TicketNavigation.vue";
 import TicketSLA from "./TicketSLA.vue";
+import TicketResolutionModal from "./TicketResolutionModal.vue";
 import TicketSubjectModal from "./TicketSubjectModal.vue";
 const { isAdmin } = useAuthStore();
 const { $dialog } = globalStore();
@@ -146,6 +151,7 @@ const ticket = inject(TicketSymbol)!;
 const customizations = inject(CustomizationSymbol)!;
 const activities = inject(ActivitiesSymbol)!;
 const showSubjectDialog = ref(false);
+const showResolutionDialog = ref(false);
 
 const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
 const statusDropdown = computed(() => {
@@ -155,8 +161,15 @@ const statusDropdown = computed(() => {
     label: o.label_agent,
     value: o.label_agent,
     onClick: () => {
-      notifyTicketUpdate("Status", o.label_agent);
       if (ticket.value.doc.status === o.label_agent) return;
+      // Closing is the only moment anyone knows what fixed it, and 53 of the 60
+      // most recently closed tickets captured nothing at all. Ask once, here.
+      // Skippable, and skipped entirely if a resolution is already recorded.
+      if (o.label_agent === "Closed" && !ticket.value.doc.pyek_resolution) {
+        showResolutionDialog.value = true;
+        return;
+      }
+      notifyTicketUpdate("Status", o.label_agent);
       ticket.value.setValue.submit(
         { status: o.label_agent },
         {
