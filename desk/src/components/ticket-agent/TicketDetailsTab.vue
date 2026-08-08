@@ -67,361 +67,332 @@
               />
             </div>
           </template>
-          <div class="px-4 pb-5">
-            <!-- Identity: what kind of job this is, and the re-run remedy for when
-                 the AI got it wrong — right next to the content it fixes. -->
-            <div class="flex items-start gap-2 mb-2.5">
-              <div class="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
+          <div class="px-4 pb-4">
+            <!-- Identity + the re-run remedy, on one line. -->
+            <div class="flex items-center gap-1.5 mb-2">
+              <span
+                v-if="identity.primary"
+                class="inline-flex items-center rounded bg-surface-gray-3 px-1.5 py-0.5 text-xs font-semibold text-ink-gray-8 truncate max-w-[170px]"
+              >
+                {{ identity.primary }}
+              </span>
+              <span
+                v-if="identity.park"
+                class="inline-flex items-center gap-1.5 rounded border border-outline-gray-2 px-1.5 py-0.5 text-xs text-ink-gray-7 shrink-0"
+              >
                 <span
-                  v-if="identity.primary"
-                  class="inline-flex items-center rounded-md bg-surface-gray-3 px-2 py-0.5 text-xs font-semibold text-ink-gray-8 max-w-full truncate"
-                >
-                  {{ identity.primary }}
-                </span>
-                <span
-                  v-if="identity.park"
-                  class="inline-flex items-center gap-1.5 rounded-md border border-outline-gray-2 px-2 py-0.5 text-xs text-ink-gray-7 max-w-full"
-                >
-                  <span
-                    class="size-2 rounded-full shrink-0"
-                    :style="{ backgroundColor: identity.parkColor }"
-                  />
-                  <span class="truncate">{{ identity.park }}</span>
-                </span>
-              </div>
+                  class="size-1.5 rounded-full shrink-0"
+                  :style="{ backgroundColor: identity.parkColor }"
+                />
+                {{ identity.park }}
+              </span>
               <Tooltip
                 v-if="rerunState === 'idle'"
                 :text="
                   __(
-                    'Re-analyses the AI fields. Priority and category stay as you set them.'
+                    'Re-run the AI on this ticket. Priority and category stay as you set them.'
                   )
                 "
               >
                 <button
                   type="button"
-                  class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-outline-gray-2 px-2 py-1 text-xs text-ink-gray-6 hover:bg-surface-gray-2 hover:text-ink-gray-8 transition-colors"
+                  class="ml-auto grid size-6 shrink-0 place-items-center rounded border border-outline-gray-2 text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-8 transition-colors"
                   @click="rerunAI"
                 >
                   <LucideRefreshCw class="size-3" />
-                  {{ __("Re-run") }}
                 </button>
               </Tooltip>
               <Tooltip
                 v-else
                 :text="
                   __(
-                    'The enricher picks this up on its next pass. The panel updates on its own.'
+                    'Queued. The enricher picks this up on its next pass and the panel updates on its own.'
                   )
                 "
               >
                 <span
-                  class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-surface-gray-2 px-2 py-1 text-xs text-ink-gray-5"
+                  class="ml-auto grid size-6 shrink-0 place-items-center rounded bg-surface-gray-2 text-ink-gray-5"
                 >
                   <LucideHourglass class="size-3" />
-                  {{ __("Queued") }}
                 </span>
               </Tooltip>
             </div>
 
+            <!-- Clamped: the full text is in the ticket body a few inches left. -->
             <p
               v-if="ai.summary"
-              class="text-sm text-ink-gray-8 leading-relaxed mb-2"
+              ref="summaryEl"
+              class="text-sm text-ink-gray-7 leading-normal"
+              :class="{ 'line-clamp-2': !summaryExpanded }"
             >
               {{ ai.summary }}
             </p>
-
-            <!-- Category / system / due, as one line that wraps like prose rather
-                 than as fixed-width rows that each wrap on their own. -->
-            <p
-              v-if="identity.meta.length || dueLabel"
-              class="text-xs text-ink-gray-5 leading-relaxed mb-4"
+            <button
+              v-if="ai.summary && (summaryOverflows || summaryExpanded)"
+              type="button"
+              class="mt-0.5 text-xs text-ink-blue-6 hover:underline"
+              @click="summaryExpanded = !summaryExpanded"
             >
-              <template v-for="(part, i) in identity.meta" :key="i">
-                <span v-if="i" class="text-ink-gray-3 px-1">·</span>{{ part }}
-              </template>
-              <template v-if="dueLabel">
-                <span v-if="identity.meta.length" class="text-ink-gray-3 px-1"
-                  >·</span
-                >
-                <span class="text-ink-gray-7 font-medium"
-                  >{{ __("Due") }} {{ dueLabel }}</span
-                >
-              </template>
-            </p>
+              {{ summaryExpanded ? __("less") : __("more") }}
+            </button>
 
-            <!-- The job: build sheet (POS) or the action checklist (IT). The only
-                 carded block in the panel, so the eye lands on the work first. -->
             <div
-              v-if="jobKind"
-              class="rounded-lg border overflow-hidden mb-3"
-              :class="urgent ? 'border-outline-red-2' : 'border-outline-gray-2'"
+              v-if="dueLabel"
+              class="flex items-center gap-1.5 mt-1.5 text-xs text-ink-gray-6"
+            >
+              <LucideCalendar class="size-3 shrink-0" />
+              {{ __("Due") }}
+              <span class="font-semibold text-ink-gray-8">{{ dueLabel }}</span>
+            </div>
+
+            <!-- The blocker. A coloured edge reads faster than a tinted box, and a
+                 single short item goes inline rather than costing a heading plus a
+                 list. Longer items stay foldable so they can't push the CTA down. -->
+            <div
+              v-if="missing.items.length"
+              class="mt-2.5 rounded-r border-l-[3px] border-outline-amber-5 bg-surface-amber-1 px-2.5 py-1.5"
             >
               <button
                 type="button"
-                class="flex w-full items-center gap-2 border-b px-3 py-2 text-left"
-                :class="
-                  urgent
-                    ? 'bg-surface-red-1 border-outline-red-2'
-                    : 'bg-surface-gray-2 border-outline-gray-1'
-                "
-                @click="openedSections.aiJob = !openedSections.aiJob"
+                class="flex w-full items-start gap-2 text-left"
+                :class="{ 'cursor-default': missing.inline }"
+                @click="missing.inline || (missingOpen = !missingOpen)"
+              >
+                <LucideTriangleAlert
+                  class="size-3.5 shrink-0 mt-0.5 text-ink-amber-6"
+                />
+                <span class="text-xs leading-snug text-ink-gray-8 min-w-0">
+                  {{ missing.headline }}
+                </span>
+                <LucideChevronRight
+                  v-if="!missing.inline"
+                  class="ml-auto size-3.5 shrink-0 mt-0.5 text-ink-gray-5"
+                  :class="{ 'rotate-90': missingOpen }"
+                />
+              </button>
+              <ul
+                v-if="!missing.inline"
+                v-show="missingOpen"
+                class="mt-1 pl-5 space-y-0.5"
+              >
+                <li
+                  v-for="(item, i) in missing.items"
+                  :key="i"
+                  class="flex gap-1.5 text-xs leading-snug text-ink-gray-7"
+                >
+                  <span class="text-ink-gray-4 shrink-0">·</span>
+                  <span class="min-w-0 break-words">{{ item }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <!-- The job, folded by default. The count is what makes a folded strip
+                 worth opening — a bare label isn't. -->
+            <template v-if="jobKind">
+              <button
+                type="button"
+                class="mt-2.5 flex w-full items-center gap-2 border-t border-outline-gray-1 pt-2 pb-1 text-left"
+                @click="openedSections.aiDetail = !openedSections.aiDetail"
               >
                 <LucideClipboardList
                   v-if="jobKind === 'pos'"
-                  class="size-3.5 shrink-0 text-ink-gray-6"
+                  class="size-3.5 shrink-0 text-ink-gray-5"
                 />
                 <LucideListChecks
                   v-else
-                  class="size-3.5 shrink-0 text-ink-gray-6"
+                  class="size-3.5 shrink-0 text-ink-gray-5"
                 />
                 <span
-                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-7"
+                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-6"
                 >
                   {{ jobTitle }}
                 </span>
                 <span
+                  class="rounded-full border px-1.5 text-[10px] font-bold tabular-nums"
+                  :class="
+                    jobCountActive
+                      ? 'border-outline-blue-2 bg-surface-blue-1 text-ink-blue-6'
+                      : 'border-outline-gray-2 bg-surface-gray-2 text-ink-gray-5'
+                  "
+                >
+                  {{ jobCount }}
+                </span>
+                <span
                   v-if="urgent"
-                  class="rounded bg-surface-red-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-red-7"
+                  class="rounded bg-surface-red-2 px-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-red-7"
                 >
                   {{ __("Urgent") }}
                 </span>
-                <span class="ml-auto text-xs text-ink-gray-5 shrink-0">
-                  {{ jobSource }}
-                </span>
                 <LucideChevronRight
-                  class="size-3.5 shrink-0 text-ink-gray-5"
-                  :class="{ 'rotate-90': openedSections.aiJob }"
+                  class="ml-auto size-3.5 shrink-0 text-ink-gray-5"
+                  :class="{ 'rotate-90': openedSections.aiDetail }"
                 />
               </button>
-              <div v-show="openedSections.aiJob" class="p-3">
+              <div v-show="openedSections.aiDetail" class="pb-1">
                 <dl
                   v-if="jobRows.length"
-                  class="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2.5 gap-y-2 items-baseline"
+                  class="grid grid-cols-[88px_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-baseline"
                 >
                   <template v-for="row in jobRows" :key="row.key">
                     <dt class="text-xs text-ink-gray-5 leading-snug break-words">
                       {{ row.label }}
                     </dt>
                     <dd
-                      class="text-sm font-medium text-ink-gray-8 leading-snug break-words"
+                      class="text-xs font-medium text-ink-gray-8 leading-snug break-words"
                     >
                       {{ row.value }}
                     </dd>
                   </template>
                 </dl>
-
-                <div v-if="steps.length">
-                  <div
-                    v-if="jobRows.length"
-                    class="border-t border-outline-gray-1 my-3"
-                  />
-                  <ul class="space-y-2">
-                    <li v-for="(step, i) in steps" :key="i">
-                      <button
-                        type="button"
-                        class="group flex w-full items-start gap-2.5 text-left"
-                        :aria-pressed="isStepDone(i)"
-                        @click="toggleStep(i)"
+                <ul
+                  v-if="steps.length"
+                  class="space-y-1.5"
+                  :class="{ 'mt-2': jobRows.length }"
+                >
+                  <li v-for="(step, i) in steps" :key="i">
+                    <button
+                      type="button"
+                      class="group flex w-full items-start gap-2 text-left"
+                      :aria-pressed="isStepDone(i)"
+                      @click="toggleStep(i)"
+                    >
+                      <span
+                        class="grid place-items-center size-4 shrink-0 mt-px rounded-full text-[9px] font-bold tabular-nums transition-colors"
+                        :class="
+                          isStepDone(i)
+                            ? 'bg-surface-green-2 text-ink-green-7'
+                            : 'bg-surface-gray-3 text-ink-gray-6 group-hover:bg-surface-gray-4'
+                        "
                       >
-                        <span
-                          class="grid place-items-center size-[18px] shrink-0 mt-px rounded-full text-[10px] font-bold tabular-nums transition-colors"
-                          :class="
-                            isStepDone(i)
-                              ? 'bg-surface-green-2 text-ink-green-7'
-                              : 'bg-surface-gray-3 text-ink-gray-6 group-hover:bg-surface-gray-4'
-                          "
-                        >
-                          <LucideCheck v-if="isStepDone(i)" class="size-3" />
-                          <template v-else>{{ i + 1 }}</template>
-                        </span>
-                        <span
-                          class="text-sm leading-relaxed min-w-0 break-words"
-                          :class="
-                            isStepDone(i)
-                              ? 'text-ink-gray-4 line-through'
-                              : 'text-ink-gray-7'
-                          "
-                        >
-                          {{ step }}
-                        </span>
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-
-                <div
-                  v-if="jobDate"
-                  class="flex items-center gap-1.5 mt-3 text-xs text-ink-gray-5"
-                >
-                  <LucideCalendar class="size-3.5 shrink-0" />
-                  <span>{{ jobDateLabel }}</span>
-                  <span class="font-medium text-ink-gray-8">{{ jobDate }}</span>
-                </div>
-
-                <!-- The buy-ticket URL is the build sheet's deliverable, so it
-                     lives with it rather than as a block of its own. -->
-                <div
-                  v-if="artifactUrls.length"
-                  class="mt-3 pt-3 border-t border-outline-gray-1"
-                >
-                  <p class="text-xs text-ink-gray-5 mb-1.5">
-                    {{ __("Buy-ticket link") }}
-                  </p>
-                  <a
-                    v-for="(url, i) in artifactUrls"
-                    :key="i"
-                    :href="url"
-                    target="_blank"
-                    rel="noopener"
-                    class="flex items-start gap-1.5 py-0.5 text-xs text-ink-blue-8 hover:underline"
-                  >
-                    <LucideExternalLink class="size-3.5 shrink-0 mt-px" />
-                    <span class="min-w-0 break-all">{{ url }}</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            <!-- What's blocking the job. Never collapsible. -->
-            <div
-              v-if="missing.items.length"
-              class="flex items-start gap-2.5 rounded-lg border border-outline-amber-2 bg-surface-amber-1 px-3 py-2.5 mb-4"
-            >
-              <LucideTriangleAlert
-                class="size-4 shrink-0 mt-0.5 text-ink-amber-6"
-              />
-              <div class="min-w-0">
-                <p class="text-sm font-semibold text-ink-gray-8 mb-1">
-                  {{ missing.heading }}
-                </p>
-                <p
-                  v-if="missing.items.length === 1"
-                  class="text-sm text-ink-gray-7 break-words"
-                >
-                  {{ missing.items[0] }}
-                </p>
-                <ul v-else class="space-y-1">
-                  <li
-                    v-for="(item, i) in missing.items"
-                    :key="i"
-                    class="flex gap-1.5 text-sm text-ink-gray-7"
-                  >
-                    <span class="text-ink-gray-4 shrink-0">•</span>
-                    <span class="min-w-0 break-words">{{ item }}</span>
+                        <LucideCheck v-if="isStepDone(i)" class="size-2.5" />
+                        <template v-else>{{ i + 1 }}</template>
+                      </span>
+                      <span
+                        class="text-xs leading-snug min-w-0 break-words"
+                        :class="
+                          isStepDone(i)
+                            ? 'text-ink-gray-4 line-through'
+                            : 'text-ink-gray-7'
+                        "
+                      >
+                        {{ step }}
+                      </span>
+                    </button>
                   </li>
                 </ul>
+                <div
+                  v-if="jobDate"
+                  class="flex items-center gap-1.5 mt-2 text-xs text-ink-gray-5"
+                >
+                  <LucideCalendar class="size-3 shrink-0" />
+                  {{ jobDateLabel }}
+                  <span class="font-medium text-ink-gray-8">{{ jobDate }}</span>
+                </div>
+                <a
+                  v-for="(url, i) in artifactUrls"
+                  :key="i"
+                  :href="url"
+                  target="_blank"
+                  rel="noopener"
+                  class="flex items-start gap-1.5 mt-2 text-xs text-ink-blue-6 hover:underline"
+                >
+                  <LucideExternalLink class="size-3 shrink-0 mt-0.5" />
+                  <span class="min-w-0 break-all">{{ url }}</span>
+                </a>
               </div>
-            </div>
+            </template>
 
-            <!-- Retrieved, not inferred: real articles, so they read as links.
-                 Shown even when empty — matching is deliberately strict and the
-                 silence should look like a decision, not a failure. -->
-            <div v-if="kbLoaded" class="mb-4">
+            <!-- Retrieved, not inferred. One line each: the ref as a tag, the title
+                 truncated. Three of these used to cost more than the job itself. -->
+            <template v-if="kbLoaded">
               <button
                 type="button"
-                class="flex w-full items-center gap-2 mb-2 text-left"
-                @click="openedSections.aiSops = !openedSections.aiSops"
+                class="mt-1 flex w-full items-center gap-2 border-t border-outline-gray-1 pt-2 pb-1 text-left"
+                @click="openedSections.aiKb = !openedSections.aiKb"
               >
                 <LucideBookOpen class="size-3.5 shrink-0 text-ink-gray-5" />
                 <span
-                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-6"
                 >
                   {{ __("Relevant SOPs") }}
                 </span>
-                <span class="ml-auto text-xs text-ink-gray-4 shrink-0">
-                  {{ __("knowledge base") }}
+                <span
+                  class="rounded-full border px-1.5 text-[10px] font-bold tabular-nums"
+                  :class="
+                    kbList.length
+                      ? 'border-outline-blue-2 bg-surface-blue-1 text-ink-blue-6'
+                      : 'border-outline-gray-2 bg-surface-gray-2 text-ink-gray-5'
+                  "
+                >
+                  {{ kbList.length }}
                 </span>
                 <LucideChevronRight
-                  class="size-3.5 shrink-0 text-ink-gray-5"
-                  :class="{ 'rotate-90': openedSections.aiSops }"
+                  class="ml-auto size-3.5 shrink-0 text-ink-gray-5"
+                  :class="{ 'rotate-90': openedSections.aiKb }"
                 />
               </button>
-              <div v-show="openedSections.aiSops">
+              <div v-show="openedSections.aiKb" class="pb-1">
                 <router-link
                   v-for="article in kbList"
                   :key="article.name"
                   :to="{ name: 'Article', params: { articleId: article.name } }"
-                  class="group block py-1"
+                  class="group flex items-center gap-2 py-1 min-w-0"
                 >
                   <span
                     v-if="article.ref"
-                    class="mr-1.5 rounded bg-surface-gray-2 px-1 py-0.5 font-mono text-[10px] font-semibold text-ink-gray-5"
+                    class="shrink-0 rounded bg-surface-gray-2 px-1 font-mono text-[10px] font-semibold text-ink-gray-5"
                   >
                     {{ article.ref }}
                   </span>
                   <span
-                    class="text-sm text-ink-blue-8 group-hover:underline break-words"
+                    class="text-xs text-ink-blue-6 group-hover:underline truncate min-w-0"
+                    :title="article.title"
                   >
                     {{ article.title }}
                   </span>
-                  <span
-                    v-if="article.category"
-                    class="block text-xs text-ink-gray-4 mt-0.5"
-                  >
-                    {{ article.category }}
-                  </span>
                 </router-link>
-                <div
-                  v-if="!kbList.length"
-                  class="flex items-start gap-2 rounded-lg border border-dashed border-outline-gray-2 bg-surface-gray-1 px-3 py-2.5"
-                >
-                  <LucideInfo class="size-4 shrink-0 mt-0.5 text-ink-gray-4" />
-                  <p class="text-sm text-ink-gray-5 min-w-0">
-                    <span class="font-medium text-ink-gray-7">
-                      {{ __("No SOP matched this ticket.") }}
-                    </span>
-                    {{
-                      __(
-                        "Matching is deliberately strict — a wrong procedure is worse than none."
-                      )
-                    }}
-                  </p>
-                </div>
+                <p v-if="!kbList.length" class="py-1 text-xs text-ink-gray-5">
+                  {{
+                    __(
+                      "No SOP matched. Matching is strict on purpose — a wrong procedure is worse than none."
+                    )
+                  }}
+                </p>
               </div>
-            </div>
+            </template>
 
-            <!-- Suggested reply (lazy, Phase 2c/3c — POS and IT) -->
-            <div v-if="buildSheet || itAssist">
-              <button
-                type="button"
-                class="flex w-full items-center gap-2 mb-2 text-left"
-                @click="openedSections.aiReply = !openedSections.aiReply"
-              >
-                <LucidePencil class="size-3.5 shrink-0 text-ink-gray-5" />
-                <span
-                  class="text-xs font-semibold uppercase tracking-wide text-ink-gray-5"
+            <!-- One CTA, and it is the actual next action: chase the missing
+                 details when something's blocking, otherwise draft the reply. -->
+            <template v-if="buildSheet || itAssist">
+              <Button
+                v-if="!replyDraft"
+                class="w-full mt-3"
+                variant="solid"
+                theme="blue"
+                :label="ctaLabel"
+                @click="generateReply"
+              />
+              <template v-else>
+                <div
+                  class="mt-3 rounded-md border border-outline-gray-2 bg-surface-gray-1 p-2.5 text-xs leading-relaxed text-ink-gray-8 whitespace-pre-wrap"
                 >
-                  {{ __("Suggested reply") }}
-                </span>
-                <span class="ml-auto text-xs text-ink-gray-4 shrink-0">
-                  {{ __("draft") }}
-                </span>
-                <LucideChevronRight
-                  class="size-3.5 shrink-0 text-ink-gray-5"
-                  :class="{ 'rotate-90': openedSections.aiReply }"
-                />
-              </button>
-              <div v-show="openedSections.aiReply" class="space-y-2">
-                <Button
-                  v-if="!replyDraft"
-                  :label="__('Generate')"
-                  variant="subtle"
-                  @click="generateReply"
-                />
-                <template v-else>
-                  <div
-                    class="rounded-lg border border-outline-gray-2 bg-surface-gray-1 p-2.5 text-sm text-ink-gray-8 whitespace-pre-wrap"
-                  >
-                    {{ replyDraft }}
-                  </div>
+                  {{ replyDraft }}
+                </div>
+                <div class="flex gap-2 mt-2">
                   <Button
+                    variant="solid"
+                    theme="blue"
                     :label="replyCopied ? __('Copied') : __('Copy reply')"
-                    variant="subtle"
                     @click="copyReply"
                   />
-                </template>
-              </div>
-            </div>
+                  <Button
+                    variant="ghost"
+                    :label="__('Discard')"
+                    @click="replyDraft = ''"
+                  />
+                </div>
+              </template>
+            </template>
           </div>
         </Section>
       </div>
@@ -554,7 +525,7 @@ import {
 } from "@/types";
 import { useStorage } from "@vueuse/core";
 import { Button, call, dayjs, toast, Tooltip } from "frappe-ui";
-import { computed, inject, onUnmounted, ref } from "vue";
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import LucideBookOpen from "~icons/lucide/book-open";
 import LucideCalendar from "~icons/lucide/calendar";
 import LucideCheck from "~icons/lucide/check";
@@ -565,7 +536,6 @@ import LucideExternalLink from "~icons/lucide/external-link";
 import LucideHourglass from "~icons/lucide/hourglass";
 import LucideInfo from "~icons/lucide/info";
 import LucideListChecks from "~icons/lucide/list-checks";
-import LucidePencil from "~icons/lucide/pencil";
 import LucideRefreshCw from "~icons/lucide/refresh-cw";
 import LucideSearch from "~icons/lucide/search";
 import LucideSparkles from "~icons/lucide/sparkles";
@@ -650,15 +620,22 @@ const customFields = computed(() => {
   return _customFields;
 });
 
-// aiJob / aiSops / aiReply are the AI panel's own subsections. mergeDefaults means
-// agents who already have the old three keys stored just gain the new ones.
+// aiDetail / aiKb are the AI panel's own subsections.
+//
+// They are deliberately NOT called aiJob / aiSops, which is what the previous
+// deploy used. mergeDefaults only fills in keys that are absent, so anyone who
+// already loaded that build has `aiJob: true` sitting in localStorage and would
+// keep landing on a fully expanded panel — they'd never see this change. New key
+// names give everyone the folded default once, and their own choice sticks after
+// that. The two stale keys are harmless; useStorage just ignores them.
 const openedSections = useStorage(
   "openedSections",
   {
     aiAssist: true,
-    aiJob: true,
-    aiSops: true,
-    aiReply: true,
+    // Folded by default. What you land on is the ask, the blocker and the button;
+    // the detail is one click away and its count says whether it's worth the click.
+    aiDetail: false,
+    aiKb: false,
     ticketInfo: false,
     recentTickets: false,
     similarTickets: false,
@@ -766,22 +743,40 @@ const hasAI = computed(() => {
 // The request type is the identity of the ticket, so it leads as a chip. When the
 // enricher couldn't classify one (it's null on plenty of real tickets) the category
 // is promoted into that slot instead — and then must not repeat in the meta line.
+// Category and system deliberately aren't repeated here: both are visible,
+// EDITABLE custom fields in the Ticket Info section below, so restating them
+// read-only at the top of the panel cost two lines and added nothing.
 const identity = computed(() => {
   const a = ai.value;
-  const categoryPromoted = !a.requestType && Boolean(a.category);
   const park = a.park ? parkLabel(a.park) : "";
   return {
     primary: a.requestType || a.category || "",
     park,
     parkColor: park ? parkColor(park) : "",
-    meta: [categoryPromoted ? "" : a.category, a.system].filter(
-      Boolean
-    ) as string[],
   };
 });
 
 const dueLabel = computed(() =>
   ai.value.dueDate ? formatDate(ai.value.dueDate) : ""
+);
+
+// The summary clamps to two lines — the full text is in the ticket body a few
+// inches to the left. Measure rather than guess from length, so "more" never
+// appears on a summary that already fits.
+const summaryEl = ref<HTMLElement | null>(null);
+const summaryExpanded = ref(false);
+const summaryOverflows = ref(false);
+
+function measureSummary() {
+  const el = summaryEl.value;
+  if (!el || summaryExpanded.value) return;
+  summaryOverflows.value = el.scrollHeight - el.clientHeight > 2;
+}
+
+onMounted(() => nextTick(measureSummary));
+watch(
+  () => [ai.value.summary, openedSections.value.aiAssist],
+  () => nextTick(measureSummary)
 );
 
 const steps = computed<string[]>(() => {
@@ -816,11 +811,22 @@ const jobTitle = computed(() => {
   return steps.value.length ? __("Suggested steps") : __("Access request");
 });
 
-// Says where the block came from: pulled out of the ticket, or proposed by the AI.
-const jobSource = computed(() => {
-  if (jobKind.value === "pos") return __("from the ticket");
-  return steps.value.length ? __("suggested") : __("from the ticket");
-});
+const doneCount = computed(
+  () => (stepsDone.value[ticketKey.value] || []).filter((i) => i < steps.value.length).length
+);
+
+// A folded strip is only worth opening if you can see what's behind it, so the
+// count is the affordance: how many fields, or how far through the checklist.
+const jobCount = computed(() =>
+  steps.value.length
+    ? `${doneCount.value}/${steps.value.length}`
+    : String(jobRows.value.length)
+);
+
+// Blue when there's something to go and do, grey once nothing's outstanding.
+const jobCountActive = computed(() =>
+  steps.value.length ? doneCount.value < steps.value.length : jobRows.value.length > 0
+);
 
 const urgent = computed(
   () => (buildSheet.value || itAssist.value)?.urgency === "high"
@@ -843,14 +849,44 @@ const missing = computed(() => {
   const raw = (buildSheet.value || itAssist.value)?.missing;
   const items: string[] = Array.isArray(raw) ? raw : [];
   const n = items.length;
-  const heading = buildSheet.value
-    ? n === 1
-      ? __("Confirm 1 detail before building")
-      : __("Confirm {0} details before building", [n])
-    : n === 1
-    ? __("Ask the requester for 1 detail")
-    : __("Ask the requester for {0} details", [n]);
-  return { items, heading };
+  const isPos = Boolean(buildSheet.value);
+  // POS returns short field labels ("start date"), which read best named inline on
+  // one line. IT returns whole questions, which don't fit — those get a headline
+  // and fold, so a long question can't push the CTA off screen.
+  const inline = n === 1 && items[0].length <= 40;
+  let headline: string;
+  if (inline) {
+    headline = isPos
+      ? __("Needs {0} before building", [items[0]])
+      : __("Ask the requester: {0}", [items[0]]);
+  } else if (isPos) {
+    headline =
+      n === 1
+        ? __("Needs 1 more detail before building")
+        : __("Needs {0} details before building", [n]);
+  } else {
+    headline =
+      n === 1
+        ? __("1 question for the requester")
+        : __("{0} questions for the requester", [n]);
+  }
+  return { items, inline, headline };
+});
+
+const missingOpen = ref(false);
+
+// The one CTA. It is the actual next action, not a generic label: chase what's
+// missing when something blocks the job, otherwise draft the reply. Either way it
+// runs generateReply, which already writes the "could you confirm" line.
+const ctaLabel = computed(() => {
+  const n = missing.value.items.length;
+  if (!n) return __("Draft reply");
+  if (buildSheet.value) {
+    return n === 1
+      ? __("Ask for the missing detail")
+      : __("Ask for the {0} missing details", [n]);
+  }
+  return n === 1 ? __("Ask the question") : __("Ask the {0} questions", [n]);
 });
 
 // Which steps an agent has worked through. Deliberately local: there's no backend
