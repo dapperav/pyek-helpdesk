@@ -215,6 +215,16 @@ def get_communications(ticket: str):
             message=frappe.get_traceback(),
         )
 
+    # Same contract: a failure here leaves every email rendering exactly as it
+    # did before, which is a working ticket rather than a broken one.
+    try:
+        mark_compact_communications(communications)
+    except Exception:
+        frappe.log_error(
+            title=f"HD compact render pass failed for {ticket}",
+            message=frappe.get_traceback(),
+        )
+
     return communications
 
 
@@ -352,6 +362,115 @@ def get_attachments(doctype, name):
 # a document somebody meant to send. Measured over the live corpus: the real
 # attachments start around 60KB, the boilerplate clusters under 1KB.
 SIGNATURE_MAX_BYTES = 4096
+
+
+# --- compact rendering of short automated alerts -----------------------------
+#
+# A machine-sent alert is almost entirely layout scaffolding: across 520 live
+# communications the median is 10,727 characters of HTML carrying 453
+# characters of visible text, about 4%. Ticket 0349 is 12,155 characters with
+# eight nested tables for five lines of content, which is why one short alert
+# fills the whole reading pane and gets its own scrollbar inside the feed's.
+#
+# This is DELIBERATELY NARROW. Measured over the real senders, flattening is
+# only an improvement for the short ones:
+#
+#   Ubiquiti device alerts   5 lines    -> much better compact
+#   disputes@ refunds        39 lines   -> label/value pairs split across
+#                                          lines, so flattening reads worse
+#   config check reports     316 lines  -> the table IS the content
+#
+# So anything over the line budget keeps its original HTML and renders exactly
+# as it does today. Nothing is allowed to get worse than the status quo.
+COMPACT_MAX_LINES = 15
+COMPACT_MAX_CHARS = 900
+
+# Chrome that every one of these alerts carries and nobody reads.
+_COMPACT_NOISE = re.compile(
+    r"you don't often get email|learn why this is important|unsubscribe|"
+    r"view (this|it) in (your )?browser|all rights reserved|privacy policy|"
+    r"if you need further assistance|contact \w+ support|"
+    r"^\s*(sent from|this is an automated)|"
+    # Postal footer: "685 Third Ave. New York, NY 10017"
+    r"\b[A-Z]{2}\s+\d{5}(-\d{4})?\b",
+    re.IGNORECASE,
+)
+
+
+def _automated_sender(sender: str) -> bool:
+    """Same definition of 'machine' the ack suppression and the AI skip use."""
+    from helpdesk.helpdesk.doctype.hd_ticket.hd_ticket import (
+        _AUTOMATED_SENDER_DEFAULTS,
+        _split_ack_patterns,
+    )
+
+    addr = (sender or "").lower()
+    patterns = list(_AUTOMATED_SENDER_DEFAULTS) + _split_ack_patterns(
+        frappe.db.get_single_value("HD Settings", "pyek_ai_excluded_senders")
+    )
+    return any(p in addr for p in patterns)
+
+
+def _compact_lines(html: str):
+    """Visible lines of an email, or None when flattening would lose something.
+
+    Uses the block structure rather than a naive tag strip so a table row
+    doesn't run into the next one. Returns None for anything long enough that
+    the markup is probably carrying meaning.
+    """
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "head", "title"]):
+        tag.decompose()
+    # Block boundaries become newlines; cells within a row stay on one line so
+    # "Device Name: Typhoon Texas Austin" survives as a single readable line.
+    for tag in soup.find_all(["br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4"]):
+        tag.append("\n")
+    for tag in soup.find_all(["td", "th"]):
+        tag.append(" ")
+
+    lines = []
+    for raw in soup.get_text().replace("\xa0", " ").split("\n"):
+        line = " ".join(raw.split())
+        if not line or _COMPACT_NOISE.search(line):
+            continue
+        # These alerts lay their fields out as one table row per label and
+        # another per value, so a bare strip leaves "Device Name:" stranded
+        # above "Typhoon Texas Austin". Rejoin the pair.
+        if lines and lines[-1].endswith(":"):
+            lines[-1] = f"{lines[-1]} {line}"
+            continue
+        # Alert mail repeats its own subject in the body; a repeat straight
+        # after the same line is never information.
+        if lines and lines[-1] == line:
+            continue
+        lines.append(line)
+
+    # A label with nothing after it tells the reader less than nothing.
+    lines = [x for x in lines if not x.endswith(":")]
+    if not lines:
+        return None
+    if len(lines) > COMPACT_MAX_LINES:
+        return None
+    if sum(len(x) for x in lines) > COMPACT_MAX_CHARS:
+        return None
+    return lines
+
+
+def mark_compact_communications(communications):
+    """Flag machine mail and, where it is short, precompute its readable lines.
+
+    Done server-side so the rule lives in one testable place and the panel
+    stays a renderer. `compact_lines` is None whenever the original HTML
+    should be shown, which is the default for anything uncertain.
+    """
+    for c in communications:
+        c["is_automated"] = _automated_sender(c.get("sender"))
+        c["compact_lines"] = (
+            _compact_lines(c.get("content")) if c["is_automated"] else None
+        )
 
 
 def _ticket_spread(content_hashes):

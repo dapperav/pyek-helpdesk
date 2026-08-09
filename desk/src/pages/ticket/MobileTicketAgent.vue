@@ -513,6 +513,8 @@ const _activities = computed(() => {
         name: email.name,
         deliveryStatus: email.delivery_status,
         isFirstEmail: idx === 0,
+        compactLines: email.compact_lines,
+        isAutomated: email.is_automated,
       };
     }
   );

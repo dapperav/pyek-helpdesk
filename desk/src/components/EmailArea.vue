@@ -96,7 +96,27 @@
       </template>
     </div>
     <div class="border-0 border-t my-3 border-outline-elevation-2 !-mx-3" />
-    <EmailContent :content="content" />
+    <!-- A short machine alert is ~4% text by weight: 12k of table markup for
+         four lines. Rendering those lines directly turns a 500px iframe with
+         its own scrollbar into four lines. Anything longer, and anything from
+         a person, keeps its original HTML. -->
+    <div v-if="compactLines?.length && !showOriginalEmail" class="flex flex-col">
+      <p
+        v-for="(line, i) in compactLines"
+        :key="i"
+        class="text-p-sm text-ink-gray-7"
+        :class="i === 0 && 'font-medium text-ink-gray-8'"
+      >
+        {{ line }}
+      </p>
+      <button
+        class="mt-2 self-start text-p-sm text-ink-gray-5 hover:text-ink-gray-7 underline underline-offset-2"
+        @click="showOriginalEmail = true"
+      >
+        {{ __("View original") }}
+      </button>
+    </div>
+    <EmailContent v-else :content="content" />
     <div v-if="attachments?.length" class="flex flex-wrap items-center gap-2">
       <AttachmentItem
         v-for="a in visibleAttachments"
@@ -162,7 +182,10 @@ const {
   content,
   name,
   deliveryStatus,
+  compactLines,
 } = props.activity;
+
+const showOriginalEmail = ref(false);
 
 const emit = defineEmits(["reply"]);
 const ticket = inject(TicketSymbol)!;
