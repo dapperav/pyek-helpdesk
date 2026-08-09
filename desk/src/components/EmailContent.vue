@@ -135,6 +135,11 @@ const htmlContent = computed(
   <!DOCTYPE html>
   <html>
   <head>
+    <!-- Without this the iframe falls back to a legacy encoding and mangles
+         every non-ASCII character the sender used: an em dash arrived as
+         "â€"" on ticket 0348. The stored content is correct UTF-8; only the
+         rendering was wrong. -->
+    <meta charset="utf-8" />
     <link rel="stylesheet" href="${cssHref.value}" />
     <base target="_blank" />
     <style>

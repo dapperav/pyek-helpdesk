@@ -226,13 +226,13 @@ watch(
   }
 );
 
-watch(
-  () => props.title,
-  () => {
-    scrollToLatestActivity();
-  },
-  { immediate: true }
-);
+// Deliberately NOT scrolling on mount or on tab change. `{ immediate: true }`
+// here is why every ticket opened at the bottom of its last email — and with
+// most PMIT tickets holding a single message, that landed you mid-email with
+// the start of the thread scrolled off. Opening at the top is the reading
+// position. Jumping to the newest message is still right *after you send
+// one*, which is why scrollToLatestActivity stays exposed and the hash watch
+// above keeps working for deep links.
 
 defineExpose({
   scrollToLatestActivity,

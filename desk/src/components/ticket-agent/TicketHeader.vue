@@ -50,15 +50,21 @@
         <!-- Status -->
         <Dropdown :options="statusDropdown" placement="right">
           <template #default="{ open }">
-            <Button :label="ticket.doc.status" ref="statusRef">
-              <template #prefix>
-                <IndicatorIcon
-                  :class="
-                    ticketStatusStore.getStatus(ticket.doc.status)?.parsed_color
-                  "
-                />
-              </template>
-            </Button>
+            <!-- Tinted pill in the status' own colour rather than a grey
+                 button with a coloured dot. The colour pairs come from the
+                 status store's colorMap, so a status added later is styled
+                 without touching this. -->
+            <button
+              ref="statusRef"
+              class="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-base font-medium"
+              :class="statusPillClass"
+            >
+              {{ ticket.doc.status }}
+              <FeatherIcon
+                :name="open ? 'chevron-up' : 'chevron-down'"
+                class="h-3.5 w-3.5"
+              />
+            </button>
           </template>
         </Dropdown>
         <!-- Core Actions + Custom Actions -->
@@ -154,6 +160,16 @@ const showSubjectDialog = ref(false);
 const showResolutionDialog = ref(false);
 
 const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
+
+// colorMap holds [textClass, bgClass] per colour name; fall back to the neutral
+// pair so an unmapped colour renders as a plain pill rather than an unstyled one.
+const statusPillClass = computed(() => {
+  const status = ticketStatusStore.getStatus(ticket.value?.doc?.status);
+  const pair =
+    ticketStatusStore.colorMap[status?.color] ||
+    ticketStatusStore.colorMap.Default;
+  return pair.join(" ");
+});
 const statusDropdown = computed(() => {
   const statuses =
     ticketStatusStore.statuses.data?.filter((s) => s.enabled) || [];

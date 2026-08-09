@@ -47,10 +47,17 @@
                   <AssignTo hideLabel />
                 </div>
               </div>
+              <!-- Choice fields read as pills rather than form text. Wrapped
+                   rather than restyled inside TicketField: that component
+                   renders every custom field everywhere, and its control must
+                   stay editable. Same :deep() approach as .assignee-row. -->
               <template v-for="field in detailFields">
-                <TicketField
+                <div
                   v-if="field.visible"
                   :key="field.fieldname"
+                  :class="pillClass(field)"
+                >
+                <TicketField
                   :ref="(el) => setFieldRef(field.fieldname, el)"
                   :field="field"
                   :value="field.value"
@@ -63,6 +70,7 @@
                       )
                   "
                 />
+                </div>
               </template>
             </div>
           </div>
@@ -532,6 +540,19 @@ import LucideTriangleAlert from "~icons/lucide/triangle-alert";
 import { parkColor, parkLabel } from "@/config/parks";
 import Section from "../Section.vue";
 import TicketField from "../TicketField.vue";
+
+// Only Select/Link fields get the pill; free text and dates keep looking like
+// inputs, because that is what they are.
+const PILL_FIELDTYPES = ["Select", "Link"];
+
+function pillClass(field: { fieldtype?: string; fieldname?: string; value?: any }) {
+  if (!PILL_FIELDTYPES.includes(field.fieldtype) || !field.value) return null;
+  if (field.fieldname === "priority") {
+    if (field.value === "Urgent") return ["pill-field", "pill-urgent"];
+    if (field.value === "High") return ["pill-field", "pill-high"];
+  }
+  return "pill-field";
+}
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
 
@@ -1154,6 +1175,31 @@ useShortcut({ key: "t", shift: true }, () => {
    AssignTo draws an outline Button. Flatten it so the assignee row matches the
    field rows either side of it, and let the outline come back on hover, which is
    the same affordance TicketField uses for "this is editable". */
+/* Pill treatment for choice fields. The control keeps its own click-to-edit
+   behaviour; only the resting appearance changes, and only when it holds a
+   value — an empty field stays a plain "Enter Category" prompt rather than an
+   empty coloured capsule. */
+:deep(.pill-field .form-control > button),
+:deep(.pill-field .form-control button[aria-haspopup]) {
+  border-radius: 9999px;
+  background: var(--surface-gray-2);
+  border-color: transparent;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+:deep(.pill-field .form-control > button:hover),
+:deep(.pill-field .form-control button[aria-haspopup]:hover) {
+  background: var(--surface-gray-3);
+}
+:deep(.pill-urgent .form-control > button) {
+  background: var(--surface-red-2);
+  color: var(--ink-red-7);
+}
+:deep(.pill-high .form-control > button) {
+  background: var(--surface-amber-2);
+  color: var(--ink-amber-7);
+}
+
 :deep(.assignee-row button) {
   border-color: transparent;
   background: transparent;
