@@ -44,19 +44,19 @@
           <EmailEditor
             ref="emailEditorRef"
             :label="
-              isMobileView ? 'Send' : isMac ? 'Send (⌘ + ⏎)' : 'Send (Ctrl + ⏎)'
+              isMobileView
+                ? 'Reply'
+                : isMac
+                ? 'Reply (⌘ + ⏎)'
+                : 'Reply (Ctrl + ⏎)'
             "
+            allow-reply-and-close
             placeholder="Hi John, we are looking into this issue."
             :ticketId="ticketId"
             :to-emails="toEmails"
             :cc-emails="ccEmails"
             :bcc-emails="bccEmails"
-            @submit="
-              () => {
-                showEmailBox = false;
-                emit('update');
-              }
-            "
+            @submit="onEmailSent"
             @discard="
               () => {
                 showEmailBox = false;
@@ -103,18 +103,25 @@
         </div>
       </div>
     </Transition>
+    <TicketResolutionModal
+      v-model="showResolutionDialog"
+      @closed="emit('update')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { CommentTextEditor, EmailEditor, TypingIndicator } from "@/components";
 import { CommentIcon, EmailIcon } from "@/components/icons/";
+import TicketResolutionModal from "@/components/ticket-agent/TicketResolutionModal.vue";
 import { useDevice } from "@/composables";
 import { useScreenSize } from "@/composables/screen";
 import { useShortcut } from "@/composables/shortcuts";
 import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
+import { useTicketStatusStore } from "@/stores/ticketStatus";
+import { TicketSymbol } from "@/types";
 import { onClickOutside } from "@vueuse/core";
-import { ref, watch } from "vue";
+import { inject, ref, watch } from "vue";
 
 const emit = defineEmits(["update"]);
 const content = defineModel("content");
@@ -139,6 +146,64 @@ function toggleCommentBox() {
     showEmailBox.value = false;
   }
   showCommentBox.value = !showCommentBox.value;
+}
+
+const ticket = inject(TicketSymbol, null);
+const ticketStatusStore = useTicketStatusStore();
+const showResolutionDialog = ref(false);
+
+const WAITING_STATUS = "Waiting on Customer";
+
+// Replying is the moment the ball changes court, and nothing was recording
+// that: every human ticket sat in Open or Closed with nothing in between, so
+// the queue couldn't tell "waiting on them" from "nobody has touched this".
+function onEmailSent(opts: { close?: boolean } = {}) {
+  showEmailBox.value = false;
+  emit("update");
+
+  if (!ticket?.value?.doc) return;
+  if (opts.close) {
+    closeAfterReply();
+  } else {
+    moveToWaiting();
+  }
+}
+
+function closeAfterReply() {
+  // Same rule the status dropdown uses: ask once, and don't nag if a
+  // resolution is already recorded. The reply has already gone out either
+  // way, so skipping the dialog still closes the ticket.
+  if (!ticket.value.doc.pyek_resolution) {
+    showResolutionDialog.value = true;
+    return;
+  }
+  setStatus("Closed");
+}
+
+function moveToWaiting() {
+  const current = ticket.value.doc.status;
+  if (current === WAITING_STATUS) return;
+
+  // Only from Open. Escalated and On Hold are states somebody chose
+  // deliberately, and a reply on a Resolved/Closed ticket shouldn't silently
+  // reopen it.
+  if (current !== "Open") return;
+
+  // Don't write a status that has been disabled out from under us.
+  if (!ticketStatusStore.getStatus(WAITING_STATUS)?.enabled) return;
+
+  setStatus(WAITING_STATUS);
+}
+
+function setStatus(status: string) {
+  ticket.value.setValue.submit(
+    { status },
+    {
+      onSuccess() {
+        emit("update");
+      },
+    }
+  );
 }
 
 function submitEmail() {
