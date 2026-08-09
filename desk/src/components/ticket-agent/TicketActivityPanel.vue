@@ -1,4 +1,37 @@
 <template>
+  <!-- The two actions people actually take, as buttons. Assigning was a small
+       text link and 88% of tickets never got assigned; closing was buried in
+       the status dropdown. Each hides once it no longer applies, so a ticket
+       already assigned to you and already closed shows no bar at all. -->
+  <div
+    v-if="showAssignSelf || showClose"
+    class="flex items-center gap-2 px-5 pt-3"
+  >
+    <Button
+      v-if="showAssignSelf"
+      :loading="assignSelf.loading"
+      :label="__('Assign to me')"
+      @click="assignSelf.submit()"
+    >
+      <template #prefix>
+        <LucideUserPlus class="size-4" />
+      </template>
+    </Button>
+    <Button
+      v-if="showClose"
+      variant="solid"
+      :label="__('Close ticket')"
+      @click="onCloseClicked"
+    >
+      <template #prefix>
+        <LucideCheck class="size-4" />
+      </template>
+    </Button>
+  </div>
+  <TicketResolutionModal
+    v-model="showResolutionDialog"
+    @closed="activities.reload()"
+  />
   <Tabs
     :modelValue="tabIndex"
     :tabs="tabs"
@@ -17,8 +50,12 @@
         {{ __(tab.label) }}
         <span
           v-if="tabCounts[tab.name] !== undefined"
-          class="text-p-sm"
-          :class="tabCounts[tab.name] ? 'text-ink-gray-6' : 'text-ink-gray-4'"
+          class="rounded-full px-1.5 text-xs leading-[18px]"
+          :class="
+            tabCounts[tab.name]
+              ? 'bg-surface-gray-3 text-ink-gray-7'
+              : 'text-ink-gray-4'
+          "
         >
           {{ tabCounts[tab.name] }}
         </span>
@@ -90,9 +127,13 @@ import {
   TicketSymbol,
   TicketTab,
 } from "@/types";
-import { Button, Tabs } from "frappe-ui";
+import TicketResolutionModal from "@/components/ticket-agent/TicketResolutionModal.vue";
+import { useAuthStore } from "@/stores/auth";
+import { Button, createResource, Tabs } from "frappe-ui";
 import { storeToRefs } from "pinia";
 import { computed, ComputedRef, inject, ref } from "vue";
+import LucideCheck from "~icons/lucide/check";
+import LucideUserPlus from "~icons/lucide/user-plus";
 import { TicketAgentActivities } from "../ticket";
 
 const ticket = inject(TicketSymbol);
@@ -142,6 +183,57 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
 });
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs);
+
+const showResolutionDialog = ref(false);
+const auth = useAuthStore();
+
+// `_assign` is a JSON array on the ticket; treat anything unparseable as
+// unassigned rather than throwing in a computed.
+const assignees = computed<string[]>(() => {
+  try {
+    return JSON.parse(ticket.value?.doc?._assign || "[]") || [];
+  } catch {
+    return [];
+  }
+});
+
+const showAssignSelf = computed(
+  () =>
+    !!auth.userId &&
+    !!ticket.value?.doc &&
+    !assignees.value.includes(auth.userId)
+);
+
+const showClose = computed(
+  () => ticket.value?.doc && ticket.value.doc.status !== "Closed"
+);
+
+const assignSelf = createResource({
+  url: "frappe.desk.form.assign_to.add",
+  makeParams: () => ({
+    doctype: "HD Ticket",
+    name: ticket.value?.doc?.name,
+    assign_to: [auth.userId],
+  }),
+  onSuccess: () => {
+    ticket.value?.reload?.();
+    activities.value?.reload?.();
+  },
+});
+
+function onCloseClicked() {
+  // Route through the same dialog the status dropdown and Reply & close use,
+  // so "what fixed it" is asked in exactly one place. Already answered once?
+  // Then close straight away rather than nagging.
+  if (!ticket.value.doc.pyek_resolution) {
+    showResolutionDialog.value = true;
+    return;
+  }
+  ticket.value.setValue.submit(
+    { status: "Closed" },
+    { onSuccess: () => activities.value.reload() }
+  );
+}
 
 // Activity and Calls are deliberately absent: Activity is everything (a count
 // would just restate the page) and call logs load separately.
