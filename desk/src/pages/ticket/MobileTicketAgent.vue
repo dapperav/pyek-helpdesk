@@ -89,6 +89,12 @@
                 />
               </div>
 
+              <TicketAttachments
+                v-else-if="tab.name === 'attachment'"
+                :activities="filterActivities('attachment')"
+                :title="tab.label"
+              />
+
               <!-- Rest Activities -->
               <TicketAgentActivities
                 v-else
@@ -194,6 +200,7 @@ import {
 import { CommunicationArea, LayoutHeader } from "@/components";
 import {
   ActivityIcon,
+  AttachmentIcon,
   CommentIcon,
   DetailsIcon,
   EmailIcon,
@@ -201,6 +208,7 @@ import {
   PhoneIcon,
 } from "@/components/icons";
 import { TicketAgentActivities } from "@/components/ticket";
+import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 
 import CustomActions from "@/components/CustomActions.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
@@ -460,6 +468,11 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       icon: CommentIcon,
     },
     {
+      name: "attachment",
+      label: __("Attachments"),
+      icon: AttachmentIcon,
+    },
+    {
       name: "details",
       label: __("Details"),
       icon: DetailsIcon,
@@ -612,7 +625,9 @@ const _activities = computed(() => {
 });
 
 function filterActivities(eventType: TicketTab) {
-  if (eventType === "activity") {
+  // Attachments hang off emails and comments rather than being an activity
+  // type of their own, so that tab gets everything and picks them out itself.
+  if (eventType === "activity" || eventType === "attachment") {
     return _activities.value;
   }
   return _activities.value.filter((activity) => activity.type === eventType);
