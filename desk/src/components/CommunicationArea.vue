@@ -1,36 +1,29 @@
 <template>
   <div class="comm-area">
+    <!-- Replying is the action that matters here and it was two small ghost
+         buttons: first response is missed on roughly half of human tickets.
+         Collapsed, this reads as a compose line addressed to the requester;
+         it steps aside entirely once either editor is open. -->
     <div
-      class="flex justify-between gap-3 border-t px-6 md:px-5 py-4 md:py-2.5"
+      v-show="!showEmailBox && !showCommentBox"
+      class="border-t px-6 md:px-5 py-3 md:py-2.5"
     >
-      <div class="flex gap-1.5 items-center">
-        <Button
+      <div class="flex items-center gap-2">
+        <button
           ref="sendEmailRef"
-          variant="ghost"
-          label="Reply"
-          :class="[
-            showEmailBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '',
-          ]"
+          class="flex flex-1 items-center gap-2 rounded-lg border border-outline-gray-2 bg-surface-gray-1 px-3 py-2 text-left text-p-sm text-ink-gray-5 hover:border-outline-gray-3 hover:bg-surface-base"
           @click="toggleEmailBox()"
         >
-          <template #prefix>
-            <EmailIcon class="h-4" />
-          </template>
-        </Button>
-        <Button
-          variant="ghost"
-          label="Comment"
-          :class="[
-            showCommentBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '',
-          ]"
-          @click="toggleCommentBox()"
-        >
+          <EmailIcon class="h-4 shrink-0" />
+          <span class="truncate">{{ replyPrompt }}</span>
+        </button>
+        <Button variant="ghost" label="Comment" @click="toggleCommentBox()">
           <template #prefix>
             <CommentIcon class="h-4" />
           </template>
         </Button>
-        <TypingIndicator :ticketId="ticketId" />
       </div>
+      <TypingIndicator :ticketId="ticketId" />
     </div>
     <Transition name="slide">
       <div
@@ -121,7 +114,7 @@ import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { TicketSymbol } from "@/types";
 import { onClickOutside } from "@vueuse/core";
-import { inject, ref, watch } from "vue";
+import { computed, inject, ref, watch } from "vue";
 
 const emit = defineEmits(["update"]);
 const content = defineModel("content");
@@ -151,6 +144,14 @@ function toggleCommentBox() {
 const ticket = inject(TicketSymbol, null);
 const ticketStatusStore = useTicketStatusStore();
 const showResolutionDialog = ref(false);
+
+// Name the person, so the button states who it goes to rather than just
+// "Reply". Falls back to the raw address, then to a plain label.
+const replyPrompt = computed(() => {
+  const doc = ticket?.value?.doc;
+  const who = doc?.contact || doc?.raised_by;
+  return who ? `Reply to ${who}…` : "Write a reply…";
+});
 
 const WAITING_STATUS = "Waiting on Customer";
 

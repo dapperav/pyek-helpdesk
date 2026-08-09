@@ -33,47 +33,31 @@
           <span>Portal</span>
         </div>
       </div>
-      <!-- divider -->
-      <div class="border-l border-outline-gray-2 h-[13px]" />
-      <!-- First Response -->
-      <div class="flex items-center gap-1">
-        <span>First Response</span>
-
-        <Tooltip
-          :text="dateFormat(firstResponse.date, dateTooltipFormat)"
-          :hover-delay="0.25"
-          :placement="'top'"
-        >
-          <Badge
-            :label="firstResponse.label"
-            variant="ghost"
-            class="mt-[2px]"
-            :theme="firstResponse.color"
-          />
-        </Tooltip>
-      </div>
-      <!-- divider -->
-      <div class="border-l border-outline-gray-2 h-[13px]" />
-      <!-- Resolution by -->
-      <div class="flex items-center gap-1">
-        <span>Resolution </span>
-        <Tooltip
-          :text="dateFormat(resolutionBy.date, dateTooltipFormat)"
-          :hover-delay="0.25"
-          :placement="'top'"
-        >
-          <Badge
-            v-if="resolutionBy"
-            :label="resolutionBy.label"
-            variant="ghost"
-            class="mt-[2px]"
-            :theme="
-              resolutionBy.color !== 'purple' ? resolutionBy.color : undefined
-            "
-            :class="resolutionBy.color === 'purple' && '!text-[#6B46C1] '"
-          />
-        </Tooltip>
-      </div>
+      <!-- One line, and coloured only when it means something. Under the
+           retargeted SLA almost every open ticket reads "due in 4d / 12d", so
+           permanent amber and purple trained the eye to ignore both. Neutral
+           until a day out, then amber, red once overdue or failed. -->
+      <span class="text-ink-gray-4">·</span>
+      <Tooltip
+        :text="dateFormat(firstResponse.date, dateTooltipFormat)"
+        :hover-delay="0.25"
+        :placement="'top'"
+      >
+        <span :class="slaTone(firstResponse, 'response_by')">
+          {{ __("reply") }} {{ firstResponse.label.toLowerCase() }}
+        </span>
+      </Tooltip>
+      <span class="text-ink-gray-4">·</span>
+      <Tooltip
+        v-if="resolutionBy"
+        :text="dateFormat(resolutionBy.date, dateTooltipFormat)"
+        :hover-delay="0.25"
+        :placement="'top'"
+      >
+        <span :class="slaTone(resolutionBy, 'resolution_by')">
+          {{ __("resolve") }} {{ resolutionBy.label.toLowerCase() }}
+        </span>
+      </Tooltip>
     </div>
   </teleport>
 </template>
@@ -87,7 +71,7 @@ import {
   dateTooltipFormat,
   formatTime,
 } from "@/utils";
-import { Badge, dayjs, Tooltip } from "frappe-ui";
+import { dayjs, Tooltip } from "frappe-ui";
 import { computed, inject } from "vue";
 
 const ticket = inject(TicketSymbol)!;
@@ -97,6 +81,20 @@ const timeFormat = {
   hour: true,
   minute: true,
 };
+
+// Amber only inside the last day, red once it has actually gone wrong.
+// Anything already fulfilled goes quiet — it is history, not a call to act.
+const AT_RISK_HOURS = 24;
+
+function slaTone(entry: { color?: string }, dueField: string) {
+  if (entry?.color === "red") return "text-ink-red-7 font-medium";
+  if (entry?.color === "green") return "text-ink-gray-5";
+  const due = ticket.value?.doc?.[dueField];
+  if (due && dayjs(due).diff(dayjs(), "hour") <= AT_RISK_HOURS) {
+    return "text-ink-amber-7 font-medium";
+  }
+  return "text-ink-gray-5";
+}
 
 // Cases:
 // - if not first responded and response by is in future -> show due in

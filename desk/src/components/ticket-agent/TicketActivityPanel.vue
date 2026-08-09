@@ -5,6 +5,25 @@
     @update:modelValue="changeTabTo"
     class="[&_[role='tab']]:px-0 [&_[role='tablist']]:px-5 [&_[role='tablist']]:gap-7.5 [&_[role='tablist']]:flex-shrink-0 [&_[role='tabpanel'][data-state='active']]:flex-1"
   >
+    <!-- Counts so a tab says whether it is worth opening: 164 of 270 tickets
+         have no real attachment at all. Mirrors the component's own default
+         markup, plus the number. -->
+    <template #tab-item="{ tab, selected }">
+      <button
+        class="flex items-center gap-1.5 py-2.5 text-base duration-300 ease-in-out hover:text-ink-gray-9"
+        :class="selected ? 'text-ink-gray-9' : 'text-ink-gray-5'"
+      >
+        <component :is="tab.icon" class="size-4" />
+        {{ __(tab.label) }}
+        <span
+          v-if="tabCounts[tab.name] !== undefined"
+          class="text-p-sm"
+          :class="tabCounts[tab.name] ? 'text-ink-gray-6' : 'text-ink-gray-4'"
+        >
+          {{ tabCounts[tab.name] }}
+        </span>
+      </button>
+    </template>
     <template #tab-panel="{ tab }">
       <TicketAttachments
         v-if="Boolean(activities.data) && tab.name === 'attachment'"
@@ -124,6 +143,26 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs);
 
+// Activity and Calls are deliberately absent: Activity is everything (a count
+// would just restate the page) and call logs load separately.
+const tabCounts = computed<Record<string, number>>(() => {
+  const data = activities.value?.data;
+  if (!data) return {};
+  const attachments = new Set<string>();
+  for (const source of [data.communications || [], data.comments || []]) {
+    for (const c of source) {
+      for (const a of c.attachments || []) {
+        if (!a.is_noise) attachments.add(a.file_url || a.name);
+      }
+    }
+  }
+  return {
+    email: (data.communications || []).length,
+    comment: (data.comments || []).length,
+    attachment: attachments.size,
+  };
+});
+
 // TODO: refactor for pagination
 // can be done once we sort out the backend
 // sender mail will be  user using portal
@@ -150,6 +189,10 @@ const _activities = computed(() => {
         name: email.name,
         deliveryStatus: email.delivery_status,
         isFirstEmail: idx === 0,
+        // Present only when the backend judged this a short automated alert
+        // whose HTML is pure scaffolding; null means render the original.
+        compactLines: email.compact_lines,
+        isAutomated: email.is_automated,
       };
     }
   );
