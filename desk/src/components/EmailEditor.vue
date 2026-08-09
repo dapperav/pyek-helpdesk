@@ -189,6 +189,17 @@
           <div class="flex items-center justify-end gap-x-2 sm:mt-0 w-[40%]">
             <Button label="Discard" @click="handleDiscard" />
             <Button
+              v-if="allowReplyAndClose"
+              :disabled="isDisabled"
+              :loading="sendMail.loading"
+              :label="__('Reply & close')"
+              @click="
+                () => {
+                  submitMail({ close: true });
+                }
+              "
+            />
+            <Button
               variant="solid"
               :disabled="isDisabled"
               :loading="sendMail.loading"
@@ -255,6 +266,12 @@ const props = defineProps({
   label: {
     type: String,
     default: "Send",
+  },
+  // Off by default: closing a ticket only makes sense on the ticket reply
+  // surface, not wherever else an email editor might be mounted.
+  allowReplyAndClose: {
+    type: Boolean,
+    default: false,
   },
   editable: {
     type: Boolean,
@@ -412,8 +429,11 @@ const sendMail = createResource({
     },
   }),
   onSuccess: () => {
+    // Read and clear before resetState so a follow-up reply can't inherit it.
+    const close = closeAfterSend.value;
+    closeAfterSend.value = false;
     resetState();
-    emit("submit");
+    emit("submit", { close });
 
     if (isManager) {
       updateOnboardingStep("reply_on_ticket");
@@ -431,8 +451,13 @@ const isDisabled = computed(
     isUploading.value
 );
 
-function submitMail() {
+// Which button was pressed. Held here rather than passed through sendMail so
+// the Ctrl+Enter path, which calls submitMail() bare, is always a plain reply.
+const closeAfterSend = ref(false);
+
+function submitMail(opts: { close?: boolean } = {}) {
   if (isContentEmpty(newEmail.value) && isContentEmpty(quotedContent.value)) {
+    closeAfterSend.value = false;
     return false;
   }
   if (
@@ -443,9 +468,13 @@ function submitMail() {
     toast.warning(
       "Email has no recipients. Please add at least one recipient (To, Cc, or Bcc) before sending."
     );
+    closeAfterSend.value = false;
     return false;
   }
 
+  // Set only once the send is actually going out, so an abandoned attempt
+  // can't leave the intent armed for the next one.
+  closeAfterSend.value = !!opts.close;
   sendMail.submit();
 }
 
@@ -494,6 +523,7 @@ function resetState() {
 }
 
 function handleDiscard() {
+  closeAfterSend.value = false;
   attachments.value = [];
   newEmail.value = getInitialContent();
   quotedContent.value = null;
