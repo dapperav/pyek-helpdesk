@@ -204,6 +204,17 @@ def get_communications(ticket: str):
         c.attachments = get_attachments("Communication", c.name)
         user_id = c.user if c.sent_or_received == "Sent" and c.user else c.sender
         c.user = get_user_info_for_avatar(user_id)
+
+    # Wrapped: a ticket that won't open is far worse than a noisy chip list, so
+    # any failure here degrades to showing everything, exactly as before.
+    try:
+        mark_noise_attachments(communications)
+    except Exception:
+        frappe.log_error(
+            title=f"HD attachment noise pass failed for {ticket}",
+            message=frappe.get_traceback(),
+        )
+
     return communications
 
 
@@ -324,11 +335,105 @@ def get_attachments(doctype, name):
 
     return (
         frappe.qb.from_(QBFile)
-        .select(QBFile.name, QBFile.file_url, QBFile.file_name)
+        .select(
+            QBFile.name,
+            QBFile.file_url,
+            QBFile.file_name,
+            QBFile.file_size,
+            QBFile.content_hash,
+        )
         .where(QBFile.attached_to_doctype == doctype)
         .where(QBFile.attached_to_name == name)
         .run(as_dict=True)
     )
+
+
+# Inline images below this are logos, social icons and tracking pixels, never
+# a document somebody meant to send. Measured over the live corpus: the real
+# attachments start around 60KB, the boilerplate clusters under 1KB.
+SIGNATURE_MAX_BYTES = 4096
+
+
+def _ticket_spread(content_hashes):
+    """How many DISTINCT tickets each image appears in.
+
+    This is the signal that separates a signature from a screenshot. A logo
+    turns up across many unrelated tickets; a screenshot someone sent belongs
+    to exactly one, however many times the reply thread quotes it back.
+    """
+    content_hashes = [h for h in content_hashes if h]
+    if not content_hashes:
+        return {}
+
+    QBFile = frappe.qb.DocType("File")
+    QBComm = frappe.qb.DocType("Communication")
+    rows = (
+        frappe.qb.from_(QBFile)
+        .join(QBComm)
+        .on(QBComm.name == QBFile.attached_to_name)
+        .select(QBFile.content_hash, QBComm.reference_name)
+        .where(QBFile.attached_to_doctype == "Communication")
+        .where(QBComm.reference_doctype == "HD Ticket")
+        .where(QBFile.content_hash.isin(content_hashes))
+        .distinct()
+        .run(as_dict=True)
+    )
+
+    spread = {}
+    for r in rows:
+        spread.setdefault(r.content_hash, set()).add(r.reference_name)
+    return {k: len(v) for k, v in spread.items()}
+
+
+def mark_noise_attachments(communications):
+    """Flag the attachments that are signature furniture rather than content.
+
+    An emailed thread re-embeds every signature graphic on every quoted reply,
+    so one ticket can show sixteen chips holding four distinct images. Nothing
+    is dropped here — each attachment gets `is_noise` and the frontend decides
+    what to show, so a wrong call is always recoverable by the reader.
+
+    `communications` must be ordered oldest-first: an image is kept on its first
+    appearance in the ticket and suppressed on the quotes that follow.
+    """
+
+    def key(a):
+        return a.get("content_hash") or a.get("name")
+
+    spread = _ticket_spread({key(a) for c in communications for a in c.attachments})
+
+    first_seen = {}
+    for c in communications:
+        for a in c.attachments:
+            first_seen.setdefault(key(a), c.name)
+
+    for c in communications:
+        body = c.get("content") or ""
+        seen = set()
+        for a in c.attachments:
+            k = key(a)
+            url = a.get("file_url") or ""
+            # Frappe rewrites cid: refs to the stored file URL, so an image the
+            # body points at was embedded rather than deliberately attached.
+            inline = bool(url) and url in body
+            size = a.get("file_size") or 0
+
+            if k in seen:
+                reason = "duplicate"
+            elif not inline:
+                reason = None
+            elif size < SIGNATURE_MAX_BYTES:
+                reason = "icon"
+            elif spread.get(k, 1) > 1:
+                reason = "boilerplate"
+            elif first_seen.get(k) != c.name:
+                reason = "quoted"
+            else:
+                reason = None
+
+            a["is_noise"] = bool(reason)
+            a["noise_reason"] = reason
+            seen.add(k)
 
 
 @frappe.whitelist()

@@ -97,13 +97,26 @@
     </div>
     <div class="border-0 border-t my-3 border-outline-elevation-2 !-mx-3" />
     <EmailContent :content="content" />
-    <div class="flex flex-wrap gap-2">
+    <div v-if="attachments?.length" class="flex flex-wrap items-center gap-2">
       <AttachmentItem
-        v-for="a in attachments"
-        :key="a.file_url"
+        v-for="a in visibleAttachments"
+        :key="a.name || a.file_url"
         :label="a.file_name"
         :url="a.file_url"
       />
+      <button
+        v-if="noiseAttachments.length"
+        class="text-p-sm text-ink-gray-5 hover:text-ink-gray-7 underline underline-offset-2"
+        @click="showNoisyAttachments = !showNoisyAttachments"
+      >
+        <template v-if="showNoisyAttachments">
+          {{ __("hide signature images") }}
+        </template>
+        <template v-else>
+          + {{ noiseAttachments.length }}
+          {{ __("from signatures & quoted replies") }}
+        </template>
+      </button>
     </div>
   </div>
   <TicketSplitModal
@@ -153,6 +166,23 @@ const {
 
 const emit = defineEmits(["reply"]);
 const ticket = inject(TicketSymbol)!;
+
+// The backend flags signature graphics, tracking pixels and images quoted back
+// from an earlier reply. Nothing is discarded — a thread that re-embeds one
+// logo on every quote can show sixteen chips holding four distinct images, so
+// the noisy ones fold behind a count instead of burying the real attachment.
+const showNoisyAttachments = ref(false);
+const realAttachments = computed(() =>
+  (attachments || []).filter((a) => !a.is_noise)
+);
+const noiseAttachments = computed(() =>
+  (attachments || []).filter((a) => a.is_noise)
+);
+const visibleAttachments = computed(() =>
+  showNoisyAttachments.value
+    ? [...realAttachments.value, ...noiseAttachments.value]
+    : realAttachments.value
+);
 
 const auth = storeToRefs(useAuthStore());
 
