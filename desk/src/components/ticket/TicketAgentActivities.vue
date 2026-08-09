@@ -4,6 +4,9 @@
     class="flex flex-col flex-1 overflow-y-auto"
     :mask-length="20"
   >
+    <!-- Inside the scroll region on purpose: at 380px of preview, pinning this
+         above the feed would cost too much of the viewport on every ticket. -->
+    <TicketAttachments :activities="activities" />
     <div v-if="activities.length" class="activities flex-1 h-full mt-0.5">
       <div
         v-for="(activity, i) in activities"
@@ -127,6 +130,7 @@ import FeedbackBox from "../ticket-agent/FeedbackBox.vue";
 import CommentBox from "@/components/CommentBox.vue";
 import EmailArea from "@/components/EmailArea.vue";
 import HistoryBox from "@/components/HistoryBox.vue";
+import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 
 const props = defineProps({
   activities: {
