@@ -6,8 +6,13 @@
     class="[&_[role='tab']]:px-0 [&_[role='tablist']]:px-5 [&_[role='tablist']]:gap-7.5 [&_[role='tablist']]:flex-shrink-0 [&_[role='tabpanel'][data-state='active']]:flex-1"
   >
     <template #tab-panel="{ tab }">
+      <TicketAttachments
+        v-if="Boolean(activities.data) && tab.name === 'attachment'"
+        :activities="filterActivities('attachment')"
+        :title="tab.label"
+      />
       <TicketAgentActivities
-        v-if="Boolean(activities.data)"
+        v-else-if="Boolean(activities.data)"
         ref="ticketAgentActivitiesRef"
         :activities="filterActivities(tab.name as TicketTab)"
         :title="tab.label"
@@ -51,10 +56,12 @@
 import CommunicationArea from "@/components/CommunicationArea.vue";
 import {
   ActivityIcon,
+  AttachmentIcon,
   CommentIcon,
   EmailIcon,
   PhoneIcon,
 } from "@/components/icons";
+import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 import { useActiveTabManager } from "@/composables/useActiveTabManager";
 import { useTelephonyStore } from "@/stores/telephony";
 import {
@@ -97,6 +104,11 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       name: "comment",
       label: "Comments",
       icon: CommentIcon,
+    },
+    {
+      name: "attachment",
+      label: "Attachments",
+      icon: AttachmentIcon,
     },
   ];
 
@@ -255,7 +267,9 @@ const _activities = computed(() => {
 });
 
 function filterActivities(eventType: TicketTab) {
-  if (eventType === "activity") {
+  // Attachments hang off emails and comments rather than being an activity
+  // type of their own, so that tab gets everything and picks them out itself.
+  if (eventType === "activity" || eventType === "attachment") {
     return _activities.value;
   }
   return _activities.value.filter((activity) => activity.type === eventType);
