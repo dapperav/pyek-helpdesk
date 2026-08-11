@@ -257,15 +257,23 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
 </div>"""
 
 
+def will_send_thread_email(for_user: str) -> bool:
+    """Whether :func:`send_thread_email` would send to this recipient.
+
+    Kept separate so the Notification Log override can suppress the framework's
+    plain assignment email on exactly the same condition that made the ToDo
+    hook send the thread email — never on a guess, so a recipient who is not an
+    agent still gets Frappe's own notification.
+    """
+    return is_thread_email_enabled() and bool(agent_user_for_email(for_user))
+
+
 def send_thread_email(
     ticket_name: str, for_user: str, event: str, actor: str | None = None
 ):
     """Email one agent the ticket thread. Safe to call for any notification —
     it no-ops unless the feature is on and the recipient is a real agent."""
-    if not is_thread_email_enabled():
-        return False
-
-    if not agent_user_for_email(for_user):
+    if not will_send_thread_email(for_user):
         return False
 
     ticket = frappe.get_doc("HD Ticket", ticket_name)
