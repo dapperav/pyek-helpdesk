@@ -3,6 +3,7 @@ import unittest
 from helpdesk.helpdesk.utils.agent_email import (
     INTERNAL_SENTINEL,
     REPLY_MARKER,
+    split_aliases,
     strip_reply,
 )
 
@@ -62,3 +63,25 @@ class TestStripReply(unittest.TestCase):
     def test_refuses_empty_input(self):
         self.assertIsNone(strip_reply(""))
         self.assertIsNone(strip_reply(None))
+
+
+class TestSplitAliases(unittest.TestCase):
+    def test_separators_and_case(self):
+        raw = "Mark.Immler@pyek.com, mi@pyekgroup.com;\n MARK@pyek.com "
+
+        self.assertEqual(
+            split_aliases(raw),
+            {"mark.immler@pyek.com", "mi@pyekgroup.com", "mark@pyek.com"},
+        )
+
+    def test_strips_the_entra_proxyaddresses_prefix(self):
+        """proxyAddresses come out of Entra as SMTP:a@b / smtp:c@d."""
+        self.assertEqual(
+            split_aliases("SMTP:mark.immler@pyek.com\nsmtp:mi@pyekgroup.com"),
+            {"mark.immler@pyek.com", "mi@pyekgroup.com"},
+        )
+
+    def test_ignores_junk_and_empties(self):
+        self.assertEqual(split_aliases(""), set())
+        self.assertEqual(split_aliases(None), set())
+        self.assertEqual(split_aliases("not-an-address, , x@y.com"), {"x@y.com"})
