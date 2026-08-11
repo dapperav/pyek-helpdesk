@@ -42,7 +42,7 @@
             <button
               v-for="view in viewCards"
               :key="view.name"
-              class="group flex items-center gap-3 rounded-lg border border-outline-gray-2 bg-surface-white px-3.5 py-3 text-left transition hover:border-outline-blue-4 hover:shadow-sm"
+              class="group flex items-center gap-3 rounded-lg border border-outline-gray-2 bg-surface-base px-3.5 py-3 text-left transition hover:border-outline-blue-4 hover:shadow-sm"
               @click="view.onClick"
             >
               <span
