@@ -82,7 +82,10 @@
   "reply_email_to_agent_content",
   "reply_from_agent_section",
   "enable_reply_email_via_agent",
-  "reply_via_agent_email_content"
+  "reply_via_agent_email_content",
+  "pyek_agent_email_section",
+  "pyek_agent_thread_email",
+  "pyek_agent_email_reply"
  ],
  "fields": [
   {
@@ -425,6 +428,25 @@
    "fieldname": "reply_via_agent_email_content",
    "fieldtype": "Text",
    "label": "Email Content"
+  },
+  {
+   "fieldname": "pyek_agent_email_section",
+   "fieldtype": "Section Break",
+   "label": "Work Tickets From Email"
+  },
+  {
+   "default": "0",
+   "description": "If enabled, assigning or mentioning an agent emails them the ticket conversation and a link to the ticket, in place of the plain notification email",
+   "fieldname": "pyek_agent_thread_email",
+   "fieldtype": "Check",
+   "label": "Email agents the ticket thread"
+  },
+  {
+   "default": "0",
+   "description": "If enabled, an agent replying to that email from their own mailbox is recorded as their reply on the ticket and sent on to the requester",
+   "fieldname": "pyek_agent_email_reply",
+   "fieldtype": "Check",
+   "label": "Accept agent replies by email"
   },
   {
    "fieldname": "reply_from_contact_section",

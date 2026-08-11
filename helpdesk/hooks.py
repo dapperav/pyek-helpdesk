@@ -127,6 +127,7 @@ override_doctype_class = {
     "Email Account": "helpdesk.overrides.email_account.CustomEmailAccount",
     "Assignment Rule": "helpdesk.overrides.assignment_rule.HelpdeskAssignmentRule",
     "User Invitation": "helpdesk.overrides.user_invitation.HelpdeskUserInvitation",
+    "Notification Log": "helpdesk.overrides.notification_log.CustomNotificationLog",
 }
 
 ignore_links_on_delete = [
