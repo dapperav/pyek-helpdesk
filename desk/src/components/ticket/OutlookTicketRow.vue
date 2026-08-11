@@ -28,7 +28,7 @@
       :class="
         selected
           ? 'bg-surface-blue-1'
-          : 'bg-surface-white hover:bg-surface-gray-2'
+          : 'bg-surface-base hover:bg-surface-gray-2'
       "
       :style="foregroundStyle"
       @click="onRowClick"

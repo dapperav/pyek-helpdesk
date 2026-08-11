@@ -49,7 +49,7 @@
         <div>
           <p class="mb-2 text-sm-medium text-ink-gray-6">{{ __("Queues") }}</p>
           <div
-            class="overflow-hidden rounded-xl border border-outline-gray-2 bg-surface-white"
+            class="overflow-hidden rounded-xl border border-outline-gray-2 bg-surface-base"
           >
             <button
               v-for="(j, i) in jumps"

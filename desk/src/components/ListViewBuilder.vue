@@ -61,7 +61,7 @@
          are selected, so the status control is always visible. -->
     <div
       v-if="outlookSelected.size"
-      class="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-surface-white px-4 py-3 shadow-lg"
+      class="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-surface-base px-4 py-3 shadow-lg"
     >
       <span class="text-sm font-medium text-ink-gray-7">
         {{ outlookSelected.size }} {{ __("selected") }}
