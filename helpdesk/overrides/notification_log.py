@@ -4,10 +4,10 @@ from frappe.desk.doctype.notification_log.notification_log import (
     set_notifications_as_unseen,
 )
 
-from helpdesk.helpdesk.utils.agent_email import send_thread_email
-
-# Notification types that mean "an agent now owns a piece of this ticket".
-HANDLED_TYPES = ("Assignment", "Mention")
+from helpdesk.helpdesk.utils.agent_email import (
+    send_thread_email,
+    will_send_thread_email,
+)
 
 
 class CustomNotificationLog(NotificationLog):
@@ -20,12 +20,18 @@ class CustomNotificationLog(NotificationLog):
     back to the ticket and lands as a brand-new one. The thread email is sent
     as a Communication on the ticket, which is what makes replies thread.
 
+    Assignments are sent from the ToDo hook (``helpdesk.extends.todo``), which
+    also covers self-assignment — Frappe creates no Notification Log at all
+    when you assign a ticket to yourself. This class only suppresses the
+    duplicate for those, and sends the thread email itself for mentions, which
+    create no ToDo.
+
     Only the email is replaced; the in-app notification is untouched. If the
     feature is off, or the recipient is not an active agent, nothing changes.
     """
 
     def after_insert(self):
-        if self._pyek_sent_thread_email():
+        if self._pyek_handled():
             frappe.publish_realtime(
                 "notification", after_commit=True, user=self.for_user
             )
@@ -34,20 +40,28 @@ class CustomNotificationLog(NotificationLog):
 
         super().after_insert()
 
-    def _pyek_sent_thread_email(self) -> bool:
-        if self.type not in HANDLED_TYPES or self.document_type != "HD Ticket":
+    def _pyek_handled(self) -> bool:
+        """True when the thread email covers this notification, so the
+        framework's plain email would be a duplicate."""
+        if self.document_type != "HD Ticket":
             return False
         if not (self.document_name and self.for_user):
             return False
 
         try:
-            return send_thread_email(
-                self.document_name, self.for_user, self.type, self.from_user
-            )
+            if self.type == "Assignment":
+                # Sent from the ToDo hook, which fires for self-assignment too.
+                return will_send_thread_email(self.for_user)
+            if self.type == "Mention":
+                # Mentions create no ToDo, so this is where they are sent.
+                return send_thread_email(
+                    self.document_name, self.for_user, self.type, self.from_user
+                )
         except Exception:
             # Never let a notification failure break the assignment itself.
             frappe.log_error(
                 title=f"HD agent thread email failed for {self.document_name}",
                 message=frappe.get_traceback(),
             )
-            return False
+
+        return False
