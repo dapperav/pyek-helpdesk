@@ -197,6 +197,10 @@ def get_communications(ticket: str):
         )
         .where(QBCommunication.reference_doctype == "HD Ticket")
         .where(QBCommunication.reference_name == ticket)
+        # Agent thread emails are stored as "Automated Message" Communications
+        # so replies to them can be traced back to the ticket. They are
+        # plumbing, not conversation — keep them out of the thread.
+        .where(QBCommunication.communication_type == "Communication")
         .orderby(QBCommunication.creation, order=Order.asc)
         .run(as_dict=True)
     )

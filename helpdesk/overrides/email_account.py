@@ -1,5 +1,6 @@
 import re
 from email import message_from_string
+from email.utils import parseaddr
 
 import frappe
 from frappe import _
@@ -8,13 +9,29 @@ from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.email.doctype.email_queue.email_queue import EmailQueue
 from frappe.email.receive import InboundMail
 
+from helpdesk.helpdesk.utils.agent_email import (
+    agent_user_for_email,
+    is_email_reply_enabled,
+    note_unrelayed_reply,
+    relay_agent_reply,
+    strip_reply,
+)
+
 
 class CustomInboundMail(InboundMail):
     """
     Extend InboundMail with robust thread stitching for forwarded emails.
        1. Run the standard Frappe parent_communication lookups first (In-Reply-To → Communication, EmailQueue, communication-name fallback)
        2. If still no parent, use the References header from emails, which may contain multiple message IDs in a thread
+
+    It also recognises a reply sent by one of our own agents from their mailbox
+    and records it as an agent reply rather than a message from the customer —
+    see :meth:`_agent_reply_context`.
     """
+
+    # None = not worked out yet, False = not an agent reply, tuple = it is one.
+    _pyek_agent_reply = None
+    _pyek_relay_ready = False
 
     def _find_communication_by_message_id(self, msg_id: str):
         """Return a Communication for msg_id, checking both Communication and EmailQueue."""
@@ -54,6 +71,81 @@ class CustomInboundMail(InboundMail):
 
         self._parent_communication = ""
         return self._parent_communication
+
+    def _agent_reply_context(self):
+        """``(ticket, agent_user)`` when this email is one of our own agents
+        answering a ticket from their own mailbox, otherwise None.
+
+        Frappe files every inbound email as ``sent_or_received = "Received"``,
+        which for an agent's reply is backwards: it reopens the ticket, stamps
+        ``last_customer_response`` and leaves the ticket looking unanswered.
+        Recognising the sender lets us record it as the agent's reply instead —
+        and pass it on to the requester, who is not a recipient of the
+        notification the agent replied to.
+        """
+        if self._pyek_agent_reply is not None:
+            return self._pyek_agent_reply or None
+
+        context = None
+        try:
+            if is_email_reply_enabled():
+                sender = (
+                    getattr(self, "from_email", None)
+                    or parseaddr(self.mail.get("From") or "")[1]
+                )
+                agent = agent_user_for_email(sender)
+                if agent:
+                    doc = self.reference_document()
+                    if doc and doc.doctype == "HD Ticket":
+                        context = (doc, agent)
+        except Exception:
+            frappe.log_error(
+                title=_("Agent reply detection failed"),
+                message=frappe.get_traceback(),
+            )
+
+        self._pyek_agent_reply = context or False
+        return context
+
+    def as_dict(self):
+        context = self._agent_reply_context()
+        if not context:
+            return super().as_dict()
+
+        ticket, agent_user = context
+
+        # Trim to what the agent actually typed BEFORE the parent builds the
+        # doc: _build_communication_doc re-derives content from self.content
+        # after insert, so stripping the doc afterwards would be undone.
+        reply = strip_reply(getattr(self, "content", None))
+        if reply:
+            self.content = reply
+            self._pyek_relay_ready = True
+
+        data = super().as_dict()
+        data["sent_or_received"] = "Sent"
+        data["user"] = agent_user
+        data["recipients"] = ticket.raised_by
+        return data
+
+    def process(self):
+        communication = super().process()
+
+        context = self._agent_reply_context()
+        # is_new_communication is False when the same message is pulled twice —
+        # relaying again would send the requester a duplicate.
+        is_new = bool(getattr(self, "flags", None) and self.flags.is_new_communication)
+        if context and communication and is_new:
+            ticket = context[0]
+            if self._pyek_relay_ready:
+                relay_agent_reply(ticket, communication)
+            else:
+                # The reply marker never came back, so we cannot tell the
+                # agent's words from the quoted thread (which carries internal
+                # notes). File it, do not forward it, and say so on the ticket.
+                note_unrelayed_reply(ticket, communication)
+
+        return communication
 
     def match_record_by_subject_and_sender(self, doctype):
         """PYEK override — never merge a brand-new email onto an existing
