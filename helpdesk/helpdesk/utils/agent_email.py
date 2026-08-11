@@ -59,12 +59,37 @@ def is_email_reply_enabled() -> bool:
     )
 
 
-def agent_user_for_email(email: str) -> str | None:
-    """The active HD Agent who owns this address, or None.
+def split_aliases(raw: str | None) -> set[str]:
+    """Parse an HD Agent's alias list.
 
-    Matched against ``User.email`` as well as the user id, because an agent's
-    Frappe id and the address they actually send from are not always the same
-    (``bh@pyekgroup.com`` vs a primary SMTP address in Entra).
+    Accepts commas, semicolons and newlines, and tolerates the ``smtp:`` prefix
+    that Entra's ``proxyAddresses`` carries, so the field can be pasted in from
+    a directory export unedited.
+    """
+    if not raw:
+        return set()
+
+    addresses = set()
+    for chunk in re.split(r"[,;\n\r]+", raw):
+        address = chunk.strip().lower()
+        if address.startswith("smtp:"):
+            address = address[5:]
+        if "@" in address:
+            addresses.add(address)
+    return addresses
+
+
+def agent_user_for_email(email: str) -> str | None:
+    """The active HD Agent who sends from this address, or None.
+
+    Checked against the Frappe user id, ``User.email``, and the agent's alias
+    list — in that order. The alias list is what makes this work in practice:
+    Mark's Frappe id and ``User.email`` are both ``mi@pyekgroup.com``, but
+    Outlook sends as ``mark.immler@pyek.com``, and matching only the first two
+    filed his reply as a message from the customer.
+
+    Returning None is the safe answer: the reply is recorded the way Frappe
+    always recorded it, and nothing is relayed to the requester.
     """
     if not email:
         return None
@@ -80,6 +105,13 @@ def agent_user_for_email(email: str) -> str | None:
     for user in users:
         if frappe.db.exists("HD Agent", {"user": user.name, "is_active": 1}):
             return user.name
+
+    for agent in frappe.get_all(
+        "HD Agent", filters={"is_active": 1}, fields=["user", "pyek_email_aliases"]
+    ):
+        if email in split_aliases(agent.pyek_email_aliases):
+            return agent.user
+
     return None
 
 
