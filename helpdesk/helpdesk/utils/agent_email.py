@@ -29,6 +29,8 @@ import re
 import frappe
 from frappe.utils import get_url, pretty_date
 
+from helpdesk.helpdesk.utils import echo
+
 # Cut here on the way back in. Wording matters: it is the one instruction the
 # agent sees, and every mail client quotes it back to us verbatim.
 REPLY_MARKER = "##- Please type your reply above this line -##"
@@ -265,8 +267,12 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
         )
     )
 
+    # Echo's band, so an agent can see at a glance that this is automated —
+    # but the body stays terse. This is the email Brannan works from several
+    # times a day, not one he reads.
     return f"""
 <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1f272e">
+  {echo.header(f"{echo.TEAM} · automated")}
   <p style="font-size:15px;margin:0 0 4px">{headline}.</p>
   <p style="font-size:18px;font-weight:600;margin:0 0 12px">
     #{ticket.name} — {frappe.utils.escape_html(ticket.subject or "")}
