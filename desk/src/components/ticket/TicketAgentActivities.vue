@@ -5,6 +5,14 @@
     :mask-length="20"
   >
     <div v-if="activities.length" class="activities flex-1 h-full mt-0.5">
+      <div v-if="collapsedCount" class="flex justify-end px-6 md:px-5 pt-1">
+        <button
+          class="text-p-sm text-ink-gray-5 hover:text-ink-gray-7 underline underline-offset-2"
+          @click="expandAll"
+        >
+          {{ __("Expand all") }} ({{ collapsedCount }})
+        </button>
+      </div>
       <div
         v-for="(activity, i) in activities"
         :key="activity.key"
@@ -74,11 +82,13 @@
             <EmailArea
               v-if="activity.type === 'email'"
               :activity="activity"
+              :collapsed="isCollapsed(activity.key)"
               :show-split-option="
                 !activity.isFirstEmail && ticketStatus !== 'Closed'
               "
               class="py-2 px-3"
               @reply="(e) => emit('email:reply', e)"
+              @expand="expand(activity.key)"
             />
             <CommentBox
               v-else-if="activity.type === 'comment'"
@@ -121,7 +131,16 @@ import { useUserStore } from "@/stores/user";
 import { TicketActivity } from "@/types";
 import { isElementInViewport } from "@/utils";
 import { Avatar, FeatherIcon } from "frappe-ui";
-import { PropType, computed, h, inject, nextTick, onMounted, watch } from "vue";
+import {
+  PropType,
+  computed,
+  h,
+  inject,
+  nextTick,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import FeedbackBox from "../ticket-agent/FeedbackBox.vue";
 import CommentBox from "@/components/CommentBox.vue";
@@ -176,6 +195,49 @@ onMounted(() => {
     document.querySelector(".activity")?.focus();
   });
 });
+
+// Every email except the newest starts collapsed, so the latest reply is on
+// screen when the ticket opens instead of sitting below a screenful of the
+// original request. A ticket holding one email is left expanded — that is the
+// majority of PMIT tickets, and collapsing a lone machine alert would mean a
+// click to read anything at all.
+const emailKeys = computed(() =>
+  props.activities.filter((a) => a.type === "email").map((a) => a.key)
+);
+const expandedKeys = ref(new Set<string>());
+
+watch(
+  emailKeys,
+  (keys, previous) => {
+    // Keep whatever the agent opened by hand; only take a view on keys that
+    // are new to the thread, so an incoming reply can't re-collapse the
+    // message someone is reading.
+    const known = new Set(previous ?? []);
+    const newest = keys[keys.length - 1];
+    keys.forEach((key) => {
+      if (!known.has(key) && (keys.length === 1 || key === newest)) {
+        expandedKeys.value.add(key);
+      }
+    });
+  },
+  { immediate: true }
+);
+
+const collapsedCount = computed(
+  () => emailKeys.value.filter((key) => !expandedKeys.value.has(key)).length
+);
+
+function isCollapsed(key: string) {
+  return emailKeys.value.includes(key) && !expandedKeys.value.has(key);
+}
+
+function expand(key: string) {
+  expandedKeys.value.add(key);
+}
+
+function expandAll() {
+  emailKeys.value.forEach((key) => expandedKeys.value.add(key));
+}
 
 function scrollToLatestActivity() {
   if (route.hash) {
