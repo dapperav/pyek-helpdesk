@@ -267,12 +267,12 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
         )
     )
 
-    # Echo's band, so an agent can see at a glance that this is automated —
-    # but the body stays terse. This is the email Brannan works from several
-    # times a day, not one he reads.
+    # Echo signs it so an agent can see at a glance that it is automated, but
+    # the body stays terse — this is the email Brannan works from several times
+    # a day, not one he reads. Her block sits above the reply marker, since
+    # everything below the marker is cut from his reply.
     return f"""
 <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1f272e">
-  {echo.header(f"{echo.TEAM} · automated")}
   <p style="font-size:15px;margin:0 0 4px">{headline}.</p>
   <p style="font-size:18px;font-weight:600;margin:0 0 12px">
     #{ticket.name} — {frappe.utils.escape_html(ticket.subject or "")}
@@ -287,7 +287,8 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
     Or just reply to this email — your reply goes to {frappe.utils.escape_html(ticket.raised_by or "the requester")}
     and is recorded on the ticket.
   </p>
-  <div style="font-size:12px;color:#98a5b3;border-top:1px dashed #cbd5e1;padding-top:10px">
+  {echo.signature(subtitle=f"{echo.TEAM} · automated", include_phone=False)}
+  <div style="font-size:12px;color:#98a5b3;border-top:1px dashed #cbd5e1;padding-top:10px;margin-top:20px">
     {REPLY_MARKER}
   </div>
   {"".join(_communication_block(c) for c in communications)}
