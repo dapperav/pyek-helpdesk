@@ -1,9 +1,18 @@
 <template>
   <!-- PYEK: persistent bottom tab bar for phones. Rendered only inside
-       MobileLayout, so desktop is untouched. Big touch targets. Dashboard opens
-       the branded home; POS / IT / Wrike jump straight to those saved ticket
-       queues; Menu opens the nav drawer (all views, notifications, profile,
-       logout). Order: Dashboard · POS · IT · Wrike · Menu. -->
+       MobileLayout, so desktop is untouched. Big touch targets. Home opens the
+       branded dashboard; POS / IT / Wrike / Mine jump straight to those saved
+       ticket queues; Menu opens the nav drawer (all views, notifications,
+       profile, logout). Order: Home · POS · IT · Wrike · Mine · Menu.
+
+       "Mine" was added because the agent's OWN queue — the one queue that is
+       personally theirs — was the only one not on the bar, so it took two taps
+       through the drawer while three shared queues sat one tap away.
+
+       Six tabs is what forced "Dashboard" down to "Home": at 375px six labels
+       only fit if they're all short, and "Home" is the honest name for it
+       anyway (the bare /dashboard analytics page is a different, desktop view).
+       If six ever feels too many, swap Wrike out rather than Mine. -->
   <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
        active. paddingBottom carries the iOS home-indicator safe-area inset so
        the labels never sit under the home bar. -->
@@ -49,6 +58,7 @@ import LucideHeadset from "~icons/lucide/headset";
 import LucideScanBarcode from "~icons/lucide/scan-barcode";
 import LucideMenu from "~icons/lucide/menu";
 import LucideMegaphone from "~icons/lucide/megaphone";
+import LucideUser from "~icons/lucide/user";
 
 const route = useRoute();
 const router = useRouter();
@@ -78,7 +88,7 @@ const items = computed<Item[]>(() => [
     // cards, charts, saved-view launchers. (The bare "/dashboard" analytics page
     // is a separate, desktop-oriented view.)
     key: "dashboard",
-    label: __("Dashboard"),
+    label: __("Home"),
     icon: LucideLayoutDashboard,
     route: "Home",
   },
@@ -90,6 +100,14 @@ const items = computed<Item[]>(() => [
     label: __("Wrike"),
     icon: LucideMegaphone,
     view: "Open Wrike Tickets",
+  },
+  // The agent's own queue. Same saved view the dashboard's "My open tickets" row
+  // opens, so the count they tap on the dashboard and this tab are the same list.
+  {
+    key: "mine",
+    label: __("Mine"),
+    icon: LucideUser,
+    view: "My Open Tickets",
   },
   // Opens the nav drawer (all saved views, notifications, availability, log
   // out). The unread badge lives here now that the standalone Alerts tab is

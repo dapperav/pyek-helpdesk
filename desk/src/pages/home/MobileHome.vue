@@ -4,6 +4,11 @@
        top (each opens the master "All Open" queue) + jump-to the specific
        queues with live counts. All counts derive from ONE ticket fetch. -->
   <div class="flex flex-col h-full">
+    <PullToRefreshIndicator
+      :pull="pull"
+      :refreshing="refreshing"
+      :threshold="threshold"
+    />
     <LayoutHeader>
       <template #left-header>
         <div class="text-lg-medium text-ink-gray-9">{{ __("Dashboard") }}</div>
@@ -77,6 +82,8 @@
 
 <script setup lang="ts">
 import { LayoutHeader } from "@/components";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator.vue";
+import { usePullToRefresh } from "@/composables/pullToRefresh";
 import { useView } from "@/composables/useView";
 import { useAuthStore } from "@/stores/auth";
 import { __ } from "@/translation";
@@ -125,6 +132,10 @@ const tickets = createResource({
   auto: true,
 });
 const rows = computed<any[]>(() => tickets.data || []);
+
+// Same gesture as the ticket screen. The Refresh button in the header stays — the
+// gesture is the idiom, the button is the discoverable version of it.
+const { pull, refreshing, threshold } = usePullToRefresh(() => tickets.reload());
 
 const startOfTomorrow = () => dayjs().add(1, "day").startOf("day");
 const notResolved = (t: any) => t.status_category !== "Resolved";

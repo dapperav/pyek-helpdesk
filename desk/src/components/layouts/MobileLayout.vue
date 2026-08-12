@@ -7,8 +7,11 @@
     <MobileSidebar />
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <MobileAppHeader />
-      <!-- Scrollable content between the header and the pinned bottom nav. -->
-      <div class="min-h-0 flex-1 overflow-auto">
+      <!-- Scrollable content between the header and the pinned bottom nav. This
+           is the only scrolling element on a phone, so it's shared with pages
+           that want a pull-to-refresh gesture — they can't listen on their own
+           root, which doesn't scroll. -->
+      <div ref="scrollEl" class="min-h-0 flex-1 overflow-auto">
         <slot />
       </div>
       <!-- Hidden on the ticket detail screen, which has its own sticky reply
@@ -18,12 +21,16 @@
   </div>
 </template>
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
 import MobileSidebar from "./MobileSidebar.vue";
 import MobileAppHeader from "./MobileAppHeader.vue";
 import MobileBottomNav from "./MobileBottomNav.vue";
+import { provideMobileScrollEl } from "@/composables/pullToRefresh";
 
 const route = useRoute();
 const showBottomNav = computed(() => route.name !== "TicketAgent");
+
+const scrollEl = ref(null);
+provideMobileScrollEl(scrollEl);
 </script>

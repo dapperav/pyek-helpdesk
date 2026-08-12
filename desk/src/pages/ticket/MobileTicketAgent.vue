@@ -1,5 +1,10 @@
 <template>
   <div class="flex flex-col">
+    <PullToRefreshIndicator
+      :pull="pull"
+      :refreshing="refreshing"
+      :threshold="threshold"
+    />
     <LayoutHeader v-if="ticket.doc?.name">
       <template #left-header>
         <Breadcrumbs :items="breadcrumbs" />
@@ -56,7 +61,18 @@
             class="[&_[role='tab']]:px-0 [&_[role='tablist']]:px-5 [&_[role='tablist']]:gap-7.5"
           >
             <template #tab-panel="{ tab }">
-              <div v-if="tab.name === 'details'">
+              <!-- The same AI Assist panel the desktop sidebar renders. A phone
+                   has no room for a persistent side column, so it gets a tab —
+                   but it is the SAME component, not a mobile copy of it. The
+                   gray rail + padding mirror the desktop sidebar's card frame. -->
+              <div
+                v-if="tab.name === 'ai'"
+                class="bg-surface-gray-1 p-2.5"
+              >
+                <AiAssistPanel show-empty-state />
+              </div>
+
+              <div v-else-if="tab.name === 'details'">
                 <!-- ticket contact info -->
                 <TicketAgentContact
                   v-if="contact.data"
@@ -198,6 +214,7 @@ import {
 } from "vue";
 
 import { CommunicationArea, LayoutHeader } from "@/components";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator.vue";
 import {
   ActivityIcon,
   AttachmentIcon,
@@ -211,6 +228,8 @@ import { TicketAgentActivities } from "@/components/ticket";
 import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 
 import CustomActions from "@/components/CustomActions.vue";
+import LucideSparkles from "~icons/lucide/sparkles";
+import AiAssistPanel from "@/components/ticket-agent/AiAssistPanel.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";
@@ -220,6 +239,7 @@ import {
   parseField,
   setupCustomizations,
 } from "@/composables/formCustomisation";
+import { usePullToRefresh } from "@/composables/pullToRefresh";
 import { useScreenSize } from "@/composables/screen";
 import { useActiveTabManager } from "@/composables/useActiveTabManager";
 import {
@@ -255,7 +275,7 @@ const { isCallingEnabled } = storeToRefs(telephonyStore);
 const ticketStatusStore = useTicketStatusStore();
 const { getUser } = useUserStore();
 const router = useRouter();
-const { $dialog } = globalStore();
+const { $dialog, $socket } = globalStore();
 
 const ticketAgentActivitiesRef = ref<InstanceType<
   typeof TicketAgentActivities
@@ -457,6 +477,15 @@ const tabs: ComputedRef<TabObject[]> = computed(() => {
       label: __("Activity"),
       icon: ActivityIcon,
     },
+    // Second, not buried at the end: the build sheet, the blocker and the
+    // suggested steps are what an agent away from a desk actually needs. Safe to
+    // insert mid-list — useActiveTabManager resolves tabs by name via the URL
+    // hash, not by a stored index, so nobody's remembered tab shifts.
+    {
+      name: "ai",
+      label: __("AI"),
+      icon: LucideSparkles,
+    },
     {
       name: "email",
       label: __("Emails"),
@@ -635,15 +664,67 @@ function filterActivities(eventType: TicketTab) {
   return _activities.value.filter((activity) => activity.type === eventType);
 }
 
+// Pull down at the top of the screen to refresh. Awaits the resources rather than
+// calling reloadTicket(), which fires its reloads without returning a promise —
+// the spinner has to stay up until the data actually lands. recentSimilarTickets
+// is included so the AI tab's SOP matches refresh with everything else.
+async function refreshFromPull() {
+  await Promise.allSettled([
+    ticket.value?.reload?.(),
+    ticketComposable.value.assignees?.reload?.(),
+    ticketComposable.value.activities?.reload?.(),
+    ticketComposable.value.recentSimilarTickets?.reload?.(),
+  ]);
+}
+
+const { pull, refreshing, threshold } = usePullToRefresh(refreshFromPull);
+
+type TicketUpdateData = {
+  ticket_id: string;
+  user: string;
+  field: string;
+  value: string;
+};
+
 onMounted(() => {
   document.title = props.ticketId;
   // Revisiting a ticket: show the cached conversation immediately and refresh it
-  // in place (mobile has no live socket refresh to keep the cache current).
+  // in place, since a reply may have arrived while this screen was closed.
   revalidateTicket(props.ticketId);
+  // Desktop marks a ticket seen on open; mobile never did, so opening a ticket on
+  // a phone left its unread badge sitting there.
+  ticket.value.markSeen.reload();
+
+  // The same three realtime events the desktop screen listens for. Without them
+  // the phone showed whatever was true when the screen opened — reply from a
+  // desktop and the phone kept the stale thread until you navigated away and
+  // back. That gap is why this screen used to lean on revalidate-on-mount alone.
+  $socket.on("ticket_update", (data: TicketUpdateData) => {
+    if (data.ticket_id === ticket.value?.name) {
+      toast.info(`User ${data.user} updated ${data.field} to ${data.value}`);
+    }
+  });
+
+  $socket.on("helpdesk:ticket-comment", (data: { ticket_id: string }) => {
+    if (data.ticket_id == props.ticketId) {
+      ticketComposable.value.activities.reload();
+    }
+  });
+
+  $socket.on("helpdesk:ticket-update", (data: { ticket_id: string }) => {
+    if (data.ticket_id == props.ticketId) {
+      reloadTicket(props.ticketId);
+    }
+  });
 });
 
 onUnmounted(() => {
   document.title = "Helpdesk";
+  // Only one of the mobile/desktop ticket screens is ever mounted (the route picks
+  // between them), so removing every listener for these events is safe here.
+  $socket.off("ticket_update");
+  $socket.off("helpdesk:ticket-comment");
+  $socket.off("helpdesk:ticket-update");
 });
 </script>
 <style scoped>
