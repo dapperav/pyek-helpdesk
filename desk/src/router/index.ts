@@ -1,5 +1,5 @@
 import { useScreenSize } from "@/composables/screen";
-import { lastError } from "@/lastError";
+import { isStaleChunkError, recoverFromStaleChunk, clearStaleChunkGuard } from "@/staleChunk";
 import { canViewPersona, personaInterrupt } from "@/persona";
 import { useAuthStore } from "@/stores/auth";
 import { useUserStore } from "@/stores/user";
@@ -232,17 +232,23 @@ export const router = createRouter({
   routes,
 });
 
-// TEMP diagnostic: capture lazy-route / dynamic-import failures (e.g. /home's
-// HomeView chunk not loading in the standalone PWA) and surface them in the
-// mobile header debug line.
-router.onError((err) => {
-  lastError.value = ("onError: " + (err?.message || err)).slice(0, 140);
+// PYEK: a lazy route chunk that 404s after a deploy used to leave the app
+// wedged — the navigation aborted and the screen never changed. Reload the
+// target instead so the shell comes back with current chunk URLs. See
+// staleChunk.ts for why the installed PWA hits this and a browser tab doesn't.
+router.onError((err, to) => {
+  if (isStaleChunkError(err) && recoverFromStaleChunk(router.resolve(to).href)) {
+    return;
+  }
+  console.error(err);
 });
+
+// Vite raises this when a preloaded chunk can't be fetched, which on some
+// navigations fires ahead of the router's own error hook.
 if (typeof window !== "undefined") {
-  window.addEventListener("unhandledrejection", (e) => {
-    const m = e?.reason?.message || e?.reason || "";
-    if (/import|chunk|module|fetch/i.test(String(m))) {
-      lastError.value = ("reject: " + m).slice(0, 140);
+  window.addEventListener("vite:preloadError", (e: any) => {
+    if (recoverFromStaleChunk(window.location.pathname + window.location.search)) {
+      e.preventDefault?.();
     }
   });
 }
@@ -277,6 +283,9 @@ router.beforeEach(async (to, _, next) => {
 });
 
 router.afterEach(async (to) => {
+  // A navigation landed, so the chunks we hold are good: re-arm the one-shot
+  // reload guard for the next deploy.
+  clearStaleChunkGuard();
   if (to.meta.public) return;
   const { users } = useUserStore();
   if (!users?.fetched) {
