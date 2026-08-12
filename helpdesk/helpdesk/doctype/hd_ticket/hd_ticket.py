@@ -27,6 +27,7 @@ from helpdesk.helpdesk.doctype.hd_settings.helpers import (
 from helpdesk.helpdesk.doctype.hd_ticket_activity.hd_ticket_activity import (
     log_ticket_activity,
 )
+from helpdesk.helpdesk.utils import echo
 from helpdesk.helpdesk.utils.email import (
     default_outgoing_email_account,
     default_ticket_outgoing_email_account,
@@ -71,7 +72,6 @@ _AUTOMATED_SUBJECT_DEFAULTS = (
     "mail delivery failed",
     "returning online",
 )
-
 
 
 # Deferred acknowledgement (see _defer_or_send_acknowledgement). The requester's one
@@ -1001,9 +1001,7 @@ class HDTicket(Document):
             except Exception:
                 # Field not provisioned yet — closing is still the right outcome,
                 # it just won't show up in the camera-drop report until it is.
-                frappe.log_error(
-                    frappe.get_traceback(), "HD auto-close marker not set"
-                )
+                frappe.log_error(frappe.get_traceback(), "HD auto-close marker not set")
             log_ticket_activity(self.name, "auto-closed a camera offline alert")
         except Exception:
             frappe.log_error(frappe.get_traceback(), "HD camera auto-close failed")
@@ -1032,15 +1030,24 @@ class HDTicket(Document):
         """The upgraded acknowledgement: what we understood, so the requester can
         correct us early instead of after an agent has built the wrong thing.
 
+        Sent as Echo Finley — see helpdesk.helpdesk.utils.echo for who she is and
+        why the sending address deliberately isn't hers.
+
         Deliberately omits the IT troubleshooting steps — those are the agent's
         internal checklist (revoking tokens, confirming approval with a system
         owner) and don't belong in requester-facing mail. What IS included is the
         list of details we still need, since that's the whole point of asking now.
         """
+        urgent = echo.is_urgent(self)
+        subject = (
+            _("Ticket #{0} — we're on it").format(self.name)
+            if urgent
+            else _("Ticket #{0} — got it! A couple of questions").format(self.name)
+        )
         frappe.sendmail(
             recipients=[self.raised_by],
-            subject=_("Ticket #{0}: Here's what we understood").format(self.name),
-            message=self._build_confirmation_summary(),
+            subject=subject,
+            message=self._build_confirmation_summary(urgent=urgent),
             reference_doctype="HD Ticket",
             reference_name=self.name,
             now=True,
@@ -1048,42 +1055,82 @@ class HDTicket(Document):
             email_headers={"X-Auto-Generated": "hd-acknowledgement"},
         )
 
-    def _build_confirmation_summary(self) -> str:
-        summary = html_escape(self.get("pyek_summary") or "")
-        understood = _("Here's what we understood")
-        parts = [
-            f"<p>{_('Thanks for getting in touch — your request is logged as ticket')} "
-            f"<strong>#{self.name}</strong>.</p>",
-            f"<p><strong>{understood}:</strong><br>{summary}</p>",
-        ]
+    def _build_confirmation_summary(self, urgent: bool = False) -> str:
+        """Echo's acknowledgement.
 
-        details, missing = self._confirmation_details()
-        if details:
-            rows = "".join(
-                f"<li>{html_escape(label)}: <strong>{html_escape(value)}</strong></li>"
-                for label, value in details
+        The detail rows the old version printed ("System: inbox / User: Sara
+        Parriott / Access level: access to Lily Young's inbox") are gone. They
+        restated the summary sentence directly above them in worse English —
+        they were the enricher's ``access_request`` object rendered field by
+        field, which is how the system thinks about a request, not how the
+        person who sent it does.
+        """
+        summary = html_escape(self.get("pyek_summary") or "")
+        _details, missing = self._confirmation_details()
+        greeting = echo.first_name(self)
+
+        parts = [echo.header()]
+        if greeting:
+            parts.append(echo.paragraph(f"Hi {html_escape(greeting)},"))
+
+        if urgent:
+            parts.append(
+                echo.paragraph(
+                    _(
+                        "Logged as ticket <strong>#{0}</strong> and marked urgent, so it's "
+                        "in front of the team now."
+                    ).format(self.name)
+                )
             )
-            parts.append(f"<ul>{rows}</ul>")
+        else:
+            parts.append(
+                echo.paragraph(echo.setting("pyek_echo_greeting", name=self.name))
+            )
+
+        if summary:
+            parts.append(echo.heading(_("What I understood")))
+            parts.append(echo.paragraph(summary))
+
+        if urgent:
+            parts.append(
+                echo.callout(
+                    _(
+                        "<strong>If this is stopping work right now, call {0}.</strong> That "
+                        "reaches a person straight away and beats waiting on email."
+                    ).format(echo.PHONE)
+                )
+            )
+            if missing:
+                parts.append(echo.heading(_("This will speed things up")))
+                parts.append(echo.numbered([html_escape(m) for m in missing]))
+            parts.append(
+                echo.paragraph(
+                    _(
+                        "A technician is picking this up now. Reply here with anything else "
+                        "you notice."
+                    )
+                )
+            )
+            parts.append(echo.signature(include_phone=False))
+            return echo.wrap("".join(parts))
 
         if missing:
-            items = "".join(f"<li>{html_escape(m)}</li>" for m in missing)
-            # Directive, not a bare list: name the action (reply), say how many things
-            # are wanted, and say what happens once they do. "To get started we still
-            # need:" tended to get a partial answer — measured on consignment tickets,
-            # requesters leave out the same three fields every time, so the ask has to
-            # work first time or an agent chases it anyway.
-            if len(missing) == 1:
-                lead = _("Reply to this email with one more detail and we'll get started")
-            else:
-                lead = _("Reply to this email with these {0} details and we'll get started").format(
+            parts.append(echo.heading(_("What I need from you")))
+            lead = (
+                _("One quick thing and I'll send this down the line:")
+                if len(missing) == 1
+                else _("{0} quick things and I'll send this down the line:").format(
                     len(missing)
                 )
-            parts.append(f"<p><strong>{lead}:</strong></p><ul>{items}</ul>")
+            )
+            parts.append(echo.paragraph(lead))
+            parts.append(echo.numbered([html_escape(m) for m in missing]))
 
-        parts.append(
-            f"<p>{_('If any of that is wrong, just reply to this email and we will correct it.')}</p>"
-        )
-        return "".join(parts)
+        parts.append(echo.heading(_("What happens next")))
+        parts.append(echo.paragraph(echo.setting("pyek_echo_next_steps")))
+        parts.append(echo.paragraph(echo.setting("pyek_echo_signoff")))
+        parts.append(echo.signature())
+        return echo.wrap("".join(parts))
 
     def _confirmation_details(self):
         """(detail rows, missing items) pulled from whichever enricher branch ran.
@@ -1139,9 +1186,15 @@ class HDTicket(Document):
             frappe.sendmail(
                 recipients=[self.raised_by],
                 subject=_("Ticket #{0}: We've received your request").format(self.name),
-                message=self._get_rendered_template(
-                    acknowledgement_email_content,
-                    default_acknowledgement_email_content,
+                # Echo's band on top of the editable template. Only the header is
+                # added — the template already signs off as her, and stacking our
+                # own signature under it would introduce a second Echo.
+                message=echo.wrap(
+                    echo.header()
+                    + self._get_rendered_template(
+                        acknowledgement_email_content,
+                        default_acknowledgement_email_content,
+                    )
                 ),
                 reference_doctype="HD Ticket",
                 reference_name=self.name,

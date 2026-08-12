@@ -85,7 +85,11 @@
   "reply_via_agent_email_content",
   "pyek_agent_email_section",
   "pyek_agent_thread_email",
-  "pyek_agent_email_reply"
+  "pyek_agent_email_reply",
+  "pyek_echo_section",
+  "pyek_echo_greeting",
+  "pyek_echo_next_steps",
+  "pyek_echo_signoff"
  ],
  "fields": [
   {
@@ -522,7 +526,7 @@
    "fieldname": "disable_saved_replies_global_scope",
    "fieldtype": "Check",
    "label": "Disable saved replies with scope 'Global'"
-     },
+  },
   {
    "fieldname": "section_break_ylvs",
    "fieldtype": "Section Break"
@@ -531,8 +535,8 @@
    "fieldname": "column_break_fzef",
    "fieldtype": "Column Break"
   },
-{
-   "default": "Thanks for reaching out \ud83d\udc4b. This ticket was created outside our working hours. You can expect the next response by {{ next_working_day }}.",
+  {
+   "default": "Thanks for reaching out 👋. This ticket was created outside our working hours. You can expect the next response by {{ next_working_day }}.",
    "depends_on": "enable_outside_hours_banner",
    "fieldname": "outside_working_hours_message",
    "fieldtype": "Small Text",
@@ -558,6 +562,29 @@
    "fieldname": "auto_set_customer_from_contact",
    "fieldtype": "Check",
    "label": "Auto-set customer from contact"
+  },
+  {
+   "fieldname": "pyek_echo_section",
+   "fieldtype": "Section Break",
+   "label": "Echo Finley (automated emails)"
+  },
+  {
+   "description": "Echo's first line on the acknowledgement. Use {name} for the ticket number. Leave blank for the default.",
+   "fieldname": "pyek_echo_greeting",
+   "fieldtype": "Small Text",
+   "label": "Opening line"
+  },
+  {
+   "description": "The paragraph under 'What happens next'. Leave blank for the default.",
+   "fieldname": "pyek_echo_next_steps",
+   "fieldtype": "Small Text",
+   "label": "What happens next"
+  },
+  {
+   "description": "Echo's last line before her signature. Leave blank for the default.",
+   "fieldname": "pyek_echo_signoff",
+   "fieldtype": "Small Text",
+   "label": "Sign-off line"
   }
  ],
  "grid_page_length": 50,
