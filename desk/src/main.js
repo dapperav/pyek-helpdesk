@@ -1,5 +1,5 @@
 import { createApp, h } from "vue";
-import { lastError } from "@/lastError";
+import { isStaleChunkError, recoverFromStaleChunk } from "@/staleChunk";
 import {
   Badge,
   Button,
@@ -64,11 +64,15 @@ setConfig("fallbackErrorHandler", (error) => {
 const pinia = createPinia();
 const app = createApp(App);
 
-// TEMP diagnostic: surface any uncaught component error (e.g. a setup throw that
-// prevents /home's HomeView from mounting in the PWA) into the header debug line.
+// PYEK: an async component whose chunk 404s after a deploy surfaces here rather
+// than through the router. Reload so the app picks up current chunk URLs instead
+// of leaving a dead screen behind. See staleChunk.ts.
 app.config.errorHandler = (err, _instance, info) => {
-  lastError.value = ("errHandler: " + (err?.message || err) + " @" + info).slice(0, 160);
-  console.error(err);
+  if (isStaleChunkError(err) &&
+      recoverFromStaleChunk(window.location.pathname + window.location.search)) {
+    return;
+  }
+  console.error(err, info);
 };
 
 app.use(FrappeUI);
