@@ -202,6 +202,123 @@ def strip_reply(html: str) -> str | None:
     return reply.strip()
 
 
+_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_SRC_RE = re.compile(r"""(?:src|embed)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+
+# Bounds on what gets attached. A thread that re-embeds a signature on every
+# quoted reply can carry a dozen near-identical images; past these limits the
+# rest become markers and the agent opens the ticket.
+MAX_INLINE_IMAGES = 6
+MAX_INLINE_BYTES = 3 * 1024 * 1024
+
+_IMAGE_MARKER = (
+    '<span style="font-size:12px;color:#98a5b3;border:1px solid #e5e9ee;'
+    'border-radius:3px;padding:1px 5px">[image]</span>'
+)
+
+
+def _file_path_from_src(src: str) -> str:
+    """The site-relative file path an <img> points at, or "".
+
+    Frappe stores inline images as files and rewrites the mail's ``cid:`` refs
+    to their URLs, which arrive here absolute and with a ``?fid=`` query.
+    """
+    if not src:
+        return ""
+    path = src.split("?", 1)[0]
+    for prefix in ("http://", "https://"):
+        if path.startswith(prefix):
+            path = "/" + path.split("/", 3)[3] if path.count("/") >= 3 else ""
+            break
+    return path if path.startswith(("/files/", "/private/files/")) else ""
+
+
+def _inline_plan(communications: list[dict]) -> dict[str, bool]:
+    """Which image paths in this thread are worth attaching: ``{path: True}``.
+
+    Images in the quoted history point at ``/private/files/...``, which needs a
+    logged-in session — and a mail client has none, so every one of them renders
+    as a broken box. Anything kept has to travel with the message instead.
+
+    The judgement of what's worth keeping is the one the ticket view already
+    makes: ``mark_noise_attachments`` marks signature furniture, tracking pixels
+    and images quoted back from an earlier reply, and only the survivors are
+    attached.
+    """
+    from helpdesk.helpdesk.doctype.hd_ticket.api import mark_noise_attachments
+
+    ordered = sorted(communications, key=lambda c: c.get("creation") or "")
+    names = [c["name"] for c in ordered if c.get("name")]
+    if not names:
+        return {}
+
+    files = frappe.get_all(
+        "File",
+        filters={
+            "attached_to_doctype": "Communication",
+            "attached_to_name": ["in", names],
+        },
+        fields=["name", "file_url", "file_size", "content_hash", "attached_to_name"],
+    )
+    by_comm: dict[str, list] = {}
+    for f in files:
+        by_comm.setdefault(f.attached_to_name, []).append(dict(f))
+
+    shaped = [
+        frappe._dict(
+            name=c["name"],
+            content=c.get("content") or "",
+            attachments=by_comm.get(c["name"], []),
+        )
+        for c in ordered
+    ]
+    try:
+        mark_noise_attachments(shaped)
+    except Exception:
+        # Losing the noise judgement is survivable; losing the email is not.
+        frappe.log_error(frappe.get_traceback(), "HD thread image triage failed")
+        return {}
+
+    plan: dict[str, bool] = {}
+    budget = MAX_INLINE_BYTES
+    for shaped_comm in shaped:
+        for attachment in shaped_comm.attachments:
+            url = attachment.get("file_url") or ""
+            if not url or url in plan:
+                continue
+            size = attachment.get("file_size") or 0
+            keep = (
+                not attachment.get("is_noise")
+                and len(plan) < MAX_INLINE_IMAGES
+                and size <= budget
+            )
+            plan[url] = keep
+            if keep:
+                budget -= size
+    return plan
+
+
+def _rewrite_images(html: str, plan: dict[str, bool], attached: set[str]) -> str:
+    """Swap each <img> for an inline attachment or a small [image] marker.
+
+    ``attached`` carries across the whole email so the same picture is embedded
+    once, however many quoted copies of it the thread contains.
+    """
+    if not html:
+        return html
+
+    def swap(match):
+        src = _SRC_RE.search(match.group(0))
+        path = _file_path_from_src(src.group(1) if src else "")
+        if not path or not plan.get(path) or path in attached:
+            return _IMAGE_MARKER
+        attached.add(path)
+        # embed= is what frappe's set_part_html turns into a cid: attachment.
+        return f'<img embed="{path}" style="max-width:100%;height:auto" />'
+
+    return _IMG_RE.sub(swap, html)
+
+
 def _comment_block(comment: dict) -> str:
     author = comment.get("commented_by") or "Unknown"
     return f"""
@@ -213,7 +330,7 @@ def _comment_block(comment: dict) -> str:
 </div>"""
 
 
-def _communication_block(comm: dict) -> str:
+def _communication_block(comm: dict, body: str) -> str:
     direction = "to requester" if comm.get("sent_or_received") == "Sent" else "from"
     who = comm.get("sender") or ""
     return f"""
@@ -221,7 +338,7 @@ def _communication_block(comm: dict) -> str:
   <div style="font-size:12px;color:#6b7b8f;margin-bottom:6px">
     {frappe.utils.escape_html(direction)} {frappe.utils.escape_html(who)} · {pretty_date(comm.get("creation"))}
   </div>
-  <div style="font-size:14px;color:#1f272e">{comm.get("content") or ""}</div>
+  <div style="font-size:14px;color:#1f272e">{body}</div>
 </div>"""
 
 
@@ -240,9 +357,11 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
             "reference_name": ticket.name,
             "communication_type": "Communication",
         },
-        fields=["sender", "sent_or_received", "content", "creation"],
+        fields=["name", "sender", "sent_or_received", "content", "creation"],
         order_by="creation desc",
     )
+    plan = _inline_plan(communications)
+    attached: set[str] = set()
     comments = frappe.get_all(
         "HD Ticket Comment",
         filters={"reference_ticket": ticket.name},
@@ -291,7 +410,7 @@ def build_thread_html(ticket, event: str, actor: str | None = None) -> str:
   <div style="font-size:12px;color:#98a5b3;border-top:1px dashed #cbd5e1;padding-top:10px;margin-top:20px">
     {REPLY_MARKER}
   </div>
-  {"".join(_communication_block(c) for c in communications)}
+  {"".join(_communication_block(c, _rewrite_images(c.get("content") or "", plan, attached)) for c in communications)}
   {"".join(_comment_block(c) for c in comments)}
 </div>"""
 
@@ -330,12 +449,14 @@ def send_thread_email(
     # reply's In-Reply-To through that row back to this ticket. "Automated
     # Message" keeps it out of the visible thread (get_communications filters
     # it) and out of first_responded_on (on_communication_update ignores it).
+    body = build_thread_html(ticket, event, actor)
+
     communication = frappe.get_doc(
         {
             "doctype": "Communication",
             "communication_type": "Automated Message",
             "communication_medium": "Email",
-            "content": build_thread_html(ticket, event, actor),
+            "content": body,
             "email_account": account.name,
             "email_status": "Open",
             "recipients": recipient,
@@ -350,7 +471,12 @@ def send_thread_email(
 
     frappe.sendmail(
         communication=communication.name,
-        message=communication.content,
+        # `body`, not `communication.content`: inserting the Communication runs
+        # Frappe's HTML sanitiser, which strips the non-standard `embed`
+        # attribute — and `embed` is exactly what set_part_html turns into the
+        # inline cid: attachments. Sending the round-tripped copy is why Echo's
+        # avatar and every quoted image arrived broken.
+        message=body,
         now=True,
         recipients=recipient,
         reference_doctype="HD Ticket",

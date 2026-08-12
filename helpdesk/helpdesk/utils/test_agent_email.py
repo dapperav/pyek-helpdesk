@@ -3,6 +3,8 @@ import unittest
 from helpdesk.helpdesk.utils.agent_email import (
     INTERNAL_SENTINEL,
     REPLY_MARKER,
+    _file_path_from_src,
+    _rewrite_images,
     split_aliases,
     strip_reply,
 )
@@ -85,3 +87,58 @@ class TestSplitAliases(unittest.TestCase):
         self.assertEqual(split_aliases(""), set())
         self.assertEqual(split_aliases(None), set())
         self.assertEqual(split_aliases("not-an-address, , x@y.com"), {"x@y.com"})
+
+
+class TestThreadImages(unittest.TestCase):
+    """Images in the quoted history point at /private/files/, which needs a
+    logged-in session. A mail client has none, so linking them renders a broken
+    box — anything kept has to travel with the message."""
+
+    def test_reads_the_file_path_out_of_a_src(self):
+        self.assertEqual(
+            _file_path_from_src("https://it.pyekmail.com/private/files/a.png?fid=6bd3"),
+            "/private/files/a.png",
+        )
+        self.assertEqual(
+            _file_path_from_src("/private/files/Outlook-x.png?fid=59d4"),
+            "/private/files/Outlook-x.png",
+        )
+        self.assertEqual(
+            _file_path_from_src("https://it.pyekmail.com/files/echo-finley.png"),
+            "/files/echo-finley.png",
+        )
+
+    def test_ignores_anything_not_a_site_file(self):
+        for src in (
+            "cid:u5PLZXNvM8",
+            "data:image/png;base64,iVBOR",
+            "",
+            "https://tracker.example.com/p.gif",
+        ):
+            self.assertEqual(_file_path_from_src(src), "", src)
+
+    def test_keeps_real_images_and_marks_the_rest(self):
+        plan = {"/private/files/keep.png": True, "/private/files/sig.png": False}
+        html = (
+            '<img src="https://it.pyekmail.com/private/files/keep.png?fid=1">'
+            '<img src="https://it.pyekmail.com/private/files/sig.png?fid=2">'
+            '<img src="https://tracker.example.com/pixel.gif">'
+        )
+
+        out = _rewrite_images(html, plan, set())
+
+        self.assertIn('embed="/private/files/keep.png"', out)
+        self.assertEqual(out.count("[image]"), 2)
+        self.assertNotIn("tracker.example.com", out)
+
+    def test_an_image_is_attached_once_however_often_it_is_quoted(self):
+        plan = {"/private/files/keep.png": True}
+        html = '<img src="/private/files/keep.png?fid=1">'
+        attached = set()
+
+        first = _rewrite_images(html, plan, attached)
+        second = _rewrite_images(html, plan, attached)
+
+        self.assertIn("embed=", first)
+        self.assertNotIn("embed=", second)
+        self.assertIn("[image]", second)
