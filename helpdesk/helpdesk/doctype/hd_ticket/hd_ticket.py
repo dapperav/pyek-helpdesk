@@ -1069,7 +1069,7 @@ class HDTicket(Document):
         _details, missing = self._confirmation_details()
         greeting = echo.first_name(self)
 
-        parts = [echo.header()]
+        parts = []
         if greeting:
             parts.append(echo.paragraph(f"Hi {html_escape(greeting)},"))
 
@@ -1186,15 +1186,15 @@ class HDTicket(Document):
             frappe.sendmail(
                 recipients=[self.raised_by],
                 subject=_("Ticket #{0}: We've received your request").format(self.name),
-                # Echo's band on top of the editable template. Only the header is
-                # added — the template already signs off as her, and stacking our
-                # own signature under it would introduce a second Echo.
+                # The editable template already closes with Echo's name and the
+                # phone number, so this appends the picture block without a
+                # second phone line under it.
                 message=echo.wrap(
-                    echo.header()
-                    + self._get_rendered_template(
+                    self._get_rendered_template(
                         acknowledgement_email_content,
                         default_acknowledgement_email_content,
                     )
+                    + echo.signature(include_phone=False)
                 ),
                 reference_doctype="HD Ticket",
                 reference_name=self.name,

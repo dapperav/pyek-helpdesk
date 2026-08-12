@@ -86,17 +86,22 @@ class TestEchoSettings(unittest.TestCase):
 
 
 class TestEchoMarkup(unittest.TestCase):
-    def test_header_is_a_table_for_outlook(self):
-        """Outlook renders through Word and ignores flexbox."""
-        html = echo.header()
+    def test_signature_is_a_table_for_outlook(self):
+        """Outlook renders through Word and ignores flexbox, which would drop
+        the avatar and the name onto separate lines."""
+        html = echo.signature()
 
         self.assertIn("<table", html)
         self.assertIn(echo.NAME, html)
         self.assertIn(echo.TAGLINE, html)
 
-    def test_header_subtitle_override(self):
-        self.assertIn("automated", echo.header(f"{echo.TEAM} · automated"))
+    def test_signature_subtitle_override(self):
+        self.assertIn("automated", echo.signature(subtitle=f"{echo.TEAM} · automated"))
 
     def test_signature_can_drop_the_phone(self):
         self.assertIn(echo.PHONE, echo.signature())
         self.assertNotIn(echo.PHONE, echo.signature(include_phone=False))
+
+    def test_greeting_default_lost_the_flipper(self):
+        """Mark's one objection to the first live email (2026-08-12)."""
+        self.assertNotIn("flipper", echo.setting("pyek_echo_greeting", name="0393"))

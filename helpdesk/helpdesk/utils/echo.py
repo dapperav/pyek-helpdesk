@@ -59,8 +59,8 @@ URGENT_WORDS = ("urgent", "high", "critical", "emergency")
 # content, and a typo in a loop should not be able to break them.
 SETTING_DEFAULTS = {
     "pyek_echo_greeting": (
-        "Echo here, clipboard in flipper. Your request is logged as ticket "
-        "<strong>#{name}</strong> and the IT pod can see it."
+        "Echo here — I've logged your request as ticket <strong>#{name}</strong> "
+        "and the IT pod can see it."
     ),
     "pyek_echo_next_steps": (
         "Reply to this email and a technician picks it up. Most requests are done "
@@ -183,47 +183,42 @@ def avatar_html() -> str:
     )
 
 
-def header(subtitle: str | None = None) -> str:
-    """Echo's band at the top of the email.
+def signature(subtitle: str | None = None, include_phone: bool = True) -> str:
+    """Echo's block, at the foot of the email where a signature belongs.
+
+    This started life as a band across the top. Mark's read on seeing a real one
+    (2026-08-12): the block itself is right, its position was not — an email
+    should open with what it has to say, not with who is saying it.
 
     A table, not flexbox: Outlook renders HTML through Word and ignores flex,
     which would drop the avatar and the name onto separate lines.
     """
     avatar = avatar_html()
     avatar_cell = (
-        f'<td style="padding:0 12px 0 0;vertical-align:middle">{avatar}</td>'
+        f'<td style="padding:0 12px 0 0;vertical-align:top">{avatar}</td>'
         if avatar
         else ""
     )
     team = escape_html(subtitle or TEAM)
+    phone = (
+        f'<div style="font-size:13px;color:{_SOFT};margin-top:2px">{PHONE} if it\'s '
+        "urgent and you'd rather talk to a human</div>"
+        if include_phone
+        else ""
+    )
 
     return (
+        f'<div style="border-top:1px solid {_RULE};margin:20px 0 0 0;padding:14px 0 0 0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-        'style="border-collapse:collapse;margin:0 0 14px 0"><tr>'
+        'style="border-collapse:collapse"><tr>'
         f"{avatar_cell}"
-        f'<td style="vertical-align:middle;font-family:{_FONT}">'
+        f'<td style="vertical-align:top;font-family:{_FONT}">'
         f'<div style="font-weight:700;font-size:15px;color:{_INK}">{NAME}</div>'
         f'<div style="font-size:13px;font-style:italic;color:{_SOFT}">{TAGLINE}</div>'
         f'<div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;'
         f'color:{_FAINT}">{team}</div>'
-        "</td></tr></table>"
-        f'<div style="border-top:2px solid {_ACCENT};margin:0 0 16px 0"></div>'
-    )
-
-
-def signature(include_phone: bool = True) -> str:
-    phone = (
-        f'<div style="font-size:13px;color:{_SOFT}">{PHONE} if it\'s urgent and '
-        "you'd rather talk to a human</div>"
-        if include_phone
-        else ""
-    )
-    return (
-        f'<div style="border-top:1px solid {_RULE};margin:18px 0 0 0;padding:12px 0 0 0;'
-        f'font-family:{_FONT}">'
-        f'<div style="font-weight:600;font-size:14px;color:{_INK}">{NAME}</div>'
-        f'<div style="font-size:13px;color:{_SOFT}">{TAGLINE} · {TEAM}</div>'
-        f"{phone}</div>"
+        f"{phone}"
+        "</td></tr></table></div>"
     )
 
 
