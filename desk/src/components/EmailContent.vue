@@ -1,9 +1,30 @@
 <template>
-  <iframe
-    ref="iframeRef"
-    :srcdoc="htmlContent"
-    class="prose-f block h-10 max-h-[500px] w-full"
-  />
+  <!-- The iframe is always its full content height, and the wrapper clips with
+       `overflow: hidden` rather than `auto`. That distinction is the whole
+       point: the old `max-h-[500px]` on the iframe gave every long email its
+       own scrollbar, so a wheel over the first message scrolled inside it
+       instead of down the page. Nothing here scrolls but the page. -->
+  <div class="relative w-full">
+    <div :style="isClipped ? clipStyle : undefined">
+      <iframe
+        ref="iframeRef"
+        :srcdoc="htmlContent"
+        scrolling="no"
+        class="prose-f block h-10 w-full"
+      />
+    </div>
+    <div
+      v-if="isClipped"
+      class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-surface-base via-surface-base to-transparent pt-8 pb-1"
+    >
+      <button
+        class="text-p-sm text-ink-gray-6 hover:text-ink-gray-8 underline underline-offset-2"
+        @click="showFullMessage = true"
+      >
+        {{ __("Show full message") }}
+      </button>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -19,6 +40,16 @@ const props = defineProps({
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const _content = ref(stripEmailColors(props.content));
+
+// Tall enough that an ordinary email is never clipped, short enough that one
+// monster thread doesn't turn the ticket into a mile of page.
+const CLIP_HEIGHT = 800;
+const clipStyle = { maxHeight: `${CLIP_HEIGHT}px`, overflow: "hidden" };
+const contentHeight = ref(0);
+const showFullMessage = ref(false);
+const isClipped = computed(
+  () => !showFullMessage.value && contentHeight.value > CLIP_HEIGHT
+);
 
 // Get CSS path - in dev Vite serves it directly, in prod we need the built path
 const cssHref = computed(() => {
@@ -143,6 +174,12 @@ const htmlContent = computed(
     <link rel="stylesheet" href="${cssHref.value}" />
     <base target="_blank" />
     <style>
+      /* The frame is sized to its content, so a vertical scrollbar in here can
+         only be a rounding artefact — and it would steal the wheel from the
+         page. Wide tables still scroll sideways. */
+      html, body {
+        overflow-y: hidden;
+      }
       :root {
         --bg-surface-gray-3: #ededed;
         --bg-surface-gray-4: #e2e2e2;
@@ -224,6 +261,7 @@ watch(iframeRef, (iframe) => {
       if (font) emailContent.classList.add(font);
 
       iframe.style.height = parent.offsetHeight + 1 + "px";
+      contentHeight.value = parent.offsetHeight;
 
       // Clicks inside the iframe don't bubble to the parent document, popovers/dropdowns that close on outside-click never fire.
       iframe.contentDocument?.addEventListener("pointerdown", () => {
@@ -252,6 +290,7 @@ watch(iframeRef, (iframe) => {
         replyCollapsers.forEach((replyCollapser) => {
           replyCollapser.addEventListener("change", () => {
             iframe.style.height = parent.offsetHeight + 1 + "px";
+            contentHeight.value = parent.offsetHeight;
           });
         });
       }
