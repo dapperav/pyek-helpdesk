@@ -23,9 +23,13 @@
       ><span class="font-medium" style="color: #67e8f9">MAIL</span>
     </span>
     <!-- Create lives here on the tickets list (route-aware, reliable — no
-         teleport). White-on-navy for contrast. -->
+         teleport). White-on-navy for contrast.
+         v-show rather than v-if for the same reason as #app-header below: this
+         sits in the same shell as the teleport target and its condition flips on
+         the exact list <-> detail transition, so mounting/unmounting it is churn
+         next to a teleport mid-patch. display:none reclaims the space identically. -->
     <RouterLink
-      v-if="showCreate"
+      v-show="showCreate"
       :to="{ name: 'TicketAgentNew' }"
       class="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-medium active:opacity-80"
       style="color: #1b2a4a"
