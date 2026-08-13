@@ -14,8 +14,13 @@
       <div ref="scrollEl" class="min-h-0 flex-1 overflow-auto">
         <slot />
       </div>
-      <!-- Hidden on the ticket detail screen, which has its own sticky reply
-           box pinned to the bottom. -->
+      <!-- Hidden on the ticket detail screen, which has its own sticky reply box
+           pinned to the bottom — EXCEPT when the app was cold-launched straight
+           onto that ticket, which is what a push notification does. Arriving
+           that way there is no history behind you, so hiding the nav left no way
+           out of the screen at all and the app had to be force-quit. Tapping in
+           from a list still gets the roomier no-nav layout, since breadcrumb and
+           swipe-back both work there. -->
       <MobileBottomNav v-if="showBottomNav" />
     </div>
   </div>
@@ -27,9 +32,12 @@ import MobileSidebar from "./MobileSidebar.vue";
 import MobileAppHeader from "./MobileAppHeader.vue";
 import MobileBottomNav from "./MobileBottomNav.vue";
 import { provideMobileScrollEl } from "@/composables/pullToRefresh";
+import { canGoBackInApp } from "@/composables/mobile";
 
 const route = useRoute();
-const showBottomNav = computed(() => route.name !== "TicketAgent");
+const showBottomNav = computed(
+  () => route.name !== "TicketAgent" || !canGoBackInApp.value
+);
 
 const scrollEl = ref(null);
 provideMobileScrollEl(scrollEl);

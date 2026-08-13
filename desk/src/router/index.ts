@@ -1,4 +1,5 @@
 import { useScreenSize } from "@/composables/screen";
+import { navigationCount } from "@/composables/mobile";
 import { isStaleChunkError, recoverFromStaleChunk, clearStaleChunkGuard } from "@/staleChunk";
 import { canViewPersona, personaInterrupt } from "@/persona";
 import { useAuthStore } from "@/stores/auth";
@@ -286,6 +287,10 @@ router.afterEach(async (to) => {
   // A navigation landed, so the chunks we hold are good: re-arm the one-shot
   // reload guard for the next deploy.
   clearStaleChunkGuard();
+  // Lets the mobile shell tell "cold-launched here" from "navigated here" — a
+  // push notification opens the app directly on a ticket, where the bottom nav is
+  // normally hidden. See canGoBackInApp.
+  navigationCount.value++;
   if (to.meta.public) return;
   const { users } = useUserStore();
   if (!users?.fetched) {
