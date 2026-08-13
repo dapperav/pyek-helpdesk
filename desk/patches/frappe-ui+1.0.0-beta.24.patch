@@ -161,3 +161,52 @@ index 7fd8a54..a0f9c1e 100644
  }
  
  export async function getInstalledAppSites(appName) {
+diff --git a/node_modules/frappe-ui/src/molecules/editor/extensions/emoji/emoji-extension.ts b/node_modules/frappe-ui/src/molecules/editor/extensions/emoji/emoji-extension.ts
+index feec02b..db2275d 100644
+--- a/node_modules/frappe-ui/src/molecules/editor/extensions/emoji/emoji-extension.ts
++++ b/node_modules/frappe-ui/src/molecules/editor/extensions/emoji/emoji-extension.ts
+@@ -5,20 +5,40 @@ import {
+ } from '../suggestion/createSuggestionExtension'
+ import { filterByQuery } from '#molecules/editor/extensions/shared/suggestion-helpers'
+ import EmojiList from './EmojiList.vue'
+-import _EMOJIS from './emojis.json'
+-
+-const EMOJIS = _EMOJIS as EmojiItem[]
+ 
+ export interface EmojiItem extends BaseSuggestionItem {
+   name: string
+   emoji: string
+ }
+ 
++// Loaded on demand: a static `import emojis.json` rides the emoji dataset
++// (~105 KB of JSON, ~300 KB gzipped in its chunk) into the eager bundle of
++// every page that transitively touches the editor module, editor or not.
++// The data is only needed once someone actually types ':' in an editor, and
++// the suggestion plumbing accepts a Promise from `items`, so fetch it then.
++let EMOJIS: EmojiItem[] = []
++let emojisLoading: Promise<void> | null = null
++function ensureEmojis(): Promise<void> {
++  if (!emojisLoading) {
++    emojisLoading = import('./emojis.json')
++      .then((m) => {
++        EMOJIS = ((m as any).default ?? m) as EmojiItem[]
++      })
++      .catch((e) => {
++        // Retry on the next ':' rather than caching a permanent failure.
++        emojisLoading = null
++        console.error('emoji suggestions: could not load dataset', e)
++      })
++  }
++  return emojisLoading
++}
++
+ export default createSuggestionExtension<EmojiItem>({
+   name: 'emoji',
+   char: ':',
+   pluginKey: new PluginKey('emojiSuggestion'),
+-  items: ({ query }: { query: string }) => {
++  items: async ({ query }: { query: string }) => {
++    await ensureEmojis()
+     return filterByQuery(EMOJIS, query, 'name')
+       .sort((a, b) => {
+         const aName = a.name.toLowerCase()
