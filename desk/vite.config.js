@@ -1,5 +1,6 @@
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
+import { existsSync } from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -15,6 +16,15 @@ export default defineConfig(async ({ mode }) => {
   });
 
   const frappeui = await importFrappeUIPlugin({ useLocalFrappeUI });
+
+  // PYEK: dev against a remote Frappe site instead of a local bench.
+  //   PYEK_DEV_BACKEND=https://staging.example.com yarn dev
+  // Off-bench (this repo's dev machines are Windows laptops, and Frappe can't
+  // run on them) there is no localhost:8000 to proxy to, so the stock
+  // frappeProxy plugin is disabled and an equivalent proxy points at the
+  // remote site instead. Cookies set by the remote (sid) are rewritten to
+  // host-only so the session sticks to the localhost origin.
+  const devBackend = process.env.PYEK_DEV_BACKEND;
   const config = {
     define: {
       // PYEK: a per-build stamp for the service-worker script URL.
@@ -35,7 +45,7 @@ export default defineConfig(async ({ mode }) => {
     },
     plugins: [
       frappeui({
-        frappeProxy: true,
+        frappeProxy: !devBackend,
         lucideIcons: true,
         jinjaBootData: true,
         buildConfig: {
@@ -130,11 +140,49 @@ export default defineConfig(async ({ mode }) => {
       fs: {
         allow: [".."],
       },
+      ...(devBackend
+        ? {
+            port: 8080,
+            proxy: {
+              // The remote /helpdesk shell carries the jinja-injected boot
+              // (window["csrf_token"] = ...). /helpdesk itself must stay local
+              // (it's this dev server's SPA), so main.js fetches the remote
+              // shell through this dedicated path to bootstrap dev boot data
+              // when the backend has no developer_mode (see getDevBoot).
+              "/pyek-remote-boot": {
+                target: devBackend,
+                changeOrigin: true,
+                secure: true,
+                rewrite: () => "/helpdesk",
+              },
+              "^/(desk|app|login|api|assets|files|private)": {
+                target: devBackend,
+                changeOrigin: true,
+                secure: true,
+                ws: true,
+                cookieDomainRewrite: "",
+              },
+            },
+          }
+        : {}),
     },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src"),
         "tailwind.config.js": path.resolve(__dirname, "tailwind.config.js"),
+        // On a bench, socket.ts imports the real common_site_config.json four
+        // levels up. Off-bench (a dev machine), that file doesn't exist and
+        // the build fails to resolve it — alias it to a stub carrying the
+        // default socketio_port. Production is unaffected either way: the
+        // imported value is only used when location.port is set.
+        ...(existsSync(path.resolve(__dirname, "../../../../sites/common_site_config.json"))
+          ? {}
+          : {
+              "../../../../sites/common_site_config.json": path.resolve(
+                __dirname,
+                "dev/common_site_config.stub.json"
+              ),
+            }),
         // ...localFrappeUIAliases,
       },
       // frappe-ui is served from source (excluded from optimizeDeps) and the
