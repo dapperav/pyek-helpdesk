@@ -1,10 +1,17 @@
 <template>
   <div class="flex flex-col">
-    <PullToRefreshIndicator
-      :pull="pull"
-      :refreshing="refreshing"
-      :threshold="threshold"
-    />
+    <!-- LayoutHeader renders ONLY a <Teleport> (into #app-header), so it emits no
+         DOM here and this indicator looks identical either side of it. It must go
+         AFTER: as the first child it sat immediately before a teleport-only
+         component whose v-if flips when the ticket doc arrives — and doing that
+         while the ticket LIST's own Teleport was unmounting crashed Vue's patcher
+         ("Cannot read properties of null (reading 'emitsOptions')", then
+         "Cannot destructure property 'bum' of 'B' as it is null"). The unmount
+         threw, the router-view never swapped, and the list stayed on screen with
+         the URL already changed — i.e. tapping a ticket silently did nothing.
+         Direct URL loads always worked, because then no other teleport is being
+         torn down at the same moment. See PR #12, which fixed the same class of
+         crash in this shell before. -->
     <LayoutHeader v-if="ticket.doc?.name">
       <template #left-header>
         <Breadcrumbs :items="breadcrumbs" />
@@ -34,6 +41,11 @@
         </div>
       </template>
     </LayoutHeader>
+    <PullToRefreshIndicator
+      :pull="pull"
+      :refreshing="refreshing"
+      :threshold="threshold"
+    />
     <header
       class="flex h-12 items-center justify-between py-[7px] px-3 border-b"
       v-if="ticket.doc?.name"
