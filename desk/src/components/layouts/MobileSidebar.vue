@@ -51,8 +51,13 @@ import {
   TransitionChild,
   TransitionRoot,
 } from "@headlessui/vue";
-import { computed, markRaw, watch } from "vue";
+import { computed, markRaw, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import {
+  pushState,
+  refreshPushState,
+  togglePush,
+} from "@/composables/webPush";
 
 import { useAuthStore } from "@/stores/auth";
 import { isCustomerPortal } from "@/utils";
@@ -72,6 +77,25 @@ const { appsMenuOption } = useApps();
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+
+// Names the state rather than the action for "denied", because there is nothing
+// tapping can do about it — the browser won't re-prompt once refused.
+const pushLabel = computed(() => {
+  switch (pushState.value) {
+    case "on":
+      return __("Notifications on");
+    case "working":
+      return __("Just a moment…");
+    case "denied":
+      return __("Notifications blocked");
+    default:
+      return __("Notify me on this device");
+  }
+});
+
+// Read-only: reflects whether this device already has a subscription. Never
+// prompts.
+onMounted(refreshPushState);
 
 const themeMenuItem = computed(() => ({
   label: __("Toggle theme"),
@@ -96,6 +120,19 @@ const agentPortalDropdown = computed(() => [
     icon: "lucide-bell",
     onClick: () => router.push({ name: "Notifications" }),
   },
+  // PYEK: push opt-in. Lives behind an explicit tap because a permission prompt
+  // on load is the fastest route to a permanent denial — and on iOS a denial can
+  // only be reversed in system Settings, so one bad prompt kills the feature for
+  // that install. Hidden where the browser can't do push at all.
+  ...(pushState.value !== "unsupported"
+    ? [
+        {
+          label: pushLabel.value,
+          icon: pushState.value === "on" ? "lucide-bell-ring" : "lucide-bell-plus",
+          onClick: () => togglePush(),
+        },
+      ]
+    : []),
   appsMenuOption.value,
   ...(authStore.hasAgentRecord
     ? [
