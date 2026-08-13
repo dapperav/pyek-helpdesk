@@ -1,15 +1,6 @@
-import { computed, ref } from "vue";
+import { ref } from "vue";
 
 export const mobileSidebarOpened = ref(false);
-
-/**
- * How many in-app navigations have completed since the app booted.
- *
- * Incremented from the router's afterEach. The FIRST navigation is the one that
- * resolved whatever URL the app was launched at, so a value of 1 means "we are
- * still on the screen we cold-started on, with nothing behind us".
- */
-export const navigationCount = ref(0);
 
 /**
  * True once there is somewhere to go back to inside the app.
@@ -20,5 +11,12 @@ export const navigationCount = ref(0);
  * breadcrumb and swipe-back both work. Arriving from a notification there is no
  * history at all, so hiding the nav left the app with no way out: Mark had to
  * force-quit it. Used to keep the nav visible in exactly that case.
+ *
+ * Set from the router's afterEach off vue-router's own history state:
+ * `history.state.back` is null exactly when the current entry is the first
+ * in-app one. This replaced counting afterEach calls (navigationCount > 1),
+ * which was measured wrong on the live site 2026-08-13 — boot completes more
+ * than one navigation, so a cold-launched ticket still hid the nav, the very
+ * dead end this exists to prevent.
  */
-export const canGoBackInApp = computed(() => navigationCount.value > 1);
+export const canGoBackInApp = ref(false);

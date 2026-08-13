@@ -1,5 +1,5 @@
 import { useScreenSize } from "@/composables/screen";
-import { navigationCount } from "@/composables/mobile";
+import { canGoBackInApp } from "@/composables/mobile";
 import { isStaleChunkError, recoverFromStaleChunk, clearStaleChunkGuard } from "@/staleChunk";
 import { canViewPersona, personaInterrupt } from "@/persona";
 import { useAuthStore } from "@/stores/auth";
@@ -289,8 +289,9 @@ router.afterEach(async (to) => {
   clearStaleChunkGuard();
   // Lets the mobile shell tell "cold-launched here" from "navigated here" — a
   // push notification opens the app directly on a ticket, where the bottom nav is
-  // normally hidden. See canGoBackInApp.
-  navigationCount.value++;
+  // normally hidden. vue-router leaves `history.state.back` null exactly when
+  // the current entry is the first in-app one. See canGoBackInApp.
+  canGoBackInApp.value = window.history.state?.back != null;
   if (to.meta.public) return;
   const { users } = useUserStore();
   if (!users?.fetched) {
