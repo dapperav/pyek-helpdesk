@@ -32,7 +32,19 @@
         </RouterLink>
       </template>
     </LayoutHeader>
-    <Teleport v-else to="#mobile-header-view">
+    <!-- `defer` is load-bearing, not an optimization. On a cold mount Vue
+         builds the whole layout subtree DETACHED and inserts it bottom-up, so
+         #mobile-header-view (in MobileAppHeader) is not in the document yet
+         when this Teleport resolves its target — the resolution silently
+         fails, the breadcrumb never mounts, and the first navigation away
+         then unmounts never-mounted children, which crashes Vue's patcher
+         ("Cannot destructure property 'bum' of ... as it is null") and aborts
+         the route swap. Visible symptoms: no view switcher in the navy bar,
+         and tapping a ticket changes the URL but renders nothing. `defer`
+         resolves the target after the mount cycle, when the document is live.
+         (Desktop never hit this because LayoutHeader delays its teleport a
+         tick — see the comment there.) -->
+    <Teleport v-else defer to="#mobile-header-view">
       <ViewBreadcrumbs
         :label="__('Tickets')"
         route-name="TicketsAgent"
