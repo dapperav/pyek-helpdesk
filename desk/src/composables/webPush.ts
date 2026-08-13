@@ -14,7 +14,18 @@ import { ref } from "vue";
  * feature for that install.
  */
 
-const SW_URL = "/assets/helpdesk/desk/sw.js";
+declare const __SW_VERSION__: string;
+
+// The worker lives under the build output, so its scope is /assets/helpdesk/desk/
+// — NOT /helpdesk. That's fine for push (and is why notificationclick uses
+// openWindow rather than focusing an existing client), but it means every
+// registration lookup has to go through the scope path below, not the script URL.
+const SW_SCOPE = "/assets/helpdesk/desk/";
+
+// Registered WITH a build stamp: FC serves this non-hashed file as `immutable`
+// for a year, and a proxy was handing back the previous build's worker. See the
+// __SW_VERSION__ comment in vite.config.js for the measurement.
+const SW_URL = `${SW_SCOPE}sw.js?v=${__SW_VERSION__}`;
 
 export type PushState =
   | "unsupported"
@@ -42,9 +53,13 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 async function getRegistration(): Promise<ServiceWorkerRegistration> {
-  const existing = await navigator.serviceWorker.getRegistration(SW_URL);
+  // Look up by SCOPE, so a changed build stamp still finds the worker we already
+  // registered (and its existing push subscription) instead of stranding it.
+  const existing = await navigator.serviceWorker.getRegistration(SW_SCOPE);
   if (existing) return existing;
-  return navigator.serviceWorker.register(SW_URL);
+  // updateViaCache:"none" keeps the browser's own HTTP cache out of the update
+  // check too — belt and braces alongside the build stamp.
+  return navigator.serviceWorker.register(SW_URL, { updateViaCache: "none" });
 }
 
 /**
@@ -61,7 +76,7 @@ export async function refreshPushState(): Promise<void> {
     return;
   }
   try {
-    const reg = await navigator.serviceWorker.getRegistration(SW_URL);
+    const reg = await navigator.serviceWorker.getRegistration(SW_SCOPE);
     const sub = reg ? await reg.pushManager.getSubscription() : null;
     pushState.value = sub ? "on" : "off";
   } catch {
@@ -124,7 +139,7 @@ export async function disablePush(): Promise<void> {
   if (!supported()) return;
   pushState.value = "working";
   try {
-    const reg = await navigator.serviceWorker.getRegistration(SW_URL);
+    const reg = await navigator.serviceWorker.getRegistration(SW_SCOPE);
     const sub = reg ? await reg.pushManager.getSubscription() : null;
     if (sub) {
       // Tell the server first: if unsubscribe() succeeds and the round trip

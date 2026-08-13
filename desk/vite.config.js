@@ -16,6 +16,23 @@ export default defineConfig(async ({ mode }) => {
 
   const frappeui = await importFrappeUIPlugin({ useLocalFrappeUI });
   const config = {
+    define: {
+      // PYEK: a per-build stamp for the service-worker script URL.
+      //
+      // Frappe Cloud serves /assets/helpdesk/desk/sw.js with
+      // `max-age=31536000, immutable` — correct for the hashed chunks, wrong for
+      // the ONE file whose whole job is to be re-checked. Measured on 2026-08-13:
+      // right after a deploy, `sw.js` returned the PREVIOUS build's 330-byte body
+      // while `sw.js?bust=1` returned the new 1031-byte one from the same origin,
+      // seconds apart, with different ETags and Last-Modified dates.
+      //
+      // The filename can't be hashed (a service worker's URL has to be stable
+      // enough to find) and the cache header isn't ours to change, so the script
+      // URL carries a build stamp instead. Registration looks the worker up by
+      // SCOPE, not script URL, so the changing query doesn't orphan an existing
+      // registration or its push subscription.
+      __SW_VERSION__: JSON.stringify(Date.now().toString(36)),
+    },
     plugins: [
       frappeui({
         frappeProxy: true,
