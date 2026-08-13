@@ -21,7 +21,20 @@
            out of the screen at all and the app had to be force-quit. Tapping in
            from a list still gets the roomier no-nav layout, since breadcrumb and
            swipe-back both work there. -->
-      <MobileBottomNav v-if="showBottomNav" />
+      <!-- v-show, NOT v-if — the same rule MobileAppHeader's #app-header follows,
+           and for the same reason. Mounting/unmounting anything in this shell
+           during a list <-> detail transition churns the tree while LayoutHeader
+           is teleporting into #app-header, and Vue's patcher dies with
+           "Cannot read properties of null (reading 'emitsOptions')". The visible
+           symptom is not an error message: the ticket screen silently fails to
+           render and TICKET TAPS STOP WORKING.
+           This was a v-if before, which mostly got away with it because the value
+           flipped exactly once per navigation. Making it depend on
+           canGoBackInApp (which updates in the router's afterEach) added a second
+           flip mid-transition and reproduced the crash. v-show removes the whole
+           class of problem — the nav element always exists and only its display
+           changes, which reclaims the row just as v-if did. -->
+      <MobileBottomNav v-show="showBottomNav" />
     </div>
   </div>
 </template>
