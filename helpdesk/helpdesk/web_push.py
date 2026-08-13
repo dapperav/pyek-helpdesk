@@ -46,6 +46,18 @@ DEAD_SUBSCRIPTION_CODES = (404, 410)
 PUBLIC_KEY_SETTING = "pyek_vapid_public_key"
 PRIVATE_KEY_SETTING = "pyek_vapid_private_key"
 
+# Per-agent push preferences, stored as Check fields on HD Agent (all default
+# ON). With four notification sources live, the only alternative opt-out is
+# disabling push entirely — which is how the whole feature gets muted.
+# `notification_type` values are the HD Notification Select options.
+PUSH_PREF_FIELDS = {
+    "Assignment": "pyek_push_assignment",
+    "Mention": "pyek_push_mention",
+    "Reaction": "pyek_push_reaction",
+    "Team": "pyek_push_team",
+    "Reply": "pyek_push_reply",
+}
+
 # VAPID requires a contact address so a push service can reach us about abuse.
 # A constant rather than a DB lookup: HD Settings has no outgoing-account field,
 # and this runs in a background job where a failed lookup would cost the send.
@@ -192,6 +204,72 @@ def unsubscribe(endpoint: str) -> dict:
     if name:
         frappe.delete_doc("HD Push Subscription", name, ignore_permissions=True)
     return {"status": "ok"}
+
+
+def should_push(user: str, notification_type: str | None) -> bool:
+    """Has `user` opted out of pushes for this notification type?
+
+    Fails OPEN, matching the team-notification filter's policy: an unknown
+    type, a missing agent row, or a lookup error must never silently mute a
+    notification. Only an explicit 0 on the agent's own pref field skips.
+    """
+    field = PUSH_PREF_FIELDS.get(notification_type or "")
+    if not field:
+        return True
+    try:
+        value = frappe.db.get_value("HD Agent", {"user": user}, field)
+    except Exception:
+        frappe.log_error(
+            title="PMIT push: pref lookup failed",
+            message=f"user={user} type={notification_type}\n{frappe.get_traceback()}",
+        )
+        return True
+    if value is None:
+        return True
+    return bool(int(value))
+
+
+@frappe.whitelist()
+def get_push_prefs() -> dict:
+    """The session agent's per-type push switches, for the settings UI."""
+    from helpdesk.utils import is_agent
+
+    if not is_agent():
+        frappe.throw(frappe._("Not permitted"), frappe.PermissionError)
+
+    row = frappe.db.get_value(
+        "HD Agent",
+        {"user": frappe.session.user},
+        list(PUSH_PREF_FIELDS.values()),
+        as_dict=True,
+    )
+    # No agent row (should not happen behind is_agent, but fail open the same
+    # way the send path does): everything reads as enabled.
+    return {
+        key: bool(int(row[field])) if row and row.get(field) is not None else True
+        for key, field in PUSH_PREF_FIELDS.items()
+    }
+
+
+@frappe.whitelist()
+def set_push_pref(notification_type: str, enabled) -> dict:
+    """Flip one of the session agent's push switches. Scoped to the caller."""
+    from helpdesk.utils import is_agent
+
+    if not is_agent():
+        frappe.throw(frappe._("Not permitted"), frappe.PermissionError)
+
+    field = PUSH_PREF_FIELDS.get(notification_type)
+    if not field:
+        frappe.throw(frappe._("Unknown notification type"))
+
+    name = frappe.db.get_value("HD Agent", {"user": frappe.session.user}, "name")
+    if not name:
+        frappe.throw(frappe._("No agent record"))
+
+    value = 1 if frappe.utils.cint(enabled) else 0
+    frappe.db.set_value("HD Agent", name, field, value)
+    return {notification_type: bool(value)}
 
 
 def notify_user(user: str, title: str, body: str, url: str, tag: str | None = None):

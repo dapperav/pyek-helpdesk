@@ -126,7 +126,14 @@ class HDNotification(Document):
         is unhappy.
         """
         try:
-            from helpdesk.helpdesk.web_push import notify_user
+            from helpdesk.helpdesk.web_push import notify_user, should_push
+
+            # Per-agent preference (Check fields on HD Agent, default on).
+            # Checked here rather than in notify_user so future non-HD-
+            # Notification pushes (e.g. SLA breach warnings) choose their own
+            # pref field explicitly.
+            if not should_push(self.user_to, self.notification_type):
+                return
 
             notify_user(
                 user=self.user_to,

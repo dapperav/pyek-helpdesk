@@ -12,7 +12,12 @@
   "is_active",
   "availability",
   "availability_changed_on",
-  "pyek_email_aliases"
+  "pyek_email_aliases",
+  "pyek_push_assignment",
+  "pyek_push_mention",
+  "pyek_push_reaction",
+  "pyek_push_team",
+  "pyek_push_reply"
  ],
  "fields": [
   {
@@ -59,6 +64,37 @@
    "fieldname": "pyek_email_aliases",
    "fieldtype": "Small Text",
    "label": "Email Aliases"
+  },
+  {
+   "default": "1",
+   "description": "Push notification preferences. All default ON so adding them changes nothing for existing agents; the send path fails open when no agent row exists.",
+   "fieldname": "pyek_push_assignment",
+   "fieldtype": "Check",
+   "label": "Push: Assignments"
+  },
+  {
+   "default": "1",
+   "fieldname": "pyek_push_mention",
+   "fieldtype": "Check",
+   "label": "Push: Mentions"
+  },
+  {
+   "default": "1",
+   "fieldname": "pyek_push_reaction",
+   "fieldtype": "Check",
+   "label": "Push: Reactions"
+  },
+  {
+   "default": "1",
+   "fieldname": "pyek_push_team",
+   "fieldtype": "Check",
+   "label": "Push: New Team Tickets"
+  },
+  {
+   "default": "1",
+   "fieldname": "pyek_push_reply",
+   "fieldtype": "Check",
+   "label": "Push: Replies"
   }
  ],
  "index_web_pages_for_search": 1,
