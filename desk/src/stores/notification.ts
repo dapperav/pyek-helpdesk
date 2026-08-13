@@ -67,6 +67,26 @@ export const useNotificationStore = defineStore("notification", () => {
     resource.reload();
   });
 
+  // PYEK: badge the installed PWA's home-screen icon with the unread count.
+  //
+  // An installed PWA is just an icon on a home screen, so with the app closed
+  // there was nothing at all to say a ticket had been assigned — the count only
+  // existed inside the app, on the "Menu" tab, where you had to already be
+  // looking. This is the cheap half of that problem; a push notification is the
+  // other half.
+  //
+  // Guarded rather than assumed: the Badging API isn't universal, and Safari
+  // rejects the call when the site is running as a tab rather than an installed
+  // app. A badge is decoration — a rejection here must never surface as an error.
+  watch(unread, (count) => {
+    if (!("setAppBadge" in navigator)) return;
+    if (count > 0) {
+      navigator.setAppBadge(count).catch(() => {});
+    } else {
+      navigator.clearAppBadge?.().catch(() => {});
+    }
+  });
+
   return {
     clear,
     data,

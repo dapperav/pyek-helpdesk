@@ -45,21 +45,29 @@ export default defineConfig(async ({ mode }) => {
       vue(),
       vueJsx(),
       VitePWA({
-        registerType: "autoUpdate",
-        // PYEK: kill the service worker. On iOS the installed PWA keeps its own
-        // SW cache (separate from Safari) and was serving STALE JS chunks that no
-        // longer matched the freshly-loaded app shell — causing the Dashboard tab
-        // to crash (null-destructure) only in the standalone app. This app is
-        // online-only, so it needs no offline caching. selfDestroying emits a SW
-        // that unregisters itself + clears caches, healing existing installs and
-        // making the PWA fetch fresh (like the browser, which always worked).
-        selfDestroying: true,
-        devOptions: {
-          enabled: true,
+        // PYEK: a hand-written, push-ONLY service worker (src/sw.js).
+        //
+        // History: a caching SW served stale chunks after a deploy and wedged the
+        // installed PWA, so PR 95 set `selfDestroying: true` to remove the worker
+        // entirely. Web push needs a worker, so that flag is gone — but src/sw.js
+        // has no fetch handler and no cache, which is what made the old one
+        // dangerous. See the comment block in src/sw.js before changing this.
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.js",
+        // The whole point: NO precache manifest. Without this, injectManifest
+        // demands a `self.__WB_MANIFEST` injection point and would hand the
+        // worker the very asset list that caused the stale-chunk freeze.
+        injectManifest: {
+          injectionPoint: undefined,
         },
-        workbox: {
-          cleanupOutdatedCaches: true,
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Registration is deliberately ours (composables/webPush.ts), not the
+        // plugin's auto-injected snippet: the worker should only be registered
+        // for a logged-in agent who has opted into notifications, not for every
+        // visitor on first paint.
+        injectRegister: false,
+        devOptions: {
+          enabled: false,
         },
         manifest: {
           display: "standalone",
