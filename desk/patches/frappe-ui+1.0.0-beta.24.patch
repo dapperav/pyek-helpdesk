@@ -105,3 +105,59 @@ index 8363502..07f4551 100644
      },
  
      onKeyDown(props: SuggestionKeyDownProps): boolean {
+diff --git a/node_modules/frappe-ui/vite/utils.js b/node_modules/frappe-ui/vite/utils.js
+index 7fd8a54..a0f9c1e 100644
+--- a/node_modules/frappe-ui/vite/utils.js
++++ b/node_modules/frappe-ui/vite/utils.js
+@@ -23,17 +23,23 @@ export function getCommonSiteConfig() {
+ }
+ 
+ export function findBenchPath() {
++  // Walk up to the filesystem root. Comparing against '/' never terminates on
++  // Windows (the root is a drive like 'C:\', and resolving '..' from it is a
++  // fixed point), so detect the root as parent === current instead.
+   let currentDir = path.resolve('.')
+-  while (currentDir !== '/') {
++  while (true) {
+     if (
+       fs.existsSync(path.join(currentDir, 'sites')) &&
+       fs.existsSync(path.join(currentDir, 'apps'))
+     ) {
+       return currentDir
+     }
+-    currentDir = path.resolve(currentDir, '..')
++    const parent = path.resolve(currentDir, '..')
++    if (parent === currentDir) {
++      return null
++    }
++    currentDir = parent
+   }
+-  return null
+ }
+ 
+ export function findAppsFolder() {
+@@ -51,17 +57,20 @@ export function findAppName() {
+     return null
+   }
+ 
+-  // Walk up from cwd until we find a directory whose parent is the apps folder
++  // Walk up from cwd until we find a directory whose parent is the apps
++  // folder. Same root-detection note as findBenchPath: parent === current is
++  // the only root test that terminates on Windows drive roots.
+   let currentDir = path.resolve('.')
+-  while (currentDir !== '/') {
++  while (true) {
+     const parent = path.dirname(currentDir)
+     if (path.resolve(parent) === path.resolve(appsFolder)) {
+       return path.basename(currentDir)
+     }
++    if (parent === currentDir) {
++      return null
++    }
+     currentDir = parent
+   }
+-
+-  return null
+ }
+ 
+ export async function getInstalledAppSites(appName) {

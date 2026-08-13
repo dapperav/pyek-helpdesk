@@ -88,11 +88,38 @@ for (const c in globalComponents) {
 
 app.config.globalProperties.$dialog = createDialog;
 
+// PYEK: dev boot. get_context_for_dev only answers on a developer_mode bench;
+// when developing against a remote site (PYEK_DEV_BACKEND, see vite.config.js)
+// fall back to parsing the boot assignments out of the remote /helpdesk shell,
+// which the server renders for every build via jinjaBootData. Both paths yield
+// the same keys, csrf_token included.
+async function getDevBoot() {
+  try {
+    return await frappeRequest({
+      url: "/api/method/helpdesk.www.helpdesk.index.get_context_for_dev",
+    });
+  } catch (e) {
+    const res = await fetch("/pyek-remote-boot", { credentials: "include" });
+    const html = await res.text();
+    const values = {};
+    for (const m of html.matchAll(/window\["([^"]+)"\] = (.*);/g)) {
+      try {
+        values[m[1]] = JSON.parse(m[2]);
+      } catch (_) {}
+    }
+    if (!("csrf_token" in values)) {
+      console.warn(
+        "PYEK dev boot: no boot data in the remote shell — not logged in? " +
+          "Open /login (proxied) or a ?sid= link first, then reload."
+      );
+    }
+    return values;
+  }
+}
+
 let socket;
 if (import.meta.env.DEV) {
-  frappeRequest({
-    url: "/api/method/helpdesk.www.helpdesk.index.get_context_for_dev",
-  }).then((values) => {
+  getDevBoot().then((values) => {
     for (let key in values) {
       window[key] = values[key];
     }

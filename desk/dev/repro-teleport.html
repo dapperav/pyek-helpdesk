@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>teleport repro</title></head>
+<body>
+<div id="app"></div>
+<script type="module">
+// Mirrors the PMIT mobile shell: a header owning an in-app teleport target,
+// and a "page" that teleports into it, swapped out like a route change.
+// Toggle ?defer=1 to test the fix.
+import { createApp, h, ref, Teleport, onMounted } from "/node_modules/vue/dist/vue.esm-browser.js";
+
+const useDefer = new URLSearchParams(location.search).has("defer");
+window.__errors = [];
+const origErr = console.error.bind(console);
+console.error = (...a) => { window.__errors.push(a.map(x => x && x.stack ? x.message : String(x)).join(" | ")); origErr(...a); };
+window.__warnings = [];
+const origWarn = console.warn.bind(console);
+console.warn = (...a) => { window.__warnings.push(a.map(String).join(" | ")); origWarn(...a); };
+
+const Breadcrumb = {
+  __name: "Breadcrumb",
+  setup() { return () => h("span", { id: "crumb" }, "CRUMB"); },
+};
+
+const Header = {
+  __name: "Header",
+  setup() {
+    return () => h("div", { style: "background:#1b2a4a;color:#fff" }, [
+      h("div", { id: "mobile-header-view" }),
+      h("span", "BRAND"),
+    ]);
+  },
+};
+
+const PageList = {
+  __name: "PageList",
+  setup() {
+    const crumbRef = ref(null);
+    return () => h("div", [
+      h(Teleport, { to: "#mobile-header-view", defer: useDefer }, [h(Breadcrumb, { ref: crumbRef })]),
+      h("div", { id: "list" }, "LIST PAGE"),
+    ]);
+  },
+};
+
+const PageDetail = {
+  __name: "PageDetail",
+  setup() { return () => h("div", { id: "detail" }, "DETAIL PAGE"); },
+};
+
+const current = ref("list");
+window.__nav = (name) => { current.value = name; };
+
+const App = {
+  __name: "App",
+  setup() {
+    return () => h("div", [
+      h(Header),
+      h("div", [current.value === "list" ? h(PageList) : h(PageDetail)]),
+    ]);
+  },
+};
+
+createApp(App).mount("#app");
+
+window.__state = () => ({
+  defer: useDefer,
+  targetChildren: (document.getElementById("mobile-header-view") || {}).childElementCount,
+  crumbInDom: !!document.getElementById("crumb"),
+  listInDom: !!document.getElementById("list"),
+  detailInDom: !!document.getElementById("detail"),
+  errors: window.__errors,
+  warnings: window.__warnings.filter(w => /[Tt]eleport/.test(w)),
+});
+</script>
+</body>
+</html>
