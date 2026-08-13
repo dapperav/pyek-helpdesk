@@ -1,6 +1,7 @@
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -38,10 +39,26 @@ export default defineConfig(async ({ mode }) => {
       //
       // The filename can't be hashed (a service worker's URL has to be stable
       // enough to find) and the cache header isn't ours to change, so the script
-      // URL carries a build stamp instead. Registration looks the worker up by
-      // SCOPE, not script URL, so the changing query doesn't orphan an existing
+      // URL carries a stamp instead. Registration looks the worker up by
+      // SCOPE, not script URL, so a changing query doesn't orphan an existing
       // registration or its push subscription.
-      __SW_VERSION__: JSON.stringify(Date.now().toString(36)),
+      //
+      // The stamp is a hash of the worker's SOURCE, not Date.now(). Measured
+      // 2026-08-13: with a per-build timestamp here, two builds of identical
+      // source produced 100 of 104 differently-named chunks — the define
+      // changes webPush.ts every build and rollup's filename hashing cascades
+      // through every chunk that (transitively) imports it. That per-deploy
+      // stamp churn, not content hashing, was the whole "every deploy costs
+      // each phone a 3 MB re-download" problem. With the stamp derived from
+      // sw.js content, identical builds are 104/104 identical — and the query
+      // still busts the proxy exactly when the worker actually changes, which
+      // is the one case the stamp exists for.
+      __SW_VERSION__: JSON.stringify(
+        createHash("sha256")
+          .update(readFileSync(path.resolve(__dirname, "../helpdesk/www/sw.js")))
+          .digest("hex")
+          .slice(0, 8)
+      ),
     },
     plugins: [
       frappeui({
