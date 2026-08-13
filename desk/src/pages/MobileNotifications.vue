@@ -38,7 +38,14 @@
       <div>
         <div class="mb-2 leading-5">
           <span class="space-x-1 rtl:space-x-reverse text-ink-gray-7">
-            <span class="font-medium text-ink-gray-9">{{ n.user_from }}</span>
+            <!-- Team and Reply don't name a person: a ticket that arrives by email
+                 is processed as Administrator, so leading with user_from would
+                 read as a system account. They carry their own phrasing. -->
+            <span
+              v-if="!isSystemOriginated(n)"
+              class="font-medium text-ink-gray-9"
+              >{{ n.user_from }}</span
+            >
             <span v-if="n.notification_type === 'Mention'">{{
               __("mentioned you in ticket")
             }}</span>
@@ -47,6 +54,12 @@
             }}</span>
             <span v-if="n.notification_type === 'Reaction'">{{
               __("has reopened the ticket")
+            }}</span>
+            <span v-if="n.notification_type === 'Team'">{{
+              __("New ticket for your team")
+            }}</span>
+            <span v-if="n.notification_type === 'Reply'">{{
+              __("New reply on ticket")
             }}</span>
             <span class="font-medium text-ink-gray-9">{{
               n.reference_ticket
@@ -96,24 +109,26 @@ onClickOutside(
   }
 );
 
+// Team and Reply are raised by the system processing inbound mail, not by a
+// colleague, so the row shouldn't lead with a user's name.
+function isSystemOriginated(n: Notification) {
+  return n.notification_type === "Team" || n.notification_type === "Reply";
+}
+
 function getRoute(n: Notification) {
-  switch (n.notification_type) {
-    case "Mention":
-      return {
-        name: "TicketAgent",
-        params: {
-          ticketId: n.reference_ticket,
-        },
-        hash: "#" + n.reference_comment,
-      };
-    case "Assignment":
-    case "Reaction":
-      return {
-        name: "TicketAgent",
-        params: {
-          ticketId: n.reference_ticket,
-        },
-      };
+  // Everything lands on the ticket; only a mention needs the comment anchor.
+  // Note the default: this switch used to have none, so any notification type it
+  // didn't enumerate returned undefined and gave RouterLink nothing to navigate to.
+  if (n.notification_type === "Mention") {
+    return {
+      name: "TicketAgent",
+      params: { ticketId: n.reference_ticket },
+      hash: "#" + n.reference_comment,
+    };
   }
+  return {
+    name: "TicketAgent",
+    params: { ticketId: n.reference_ticket },
+  };
 }
 </script>

@@ -302,8 +302,91 @@ class HDTicket(Document):
                         self.notify_agent(agent.name, "Reaction")
 
         self.remove_assignment_if_not_in_team()
+        self.notify_team_of_new_ticket()
         self.publish_update()
         self.capture_update_telemetry_events()
+
+    def notify_team_of_new_ticket(self):
+        """Tell a team's members when a ticket lands in their queue.
+
+        Hooked on agent_group CHANGING rather than after_insert, because the team
+        is not populated at insert — routing sets it moments later. Measured on
+        this site: 264 of 266 tickets over 14 days end up with a team, so the
+        signal is reliable; it just arrives on an update. A useful side effect is
+        that moving a ticket between teams notifies the receiving team, which is
+        what you'd want anyway.
+
+        HUMAN TICKETS ONLY, and that filter is the difference between a feature
+        people keep and one they mute. Measured over the same 14 days: IT Support
+        took 140 tickets of which 121 were automated (Ubiquiti monitoring, config
+        reports), and POS took 124 of which 71 were automated ([BR-] refund work
+        orders). Notifying on everything would be ~10 pushes a day at 86% noise
+        for IT. Filtered, it's ~1.4/day for IT and ~3.8/day for POS.
+        Mark chose human-only when asked.
+
+        Dedupe rides on HD Notification itself rather than a new flag: an existing
+        Team row for this (user, ticket) means they've already been told. On a
+        genuine team move the receiving team has no such row, so they get notified
+        while the previous team is not told twice.
+        """
+        if not self.agent_group or not self.has_value_changed("agent_group"):
+            return
+        # A ticket that arrived already closed (camera-drop auto-close) is not news.
+        if self.status_category == "Resolved" or self.get(AUTO_CLOSE_FIELD):
+            return
+        # Same senders/subjects the enricher and the auto-ack skip. Fails open, so
+        # an unrecognised sender still notifies — a stray push beats a missed ticket.
+        if self._suppress_acknowledgement():
+            return
+
+        try:
+            members = [
+                row.user
+                for row in frappe.get_doc("HD Team", self.agent_group).users
+                if row.user
+            ]
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(), "HD team notification: team lookup failed"
+            )
+            return
+
+        for user in members:
+            # Whoever just routed the ticket doesn't need telling about it.
+            if user == frappe.session.user:
+                continue
+            if frappe.db.exists(
+                "HD Notification",
+                {
+                    "reference_ticket": self.name,
+                    "user_to": user,
+                    "notification_type": "Team",
+                },
+            ):
+                continue
+            self.notify_agent(user, "Team")
+
+    def notify_assignees_of_reply(self, c):
+        """Tell the people working a ticket that the requester has replied.
+
+        Only for inbound mail: an agent's own outgoing reply is handled by the
+        caller's "Sent" branch and obviously shouldn't notify them. Not deduped —
+        every reply is new information — but the push collapses per ticket, so a
+        fast back-and-forth replaces itself on the lock screen instead of stacking.
+        """
+        if c.sent_or_received != "Received":
+            return
+        if c.communication_type == "Automated Message":
+            return
+        try:
+            for agent in self.get_assigned_agents():
+                if agent.name == frappe.session.user:
+                    continue
+                self.notify_agent(agent.name, "Reply")
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(), "HD reply notification failed"
+            )
 
     def notify_agent(self, agent, notification_type="Assignment"):
         frappe.get_doc(
@@ -1339,6 +1422,8 @@ class HDTicket(Document):
                 self.status = self.default_open_status
             # if received that means customer has replied
             self.last_customer_response = frappe.utils.now_datetime()
+            # Whoever is working this ticket wants to know the requester came back.
+            self.notify_assignees_of_reply(c)
         # If communication is outgoing, it must be a reply from agent
         if c.sent_or_received == "Sent":
             # Ignore system notifications

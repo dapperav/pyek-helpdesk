@@ -49,10 +49,22 @@ class HDNotification(Document):
             }
 
     def push_title(self):
-        """One line for a lock screen. format_message() only covers Mention."""
+        """One line for a lock screen. format_message() only covers Mention.
+
+        Team and Reply deliberately don't name a person: a ticket arriving by
+        email is processed as Administrator, so `user_from` would read as a
+        system account rather than a human and be worse than saying nothing.
+        """
         user_from = self.get_from() or "Someone"
         if self.notification_type == "Assignment":
             return "Assigned to you"
+        if self.notification_type == "Team":
+            team = frappe.db.get_value(
+                "HD Ticket", self.reference_ticket, "agent_group"
+            )
+            return f"New {team} ticket" if team else "New ticket for your team"
+        if self.notification_type == "Reply":
+            return "New reply"
         if self.notification_type == "Mention":
             return f"{user_from} mentioned you"
         if self.notification_type == "Reaction":

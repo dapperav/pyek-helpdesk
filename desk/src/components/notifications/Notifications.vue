@@ -52,9 +52,15 @@
         <span>
           <div class="mb-2 leading-5">
             <span class="space-x-1 text-ink-gray-7">
+              <!-- Team and Reply are raised by the system processing inbound
+                   mail, so user_from would read as a service account. They carry
+                   their own phrasing instead of leading with a name. -->
               <span
                 class="font-medium text-ink-gray-9"
-                v-if="n.notification_type !== 'Reaction' || !n.message"
+                v-if="
+                  !isSystemOriginated(n) &&
+                  (n.notification_type !== 'Reaction' || !n.message)
+                "
               >
                 {{ n.user_from }}
               </span>
@@ -67,6 +73,12 @@
               <span v-if="n.notification_type === 'Reaction'">
                 {{ n.message || "has reopened the ticket" }}
               </span>
+              <span v-if="n.notification_type === 'Team'"
+                >New ticket for your team</span
+              >
+              <span v-if="n.notification_type === 'Reply'"
+                >New reply on ticket</span
+              >
             </span>
             <span class="font-medium text-ink-gray-9"
               >&nbsp{{ n.reference_ticket }}
@@ -124,6 +136,11 @@ function handleNotificationClick(n: Notification) {
   notificationStore.read(n.reference_ticket);
 }
 
+// Team and Reply come from the system processing inbound mail, not a colleague.
+function isSystemOriginated(n: Notification) {
+  return n.notification_type === "Team" || n.notification_type === "Reply";
+}
+
 function getRoute(n: Notification) {
   switch (n.notification_type) {
     case "Mention":
@@ -134,7 +151,11 @@ function getRoute(n: Notification) {
         },
         hash: "#comment-" + n.reference_comment,
       };
+    // A ticket is a ticket. Listed explicitly rather than relying on the
+    // fallthrough below so it's obvious the new types are handled.
     case "Assignment":
+    case "Team":
+    case "Reply":
       return {
         name: "TicketAgent",
         params: {
@@ -150,6 +171,15 @@ function getRoute(n: Notification) {
         hash: n.reference_comment
           ? "#comment-" + n.reference_comment
           : undefined,
+      };
+    default:
+      // Any future notification type still has to go somewhere: without this the
+      // switch returned undefined and RouterLink had nothing to navigate to.
+      return {
+        name: "TicketAgent",
+        params: {
+          ticketId: n.reference_ticket,
+        },
       };
   }
 }
