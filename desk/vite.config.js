@@ -62,26 +62,23 @@ export default defineConfig(async ({ mode }) => {
       vue(),
       vueJsx(),
       VitePWA({
-        // PYEK: a hand-written, push-ONLY service worker (src/sw.js).
+        // PYEK: this plugin now provides the MANIFEST ONLY. The real service
+        // worker is hand-written at helpdesk/www/sw.js, served at /sw.js so its
+        // scope covers the whole origin — read the comment block there for why
+        // that scope is load-bearing rather than cosmetic.
         //
-        // History: a caching SW served stale chunks after a deploy and wedged the
-        // installed PWA, so PR 95 set `selfDestroying: true` to remove the worker
-        // entirely. Web push needs a worker, so that flag is gone — but src/sw.js
-        // has no fetch handler and no cache, which is what made the old one
-        // dangerous. See the comment block in src/sw.js before changing this.
-        strategies: "injectManifest",
-        srcDir: "src",
-        filename: "sw.js",
-        // The whole point: NO precache manifest. Without this, injectManifest
-        // demands a `self.__WB_MANIFEST` injection point and would hand the
-        // worker the very asset list that caused the stale-chunk freeze.
-        injectManifest: {
-          injectionPoint: undefined,
-        },
-        // Registration is deliberately ours (composables/webPush.ts), not the
-        // plugin's auto-injected snippet: the worker should only be registered
-        // for a logged-in agent who has opted into notifications, not for every
-        // visitor on first paint.
+        // `selfDestroying` keeps emitting a tiny unregister-me worker at
+        // /assets/helpdesk/desk/sw.js, and that is deliberate MIGRATION work, not
+        // leftover config: phones that opted in while the worker lived at that
+        // path still hold a registration there. On its next update check it now
+        // fetches this stub and unregisters itself — which also invalidates its
+        // push subscription, so nobody ends up with two workers pushing the same
+        // notification twice. The stale server-side row then 410s on its next
+        // send and gets pruned automatically.
+        //
+        // Do not point this back at a real worker. Registration is ours
+        // (composables/webPush.ts), gated on an agent explicitly opting in.
+        selfDestroying: true,
         injectRegister: false,
         devOptions: {
           enabled: false,

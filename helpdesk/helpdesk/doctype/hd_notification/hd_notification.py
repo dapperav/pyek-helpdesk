@@ -60,15 +60,47 @@ class HDNotification(Document):
         return "PYEKMAIL"
 
     def push_body(self):
-        """The ticket subject is what actually tells you whether to care."""
-        if self.reference_ticket:
-            subject = frappe.db.get_value(
-                "HD Ticket", self.reference_ticket, "subject"
+        """Subject line, then what the ticket is actually about.
+
+        The subject alone is often too terse to act on ("Mobaro Access", "TTH
+        consignment"), so the second line is the enricher's `pyek_summary` — the
+        one-line plain-English description it already writes for the AI panel.
+        Reusing it costs nothing and is exactly the context you want before
+        deciding whether to open the ticket on a phone.
+
+        Two lines rather than one because iOS shows the first collapsed and the
+        rest when the notification is expanded, so the subject always survives
+        truncation and the summary is there if you want it.
+        """
+        if not self.reference_ticket:
+            return self.format_message() or ""
+
+        ticket = (
+            frappe.db.get_value(
+                "HD Ticket",
+                self.reference_ticket,
+                ["subject", "pyek_summary"],
+                as_dict=True,
             )
-            if subject:
-                return f"#{self.reference_ticket} · {subject}"
-            return f"Ticket #{self.reference_ticket}"
-        return self.format_message() or ""
+            or {}
+        )
+
+        head = (
+            f"#{self.reference_ticket} · {ticket.get('subject')}"
+            if ticket.get("subject")
+            else f"Ticket #{self.reference_ticket}"
+        )
+
+        summary = (ticket.get("pyek_summary") or "").strip()
+        if not summary:
+            # No AI summary: automated senders are skipped by design, and older
+            # tickets predate enrichment. The subject line still stands alone.
+            return head
+
+        # Keep it to a sensible lock-screen length; the full text is in the app.
+        if len(summary) > 180:
+            summary = summary[:179].rstrip() + "…"
+        return f"{head}\n{summary}"
 
     def send_web_push(self):
         """Every notification type routes through here.
