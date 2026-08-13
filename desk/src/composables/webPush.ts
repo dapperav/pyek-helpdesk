@@ -52,6 +52,50 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+/**
+ * Wait for THIS registration to have an active worker.
+ *
+ * Deliberately NOT `navigator.serviceWorker.ready`, which is the obvious call and
+ * is wrong here: it resolves only for a registration whose scope covers the
+ * current document. Our worker is served from /assets/helpdesk/desk/ (that's
+ * where the build output lives) while the app runs at /helpdesk/, so its scope
+ * never covers the page.
+ *
+ * Measured on the live site: the worker registered and reached "activated", and
+ * `navigator.serviceWorker.ready` still never settled. That left enablePush()
+ * hanging on the line straight after the user granted permission — so the iOS
+ * prompt appeared, the user tapped Allow, and then nothing happened at all: no
+ * subscription, no error, nothing server-side to diagnose from.
+ *
+ * pushManager.subscribe() needs an active worker, so we do have to wait — just
+ * on the right thing, and with a ceiling so a stuck install can't hang the UI.
+ */
+function waitForActiveWorker(
+  reg: ServiceWorkerRegistration,
+  timeoutMs = 10000
+): Promise<boolean> {
+  if (reg.active) return Promise.resolve(true);
+  const pending = reg.installing || reg.waiting;
+  if (!pending) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      pending.removeEventListener("statechange", onChange);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const onChange = () => {
+      if (reg.active || pending.state === "activated") finish(true);
+      else if (pending.state === "redundant") finish(false);
+    };
+    const timer = setTimeout(() => finish(Boolean(reg.active)), timeoutMs);
+    pending.addEventListener("statechange", onChange);
+    onChange();
+  });
+}
+
 async function getRegistration(): Promise<ServiceWorkerRegistration> {
   // Look up by SCOPE, so a changed build stamp still finds the worker we already
   // registered (and its existing push subscription) instead of stranding it.
@@ -108,8 +152,14 @@ export async function enablePush(): Promise<boolean> {
     }
 
     const reg = await getRegistration();
-    // A worker registered this instant isn't usable yet.
-    await navigator.serviceWorker.ready;
+    // A worker registered this instant isn't usable yet — subscribe() needs an
+    // active one. See waitForActiveWorker for why this isn't serviceWorker.ready.
+    const active = await waitForActiveWorker(reg);
+    if (!active) {
+      console.error("push: service worker never became active");
+      pushState.value = "off";
+      return false;
+    }
 
     // Reuse an existing subscription if there is one; re-subscribing with the
     // same key returns the same endpoint anyway, but this avoids the churn.
