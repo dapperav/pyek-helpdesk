@@ -16,16 +16,43 @@ import { ref } from "vue";
 
 declare const __SW_VERSION__: string;
 
-// The worker lives under the build output, so its scope is /assets/helpdesk/desk/
-// — NOT /helpdesk. That's fine for push (and is why notificationclick uses
-// openWindow rather than focusing an existing client), but it means every
-// registration lookup has to go through the scope path below, not the script URL.
-const SW_SCOPE = "/assets/helpdesk/desk/";
+// Served from helpdesk/www/sw.js, so its scope is the whole origin. That is what
+// lets the worker find and navigate the running app when a notification is
+// tapped; from its old home under /assets/helpdesk/desk/ it could not see the
+// app's windows at all. See helpdesk/www/sw.js for the full story.
+const SW_SCOPE = "/";
+const SW_URL = `/sw.js?v=${__SW_VERSION__}`;
 
-// Registered WITH a build stamp: FC serves this non-hashed file as `immutable`
-// for a year, and a proxy was handing back the previous build's worker. See the
-// __SW_VERSION__ comment in vite.config.js for the measurement.
-const SW_URL = `${SW_SCOPE}sw.js?v=${__SW_VERSION__}`;
+// Where the worker used to live. Phones that opted in before the move still hold
+// a registration there, and it would keep receiving pushes — two workers, two
+// notifications for one event. Cleared on the way in.
+const LEGACY_SW_SCOPE = "/assets/helpdesk/desk/";
+
+/**
+ * Drop a pre-move registration if one is still around.
+ *
+ * Unregistering invalidates its push subscription, so we tell the server first —
+ * otherwise the row lingers and we push at a dead endpoint until it 410s.
+ */
+async function retireLegacyWorker(): Promise<void> {
+  try {
+    const legacy = await navigator.serviceWorker.getRegistration(
+      LEGACY_SW_SCOPE
+    );
+    if (!legacy || legacy.scope.endsWith("/sw.js")) return;
+    if (!legacy.scope.includes("/assets/helpdesk/desk/")) return;
+    const sub = await legacy.pushManager.getSubscription();
+    if (sub) {
+      await call("helpdesk.helpdesk.web_push.unsubscribe", {
+        endpoint: sub.endpoint,
+      }).catch(() => {});
+      await sub.unsubscribe().catch(() => {});
+    }
+    await legacy.unregister();
+  } catch {
+    // Best effort. A leftover worker is a duplicate notification, not a failure.
+  }
+}
 
 export type PushState =
   | "unsupported"
@@ -135,6 +162,7 @@ export async function enablePush(): Promise<boolean> {
   }
   pushState.value = "working";
   try {
+    await retireLegacyWorker();
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       pushState.value = permission === "denied" ? "denied" : "off";
