@@ -60,54 +60,6 @@ export default defineConfig(async ({ mode }) => {
           .slice(0, 8)
       ),
     },
-    build: {
-      rollupOptions: {
-        output: {
-          // PYEK: carve the heavyweight, rarely-changing libraries into named
-          // vendor chunks so their filenames survive app-code deploys. PR 110
-          // stopped identical builds from rehashing; this addresses the other
-          // half measured on 2026-08-14: an ENTRY-resident change (main.js,
-          // router) still renamed ~every chunk, because lazy chunks import the
-          // entry by filename and the hash cascades. Vendor code never imports
-          // app code, so these names hold — and they're most of the bytes.
-          //
-          // Deliberately CONSERVATIVE: no catch-all vendor bucket. Grouping
-          // all of node_modules would drag lazy-only dependencies into the
-          // boot path (and would swallow frappe-ui's emojis.json, undoing the
-          // PR 109 lazy-emoji split — hence the explicit early return).
-          manualChunks(id) {
-            // Keep frappe-ui's lazily-imported emoji dataset OUT of any
-            // manual chunk, or it loads eagerly again (undoing PR 109).
-            if (id.includes("emojis.json")) return undefined;
-            // frappe-ui, its editor stack, and the app's tailwind.config.js
-            // must travel TOGETHER: frappe-ui imports tailwind.config.js
-            // (resolve.alias) which imports frappe-ui/tailwind back — a
-            // cycle. Splitting any of them apart produced "Cannot access 'X'
-            // before initialization" at module evaluation (probed on
-            // 2026-08-14; that's the white-screen the handover warned about).
-            // One combined chunk keeps every cycle internal, where rollup
-            // orders it correctly — exactly as it did in the unsplit build.
-            if (
-              /[\\/]node_modules[\\/](frappe-ui|@tiptap|prosemirror-|highlight\.js[\\/]|lowlight[\\/])/.test(
-                id
-              ) ||
-              id.replace(/\\/g, "/").endsWith("desk/tailwind.config.js")
-            ) {
-              return "vendor-ui";
-            }
-            if (!id.includes("node_modules")) return undefined;
-            if (
-              /[\\/]node_modules[\\/](vue|@vue|vue-router|@vueuse|pinia)[\\/]/.test(
-                id
-              )
-            ) {
-              return "vendor-vue";
-            }
-            return undefined;
-          },
-        },
-      },
-    },
     plugins: [
       frappeui({
         frappeProxy: !devBackend,
