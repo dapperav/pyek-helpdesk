@@ -180,9 +180,12 @@
           />
         </div>
 
-        <!-- Line 3: preview snippet + due badge + assignee -->
+        <!-- Line 3: main preview (AI summary when the enricher has one, else the
+             snippet) + due badge + assignee -->
         <div class="flex items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">{{ snippet }}</span>
+          <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-5">{{
+            aiSummary || snippet
+          }}</span>
           <Badge
             v-if="dueLabel && !isMobileView"
             class="shrink-0"
@@ -196,6 +199,14 @@
             :avatars="row._assign"
             :hide-name="true"
           />
+        </div>
+
+        <!-- Line 4 (only when a summary led line 3): the requester's own words,
+             verbatim, one shade fainter — Mark's "summary + sender's words". -->
+        <div v-if="aiSummary && snippet" class="flex items-center gap-2">
+          <span class="min-w-0 flex-1 truncate text-xs text-ink-gray-4">
+            &ldquo;{{ snippet }}&rdquo;
+          </span>
         </div>
       </template>
     </div>
@@ -445,9 +456,14 @@ const dueTheme = computed(() => {
   return "gray";
 });
 
-// --- Preview snippet: the latest email in the thread (Outlook-style), provided
-// pre-stripped by the backend as `_last_message`; falls back to the ticket
-// description (HTML) when there are no email communications yet. ---
+// --- AI summary: the enricher's pyek_summary, injected by the backend as
+// `_ai_summary`. When present it leads the preview; the requester's verbatim
+// snippet drops to a fainter second line. ---
+const aiSummary = computed(() => props.row._ai_summary || "");
+
+// --- Preview snippet: the requester's latest message (their words, not our
+// signature), provided pre-stripped by the backend as `_last_message`; falls
+// back to the ticket description (HTML) when there are no communications yet. ---
 const snippet = computed(() => {
   if (props.row._last_message) return props.row._last_message;
   const html = props.row.description;

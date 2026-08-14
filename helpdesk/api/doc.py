@@ -239,12 +239,15 @@ def get_list_data(
     if doctype == "TP Call Log":
         data = parse_call_logs(data)
 
-    # PYEK: attach the latest email in each ticket's thread as `_last_message`
-    # so the agent list preview shows the most recent reply (Outlook-style), not
-    # the original description. Falls back to the description when a ticket has
-    # no email communications yet (e.g. portal/Wrike-created). Agent portal only.
+    # PYEK: two-line agent list preview (Mark's pick, 2026-08-14 review):
+    #   `_ai_summary`   — the enricher's pyek_summary, the main preview line
+    #   `_last_message` — a verbatim snippet of the REQUESTER's latest message
+    #                     (their words, not our reply's signature block)
+    # Falls back to the latest communication of any direction, then the ticket
+    # description, when a ticket has no inbound mail. Agent portal only.
     if doctype == "HD Ticket" and not show_customer_portal_fields and data:
         import re
+        from html import unescape
 
         from frappe.utils import strip_html_tags
 
@@ -259,7 +262,9 @@ def get_list_data(
         def _preview(_html):
             _html = _noise_re.sub(" ", _html or "")
             _html = re.sub(r"<!--.*?-->", " ", _html, flags=re.DOTALL)
-            return " ".join(strip_html_tags(_html).split())[:200]
+            # strip_html_tags leaves entities encoded — without unescape the
+            # list shows literal "&lt;" / "&nbsp;" text.
+            return " ".join(unescape(strip_html_tags(_html)).split())[:200]
 
         _names = [d.get("name") for d in data if d.get("name")]
         if _names:
@@ -270,17 +275,44 @@ def get_list_data(
                     "reference_name": ["in", _names],
                     "communication_type": "Communication",
                 },
-                fields=["reference_name", "content"],
+                fields=["reference_name", "content", "sent_or_received"],
                 order_by="creation desc",
             )
-            _latest = {}
+            _latest_received = {}
+            _latest_any = {}
             for _c in _comms:
                 _rn = _c.get("reference_name")
-                if _rn and _rn not in _latest:
-                    _latest[_rn] = _c.get("content")
+                if not _rn:
+                    continue
+                if _rn not in _latest_any:
+                    _latest_any[_rn] = _c.get("content")
+                if (
+                    _c.get("sent_or_received") == "Received"
+                    and _rn not in _latest_received
+                ):
+                    _latest_received[_rn] = _c.get("content")
+
+            _has_summary = frappe.get_meta("HD Ticket").has_field("pyek_summary")
+            _summaries = {}
+            if _has_summary:
+                _summaries = {
+                    _t.get("name"): _t.get("pyek_summary")
+                    for _t in frappe.get_all(
+                        "HD Ticket",
+                        filters={"name": ["in", _names]},
+                        fields=["name", "pyek_summary"],
+                    )
+                }
             for _d in data:
-                _html = _latest.get(_d.get("name")) or _d.get("description") or ""
+                _n = _d.get("name")
+                _html = (
+                    _latest_received.get(_n)
+                    or _latest_any.get(_n)
+                    or _d.get("description")
+                    or ""
+                )
                 _d["_last_message"] = _preview(_html)
+                _d["_ai_summary"] = (_summaries.get(_n) or "").strip()
 
     fields = frappe.get_meta(doctype).fields
     fields = [field for field in fields if field.fieldtype not in no_value_fields]
