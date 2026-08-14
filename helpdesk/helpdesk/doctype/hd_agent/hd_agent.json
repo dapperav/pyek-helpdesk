@@ -17,7 +17,11 @@
   "pyek_push_mention",
   "pyek_push_reaction",
   "pyek_push_team",
-  "pyek_push_reply"
+  "pyek_push_reply",
+  "pyek_push_sla",
+  "pyek_push_quiet",
+  "pyek_push_quiet_start",
+  "pyek_push_quiet_end"
  ],
  "fields": [
   {
@@ -95,6 +99,31 @@
    "fieldname": "pyek_push_reply",
    "fieldtype": "Check",
    "label": "Push: Replies"
+  },
+  {
+   "default": "1",
+   "fieldname": "pyek_push_sla",
+   "fieldtype": "Check",
+   "label": "Push: SLA Warnings"
+  },
+  {
+   "default": "1",
+   "description": "No pushes during the quiet window below, except tickets whose priority is Urgent. Times are site time (US Central); a NULL on an existing row reads as ON with the default window.",
+   "fieldname": "pyek_push_quiet",
+   "fieldtype": "Check",
+   "label": "Push: Quiet Hours"
+  },
+  {
+   "default": "21:00",
+   "fieldname": "pyek_push_quiet_start",
+   "fieldtype": "Data",
+   "label": "Quiet Hours Start"
+  },
+  {
+   "default": "07:00",
+   "fieldname": "pyek_push_quiet_end",
+   "fieldtype": "Data",
+   "label": "Quiet Hours End"
   }
  ],
  "index_web_pages_for_search": 1,

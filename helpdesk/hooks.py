@@ -47,6 +47,12 @@ scheduler_events = {
     "hourly_long": [
         "helpdesk.helpdesk.doctype.hd_ticket.hd_ticket.update_sla_status_in_ticket"
     ],
+    "hourly": [
+        # Warns assignees when a human ticket's first-response deadline is due
+        # within 2h (or freshly missed). Rides HD Notification, so per-agent
+        # prefs + quiet hours apply. See helpdesk/helpdesk/sla_push.py.
+        "helpdesk.helpdesk.sla_push.notify_response_due",
+    ],
 }
 
 

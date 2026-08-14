@@ -65,6 +65,8 @@ class HDNotification(Document):
             return f"New {team} ticket" if team else "New ticket for your team"
         if self.notification_type == "Reply":
             return "New reply"
+        if self.notification_type == "SLA due":
+            return "First response due soon"
         if self.notification_type == "Mention":
             return f"{user_from} mentioned you"
         if self.notification_type == "Reaction":
@@ -132,7 +134,10 @@ class HDNotification(Document):
             # Checked here rather than in notify_user so future non-HD-
             # Notification pushes (e.g. SLA breach warnings) choose their own
             # pref field explicitly.
-            if not should_push(self.user_to, self.notification_type):
+            # The ticket rides along so quiet hours can let Urgent through.
+            if not should_push(
+                self.user_to, self.notification_type, ticket=self.reference_ticket
+            ):
                 return
 
             notify_user(
