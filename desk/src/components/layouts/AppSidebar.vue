@@ -123,6 +123,7 @@ import ViewModal from "@/components/ViewModal.vue";
 import {
   Badge,
   Button,
+  createResource,
   Dropdown,
   ScrollArea,
   Sidebar,
@@ -197,6 +198,15 @@ function selectItem(key: string, to: RouteLocationRaw, onSelect?: () => void) {
   router.push(to);
 }
 
+// KB articles still awaiting an SME confirm (Allannha for POS, Mark/Brannan
+// for IT) — shown as a badge on the Knowledge Base entry so the queue burns
+// down by being seen. Cached; agents only (the API returns 0 for others).
+const kbConfirmCount = createResource({
+  url: "helpdesk.api.knowledge_base.get_confirm_pending_count",
+  cache: "kb-confirm-pending-count",
+  auto: !isCustomerPortal.value,
+});
+
 const navItems = computed(() => {
   const options = isCustomerPortal.value
     ? customerPortalSidebarOptions
@@ -211,6 +221,8 @@ const navItems = computed(() => {
       // Separate the nav group from the search/notification tools above it.
       spacedTop: index === 0 && !isCustomerPortal.value,
       key: option.label,
+      badge:
+        option.to === "AgentKnowledgeBase" ? kbConfirmCount.data || 0 : 0,
     }));
 });
 
