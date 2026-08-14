@@ -9,8 +9,13 @@
           :label="__('Refresh')"
           variant="subtle"
           icon-left="lucide-refresh-ccw"
-          :loading="tickets.loading"
-          @click="tickets.reload()"
+          :loading="tickets.loading || homeStats.loading"
+          @click="
+            () => {
+              tickets.reload();
+              homeStats.reload();
+            }
+          "
         />
       </template>
     </LayoutHeader>
@@ -25,14 +30,20 @@
           <p class="mt-1 text-p-base text-ink-gray-6">{{ todayLabel }}</p>
         </div>
 
-        <!-- Metric cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <NumberChart
+        <!-- Metric cards — each one is something an agent can act on, and
+             clicking it lands on the queue that pays it off. Human/bot line
+             comes from the backend (same test as ack suppression / AI skip). -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <button
             v-for="card in metricCards"
             :key="card.title"
-            class="border rounded-lg min-h-[110px]"
-            :config="card"
-          />
+            type="button"
+            class="text-left rounded-lg border border-outline-gray-2 transition hover:border-outline-blue-4 hover:shadow-sm"
+            :title="card.tooltip"
+            @click="card.onClick && card.onClick()"
+          >
+            <NumberChart class="min-h-[110px]" :config="card" />
+          </button>
         </div>
 
         <!-- Saved-view launchers -->
@@ -60,7 +71,7 @@
         <!-- Charts -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div class="border rounded-lg p-1 min-h-[320px]">
-            <DonutChart :config="statusChart" />
+            <DonutChart :config="openByAgeChart" />
           </div>
           <div class="border rounded-lg p-1 min-h-[320px]">
             <DonutChart :config="teamChart" />
@@ -84,6 +95,7 @@ import { useAuthStore } from "@/stores/auth";
 import { __ } from "@/translation";
 import { AxisChart, Button, createResource, dayjs, DonutChart, NumberChart, usePageMeta } from "frappe-ui";
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 import { parkColor, parkLabel } from "@/config/parks";
 
 usePageMeta(() => ({ title: __("Dashboard") }));
@@ -111,8 +123,11 @@ const viewCards = computed(() => [
   ...(pinnedViews.value || []),
 ]);
 
-// One fetch of all tickets; every metric + chart is derived client-side. The
-// dataset is small (~50), so this is far simpler than N server group-by calls.
+// Charts still derive from one client-side fetch; the TILES come from
+// get_home_stats, which draws the human/bot line server-side with the same
+// test the ack suppression and AI skip use. The old tiles counted raw totals —
+// "SLA breached / at risk: 125" was historical machine failures next to
+// "Open: 6", the biggest number on the page and one nobody could act on.
 const tickets = createResource({
   url: "frappe.client.get_list",
   makeParams: () => ({
@@ -123,7 +138,7 @@ const tickets = createResource({
       "status_category",
       "agent_group",
       "pyek_property",
-      "agreement_status",
+      "raised_by",
       "resolution_date",
       "creation",
     ],
@@ -133,24 +148,66 @@ const tickets = createResource({
 });
 const rows = computed<any[]>(() => tickets.data || []);
 
+const homeStats = createResource({
+  url: "helpdesk.api.pyek_home.get_home_stats",
+  auto: true,
+});
+
+// Rows from senders the backend judged automated (plus auto-closed camera
+// drops) are dropped from the people-facing charts — 60%+ of raw volume is
+// bots, and "By Park: Unspecified 44%" was mostly that traffic.
+const botSenders = computed(
+  () => new Set<string>(homeStats.data?.bot_senders || [])
+);
+const humanRows = computed(() =>
+  rows.value.filter((t) => !botSenders.value.has((t.raised_by || "").toLowerCase()))
+);
+
 // ---- Metric cards -------------------------------------------------------
-const startOfToday = () => dayjs().startOf("day");
+// Each card routes to the saved view that answers it (matched by label so a
+// renamed/missing view degrades to the plain list, never an error).
+// Reuses the publicViews/pinnedViews already loaded for the launcher cards.
+const router = useRouter();
+function openViewByLabel(label: string) {
+  const all = [...(publicViews.value || []), ...(pinnedViews.value || [])];
+  const v = all.find((x: any) => x.label === label);
+  router.push({ name: "TicketsAgent", query: v ? { view: v.name } : {} });
+}
 
 const metricCards = computed(() => {
-  const open = rows.value.filter((t) => t.status_category !== "Resolved").length;
-  const breached = rows.value.filter(
-    (t) => t.agreement_status === "Failed"
-  ).length;
-  const resolvedToday = rows.value.filter(
-    (t) =>
-      t.status_category === "Resolved" &&
-      t.resolution_date &&
-      dayjs(t.resolution_date).isAfter(startOfToday())
-  ).length;
+  const s = homeStats.data || {};
   return [
-    { title: __("Open"), value: open },
-    { title: __("SLA breached / at risk"), value: breached },
-    { title: __("Resolved today"), value: resolvedToday },
+    {
+      title: __("My open tickets"),
+      value: s.my_open ?? 0,
+      tooltip: __("Open tickets assigned to you"),
+      onClick: () => openViewByLabel("My Open Tickets"),
+    },
+    {
+      title: __("Open (human)"),
+      value: s.open_human ?? 0,
+      tooltip: __("Open tickets from real people — bot traffic excluded"),
+      onClick: () => openViewByLabel("Open Tickets"),
+    },
+    {
+      title: __("Awaiting first reply"),
+      value: s.awaiting_first_reply ?? 0,
+      tooltip: __("Human tickets nobody has answered yet — oldest first"),
+      onClick: () => openViewByLabel("Awaiting first reply"),
+    },
+    {
+      title: __("Resolved today"),
+      value: s.resolved_today ?? 0,
+      tooltip: __("Tickets resolved since midnight"),
+    },
+    {
+      title: __("Silenced today"),
+      value: s.silenced_today ?? 0,
+      tooltip: __(
+        `${s.silenced_today_camera ?? 0} camera drops auto-closed; the rest is bot mail kept out of the queue`
+      ),
+      onClick: () => openViewByLabel("Camera drops (auto-closed)"),
+    },
   ];
 });
 
@@ -164,40 +221,50 @@ function countBy(list: any[], key: (t: any) => string) {
   return m;
 }
 
-// ---- By Status (donut) --------------------------------------------------
-const STATUS_COLORS: Record<string, string> = {
-  Open: "#2563EB",
-  Replied: "#0891B2",
-  "Waiting on Customer": "#D97706",
-  "On Hold": "#7C3AED",
-  Escalated: "#E91E8C",
-  Resolved: "#16A34A",
-  Closed: "#64748B",
-};
-const statusChart = computed(() => {
-  const m = countBy(rows.value, (t) => t.status || "Unknown");
-  const data = [...m.entries()].map(([label, value]) => ({ label, value }));
+// ---- Open by age (donut) -------------------------------------------------
+// Replaces "By Status": a cumulative status donut always reads ~98% Closed
+// and says nothing. Age of what's still open is the number an agent triages by.
+const AGE_BUCKETS = [
+  { label: __("Under 1 day"), maxDays: 1, color: "#2563EB" },
+  { label: __("1–3 days"), maxDays: 3, color: "#D97706" },
+  { label: __("3–7 days"), maxDays: 7, color: "#EA580C" },
+  { label: __("Over 7 days"), maxDays: Infinity, color: "#DC2626" },
+];
+const openByAgeChart = computed(() => {
+  const now = dayjs();
+  const open = humanRows.value.filter(
+    (t) => t.status_category === "Open" || t.status_category === "Paused"
+  );
+  const data = AGE_BUCKETS.map((b) => ({ label: b.label, value: 0 }));
+  for (const t of open) {
+    const days = now.diff(dayjs(t.creation), "day", true);
+    const i = AGE_BUCKETS.findIndex((b) => days < b.maxDays);
+    data[i >= 0 ? i : AGE_BUCKETS.length - 1].value += 1;
+  }
   return {
-    title: __("By Status"),
-    data,
+    title: __("Open by age (human)"),
+    data: data.filter((d) => d.value > 0),
     categoryColumn: "label",
     valueColumn: "value",
-    colors: data.map((d) => STATUS_COLORS[d.label] || "#94A3B8"),
-    maxSliceCount: 12,
+    colors: data
+      .map((d, i) => ({ d, c: AGE_BUCKETS[i].color }))
+      .filter(({ d }) => d.value > 0)
+      .map(({ c }) => c),
+    maxSliceCount: 4,
   };
 });
 
-// ---- By Team (donut) ----------------------------------------------------
+// ---- By Team (donut, human tickets) --------------------------------------
 const TEAM_COLORS: Record<string, string> = {
   "POS Support": "#2563EB",
   "IT Support": "#0891B2",
   Unassigned: "#94A3B8",
 };
 const teamChart = computed(() => {
-  const m = countBy(rows.value, (t) => t.agent_group || "Unassigned");
+  const m = countBy(humanRows.value, (t) => t.agent_group || "Unassigned");
   const data = [...m.entries()].map(([label, value]) => ({ label, value }));
   return {
-    title: __("By Team"),
+    title: __("By Team (human)"),
     data,
     categoryColumn: "label",
     valueColumn: "value",
@@ -206,12 +273,14 @@ const teamChart = computed(() => {
   };
 });
 
-// ---- By Park (donut, brand colors) --------------------------------------
+// ---- By Park (donut, brand colors, human tickets) -------------------------
+// Unscoped this read "Unspecified 44%" — camera alerts and refund work orders
+// carry no park. Humans do.
 const parkChart = computed(() => {
-  const m = countBy(rows.value, (t) => parkLabel(t.pyek_property));
+  const m = countBy(humanRows.value, (t) => parkLabel(t.pyek_property));
   const data = [...m.entries()].map(([label, value]) => ({ label, value }));
   return {
-    title: __("By Park"),
+    title: __("By Park (human)"),
     data,
     categoryColumn: "label",
     valueColumn: "value",
