@@ -205,7 +205,9 @@ def get_communications(ticket: str):
         .run(as_dict=True)
     )
     for c in communications:
-        c.attachments = get_attachments("Communication", c.name)
+        # get_attachments sits behind @redis_cache, which can hand back None
+        # for an empty result; the noise pass iterates every c.attachments.
+        c.attachments = get_attachments("Communication", c.name) or []
         user_id = c.user if c.sent_or_received == "Sent" and c.user else c.sender
         c.user = get_user_info_for_avatar(user_id)
 
