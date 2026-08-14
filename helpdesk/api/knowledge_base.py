@@ -44,6 +44,28 @@ def get_article(name: str):
 
 
 @frappe.whitelist()
+def get_confirm_pending_count() -> int:
+    """How many KB articles still carry the seeder's confirm-needed banner.
+
+    Drives the badge on the agent sidebar's Knowledge Base entry so the
+    confirmation queue (SME sign-off on click-paths) is visible instead of
+    buried. The banner phrase is the seeder's CONFIRM_BANNER text
+    (pyek-helpdesk-enricher kb_articles.py) — content-based because
+    `confirmed` lives only in the seeder, not on HD Article. Agents only;
+    non-agents get 0 rather than an error so the sidebar never breaks.
+    """
+    if not is_agent():
+        return 0
+    return frappe.db.count(
+        "HD Article",
+        filters={
+            "status": "Draft",
+            "content": ["like", "%needs a confirm from the system owner%"],
+        },
+    )
+
+
+@frappe.whitelist()
 def delete_articles(articles: list[str]):
     for article in articles:
         frappe.delete_doc("HD Article", article)
