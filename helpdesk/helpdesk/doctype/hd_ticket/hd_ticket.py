@@ -677,6 +677,10 @@ class HDTicket(Document):
         if len(assignees) > 0:
             names = [assignee.owner for assignee in assignees]
             return frappe.get_all("HD Agent", filters={"name": ["in", names]})
+        # An unassigned ticket must read as "no agents", not None — callers
+        # iterate this (notify_assignees_of_reply was logging a TypeError on
+        # every requester reply to an unassigned ticket).
+        return []
 
     def get_assigned_agent(self):
         # TODO: deprecate this
