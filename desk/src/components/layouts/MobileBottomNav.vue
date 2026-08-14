@@ -9,10 +9,11 @@
        personally theirs — was the only one not on the bar, so it took two taps
        through the drawer while three shared queues sat one tap away.
 
-       Six tabs is what forced "Dashboard" down to "Home": at 375px six labels
-       only fit if they're all short, and "Home" is the honest name for it
-       anyway (the bare /dashboard analytics page is a different, desktop view).
-       If six ever feels too many, swap Wrike out rather than Mine. -->
+       Slimmed to THREE tabs 2026-08-14 (Mark's pick): Home is the ROUTER —
+       the queue boxes (POS / IT / Wrike) live on it as navy cards, so they
+       left the bar; Mine stays because the agent's own queue is the one they
+       hit most; Menu opens the branded bottom sheet (all queues,
+       notifications, settings). -->
   <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
        active. paddingBottom carries the iOS home-indicator safe-area inset so
        the labels never sit under the home bar. -->
@@ -53,11 +54,8 @@ import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
 import { __ } from "@/translation";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
-import LucideHeadset from "~icons/lucide/headset";
-import LucideScanBarcode from "~icons/lucide/scan-barcode";
+import LucideHouse from "~icons/lucide/house";
 import LucideMenu from "~icons/lucide/menu";
-import LucideMegaphone from "~icons/lucide/megaphone";
 import LucideUser from "~icons/lucide/user";
 
 const route = useRoute();
@@ -89,20 +87,11 @@ const items = computed<Item[]>(() => [
     // is a separate, desktop-oriented view.)
     key: "dashboard",
     label: __("Home"),
-    icon: LucideLayoutDashboard,
+    icon: LucideHouse,
     route: "Home",
   },
-  { key: "pos", label: __("POS"), icon: LucideScanBarcode, view: "POS Tickets" },
-  { key: "it", label: __("IT"), icon: LucideHeadset, view: "IT Tickets" },
-  // Open marketing/Wrike tickets awaiting POS action.
-  {
-    key: "wrike",
-    label: __("Wrike"),
-    icon: LucideMegaphone,
-    view: "Open Wrike Tickets",
-  },
-  // The agent's own queue. Same saved view the dashboard's "My open tickets" row
-  // opens, so the count they tap on the dashboard and this tab are the same list.
+  // The agent's own queue. Same saved view Home's "My tickets" card opens, so
+  // the count they tap on Home and this tab are the same list.
   {
     key: "mine",
     label: __("Mine"),
