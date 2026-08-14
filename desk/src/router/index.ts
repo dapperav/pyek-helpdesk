@@ -69,6 +69,11 @@ const portalRoutes = [
     component: () => import("@/pages/MobileNotifications.vue"),
   },
   {
+    path: "/notification-settings",
+    name: "NotificationSettings",
+    component: () => import("@/pages/MobileNotificationSettings.vue"),
+  },
+  {
     path: "/kb",
     name: "AgentKnowledgeBase",
     component: () => import("@/pages/knowledge-base/KnowledgeBaseAgent.vue"),

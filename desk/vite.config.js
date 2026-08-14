@@ -179,6 +179,21 @@ export default defineConfig(async ({ mode }) => {
                 ws: true,
                 cookieDomainRewrite: "",
               },
+              // Frappe's server-rendered pages (login included) post their
+              // `cmd` calls to the site ROOT, not /api — without this rule the
+              // email-link login silently posts into vite's SPA fallback and
+              // no mail is ever sent. GET/HEAD stay with vite (the SPA);
+              // everything else on / goes to the backend.
+              "/": {
+                target: devBackend,
+                changeOrigin: true,
+                secure: true,
+                cookieDomainRewrite: "",
+                bypass: (req) =>
+                  req.method === "GET" || req.method === "HEAD"
+                    ? req.url
+                    : null,
+              },
             },
           }
         : {}),
