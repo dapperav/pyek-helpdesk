@@ -14,11 +14,15 @@
       padding-top: env(safe-area-inset-top);
     "
   >
-    <!-- View-switcher teleport target (light-on-navy). Empty on non-list
-         pages, which just show the brand. -->
-    <div id="mobile-header-view" class="flex min-w-0 shrink items-center"></div>
+    <!-- Brand mark first, then the view-switcher teleport target. On the
+         tickets list the switcher renders the view name as the page title
+         ("POS Tickets ▾") and the wordmark steps aside (v-show — same rule as
+         the Create button below: its condition flips on the list <-> detail
+         transition, so it must never mount/unmount next to the teleport).
+         Every other page shows mark + wordmark as before. -->
     <PyekMark class="h-5 w-auto shrink-0" />
-    <span class="text-base tracking-tight">
+    <div id="mobile-header-view" class="flex min-w-0 shrink items-center"></div>
+    <span v-show="!showCreate" class="text-base tracking-tight">
       <span class="font-bold text-white">PYEK</span
       ><span class="font-medium" style="color: #67e8f9">MAIL</span>
     </span>

@@ -26,18 +26,23 @@
             open && (onDark ? '!bg-white/10' : '!bg-surface-gray-3'),
           ]"
         >
-          <!-- On the navy bar we drop the view-name label ("List") to save
-               room; the icon + chevron carry it. -->
+          <!-- On the navy bar the view NAME is the page title ("POS Tickets ▾").
+               It used to render as a bare icon + chevron — and the default List
+               view's icon is three stacked lines, so the switcher read as a
+               second hamburger menu next to the bottom bar's real one (Mark,
+               2026-08-14). The label disambiguates; the icon is dropped there. -->
           <span
-            v-if="!onDark"
-            class="text-lg-medium text-nowrap truncate"
+            :class="
+              onDark
+                ? 'text-sm-medium text-white truncate max-w-[9rem]'
+                : 'text-lg-medium text-nowrap truncate'
+            "
             >{{ currentView.label }}</span
           >
-          <template #prefix>
+          <template v-if="!onDark" #prefix>
             <component
               :is="currentView.icon"
               class="flex size-4 shrink-0 items-center justify-center"
-              :class="onDark && 'text-white'"
             />
           </template>
           <template #suffix>

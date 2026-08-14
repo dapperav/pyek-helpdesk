@@ -4,7 +4,7 @@
        (labels + safe-area padding) off-screen. 100dvh matches what's actually
        visible; the vh line is the fallback for browsers without dvh. -->
   <div class="flex w-screen" style="height: 100vh; height: 100dvh">
-    <MobileSidebar />
+    <MobileMenuSheet />
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <MobileAppHeader />
       <!-- Scrollable content between the header and the pinned bottom nav. This
@@ -41,7 +41,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
-import MobileSidebar from "./MobileSidebar.vue";
+import MobileMenuSheet from "./MobileMenuSheet.vue";
 import MobileAppHeader from "./MobileAppHeader.vue";
 import MobileBottomNav from "./MobileBottomNav.vue";
 import { provideMobileScrollEl } from "@/composables/pullToRefresh";
