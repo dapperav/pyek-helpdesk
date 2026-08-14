@@ -95,15 +95,15 @@ import ViewBreadcrumbs from "@/components/ViewBreadcrumbs.vue";
 import { normalizeFilters } from "@/components/view-controls/filter";
 import ViewModal from "@/components/ViewModal.vue";
 import { useScreenSize } from "@/composables/screen";
-import { currentView, useView } from "@/composables/useView";
+import { currentView, useView, views } from "@/composables/useView";
 import { useAuthStore } from "@/stores/auth";
 import { globalStore } from "@/stores/globalStore";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import { View } from "@/types";
-import { isCustomerPortal, shortDuration } from "@/utils";
+import { getIcon, isCustomerPortal, shortDuration } from "@/utils";
 import { Badge, dayjs, Tooltip, usePageMeta } from "frappe-ui";
-import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const router = useRouter();
@@ -458,13 +458,22 @@ function onViewModalUpdate(viewInfo: any, action: string) {
   handleView(viewInfo, action, viewDialogConfig, () => listViewRef.value?.list);
 }
 
+// Keep the navy-bar pill in step with the route. currentView was only ever set
+// by clicking the switcher's own dropdown, so arriving via the bottom-nav tabs
+// (?view=...) or a deep link left it stale — usually stuck on "List", whose
+// align-justify icon is what read as a second hamburger in the navy bar.
+watch(
+  [() => route.query.view, () => views.data],
+  () => {
+    const v = activeView.value;
+    currentView.value = v
+      ? { label: v.label, icon: getIcon(v.icon) }
+      : { label: __("List"), icon: LucideAlignJustify };
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
-  if (!route.query.view) {
-    currentView.value = {
-      label: __("List"),
-      icon: LucideAlignJustify,
-    };
-  }
   if (!isCustomerPortal.value) {
     $socket.on("helpdesk:new-ticket", () => {
       listViewRef.value?.reload();
