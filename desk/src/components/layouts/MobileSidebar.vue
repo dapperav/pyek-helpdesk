@@ -133,6 +133,13 @@ const agentPortalDropdown = computed(() => [
         },
       ]
     : []),
+  // Per-source switches (assignments / mentions / team tickets / replies),
+  // stored on the agent so they follow you across devices.
+  {
+    label: __("Notification settings"),
+    icon: "lucide-sliders-horizontal",
+    onClick: () => router.push({ name: "NotificationSettings" }),
+  },
   appsMenuOption.value,
   ...(authStore.hasAgentRecord
     ? [

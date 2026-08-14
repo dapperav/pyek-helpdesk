@@ -78,7 +78,13 @@ app.config.errorHandler = (err, _instance, info) => {
 app.use(FrappeUI);
 app.use(spritePlugin);
 app.use(pinia);
-app.use(router);
+// NOTE: app.use(router) happens in start() below, NOT here. Installing the
+// router kicks off the initial navigation immediately, and in dev mode the
+// auth guard's first POST must not fire before getDevBoot has put
+// window.csrf_token in place — an authenticated session gets CSRFTokenError
+// on that guard and boots to a blank page. (Guest sessions never noticed:
+// CSRF isn't enforced for them, which is why this only surfaced the first
+// time someone actually logged into the dev server.)
 app.use(translationPlugin);
 app.use(telemetryPlugin, { app_name: "helpdesk" });
 
@@ -118,17 +124,19 @@ async function getDevBoot() {
 }
 
 let socket;
-if (import.meta.env.DEV) {
-  getDevBoot().then((values) => {
+async function start() {
+  if (import.meta.env.DEV) {
+    const values = await getDevBoot();
     for (let key in values) {
       window[key] = values[key];
     }
-    socket = initSocket();
-    app.config.globalProperties.$socket = socket;
-    app.mount("#app");
-  });
-} else {
+  }
+  // In production the boot values are inline in the HTML and already on
+  // window; in dev they are now too. Only from here is it safe to install
+  // the router (which starts the initial navigation) and mount.
+  app.use(router);
   socket = initSocket();
   app.config.globalProperties.$socket = socket;
   app.mount("#app");
 }
+start();

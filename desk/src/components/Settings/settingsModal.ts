@@ -33,6 +33,8 @@ import SettingsGear from "~icons/lucide/settings";
 import SavedReplyIcon from "../icons/SavedReplyIcon.vue";
 import ProfilePage from "./Profile/ProfilePage.vue";
 import Preferences from "./Preferences/Preferences.vue";
+import NotificationSettings from "./Notifications/NotificationSettings.vue";
+import LucideBell from "~icons/lucide/bell";
 
 export const showSettingsModal = ref(false);
 
@@ -58,6 +60,11 @@ export const tabs = computed(() => {
           label: __("Preferences"),
           icon: markRaw(SlidersIcon),
           component: markRaw(Preferences),
+        },
+        {
+          label: __("Notifications"),
+          icon: markRaw(LucideBell),
+          component: markRaw(NotificationSettings),
         },
       ],
     },
@@ -174,6 +181,7 @@ export const disableSettingModalOutsideClick = ref(false);
 type TabName =
   | "Profile"
   | "Preferences"
+  | "Notifications"
   | "Email Accounts"
   | "Email Notifications"
   | "General"
