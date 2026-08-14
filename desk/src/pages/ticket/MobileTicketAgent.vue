@@ -139,8 +139,13 @@
               />
             </template>
           </Tabs>
+          <!-- Sticky footer: act bar + composer share one container so both sit
+               in thumb reach. The act bar hides itself while an editor is open
+               (v-show inside the component — it is multi-root, so v-show here
+               would land on a fragment and silently do nothing). -->
+          <div class="sticky bottom-0 z-50 bg-surface-base">
+          <MobileTicketActBar />
           <CommunicationArea
-            class="sticky bottom-0 z-50 bg-surface-base"
             ref="communicationAreaRef"
             v-model="ticket.doc"
             :ticketId="ticket.doc?.name"
@@ -156,6 +161,7 @@
               }
             "
           />
+          </div>
         </div>
       </div>
     </div>
@@ -242,6 +248,7 @@ import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 import CustomActions from "@/components/CustomActions.vue";
 import LucideSparkles from "~icons/lucide/sparkles";
 import AiAssistPanel from "@/components/ticket-agent/AiAssistPanel.vue";
+import MobileTicketActBar from "@/components/ticket-agent/MobileTicketActBar.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";

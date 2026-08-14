@@ -86,6 +86,7 @@
       v-if="actionTicket"
       :ticket="actionTicket.name"
       :subject="actionTicket.subject"
+      :assign="actionTicket._assign"
       @done="
         actionTicket = null;
         handleReload();
