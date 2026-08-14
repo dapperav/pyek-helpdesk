@@ -108,6 +108,7 @@ import { CommentTextEditor, EmailEditor, TypingIndicator } from "@/components";
 import { CommentIcon, EmailIcon } from "@/components/icons/";
 import TicketResolutionModal from "@/components/ticket-agent/TicketResolutionModal.vue";
 import { useDevice } from "@/composables";
+import { parseAssign, selfAssignTicket } from "@/composables/selfAssign";
 import { useScreenSize } from "@/composables/screen";
 import { useShortcut } from "@/composables/shortcuts";
 import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
@@ -163,6 +164,17 @@ function onEmailSent(opts: { close?: boolean } = {}) {
   emit("update");
 
   if (!ticket?.value?.doc) return;
+
+  // Acting = taking it (Mark, 2026-08-14): a reply sent from the phone claims
+  // an unassigned ticket. Fire-and-forget — the reply is already out, so a
+  // failed claim must not disturb the flow; the update re-emit just refreshes
+  // the assignee chip once the claim lands. Desktop replies are untouched.
+  const doc = ticket.value.doc;
+  if (isMobileView.value && !parseAssign(doc._assign).length) {
+    selfAssignTicket(String(doc.name))
+      .then(() => emit("update"))
+      .catch(() => {});
+  }
   if (opts.close) {
     closeAfterReply();
   } else {

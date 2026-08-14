@@ -98,6 +98,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseAssign, selfAssignTicket } from "@/composables/selfAssign";
 import { useAuthStore } from "@/stores/auth";
 import { __ } from "@/translation";
 import { createResource } from "frappe-ui";
@@ -110,7 +111,15 @@ import LucidePause from "~icons/lucide/pause";
 import LucideUserPlus from "~icons/lucide/user-plus";
 import LucideUsers from "~icons/lucide/users";
 
-const props = defineProps<{ ticket: string; subject?: string }>();
+// `assign` is the ticket's raw `_assign` JSON when the opener has it (list
+// rows and the act bar both do). When resolving an unassigned ticket it is
+// claimed first — "acting = taking it" (Mark, 2026-08-14). Undefined means
+// the opener doesn't know the assignment, so no claim is attempted.
+const props = defineProps<{
+  ticket: string;
+  subject?: string;
+  assign?: string | string[] | null;
+}>();
 const emit = defineEmits<{ (e: "done"): void; (e: "close"): void }>();
 
 const { userId } = useAuthStore();
@@ -161,7 +170,16 @@ async function run(fn: () => Promise<any>) {
 }
 
 function setStatus(status: string) {
-  run(() => statusResource.submit({ ticket_ids: [props.ticket], status }));
+  run(async () => {
+    if (
+      status === "Resolved" &&
+      props.assign !== undefined &&
+      !parseAssign(props.assign).length
+    ) {
+      await selfAssignTicket(props.ticket);
+    }
+    await statusResource.submit({ ticket_ids: [props.ticket], status });
+  });
 }
 function assignToMe() {
   run(() =>
