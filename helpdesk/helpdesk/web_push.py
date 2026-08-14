@@ -56,7 +56,18 @@ PUSH_PREF_FIELDS = {
     "Reaction": "pyek_push_reaction",
     "Team": "pyek_push_team",
     "Reply": "pyek_push_reply",
+    "SLA due": "pyek_push_sla",
 }
+
+# Quiet hours (Mark's call, 2026-08-14 review): default ON for everyone,
+# 21:00–07:00 SITE time (US Central), Urgent tickets still push. A NULL on an
+# existing agent row reads as enabled-with-defaults, so shipping this changes
+# nights immediately without a backfill. Per-agent adjustable in settings.
+QUIET_ENABLED_FIELD = "pyek_push_quiet"
+QUIET_START_FIELD = "pyek_push_quiet_start"
+QUIET_END_FIELD = "pyek_push_quiet_end"
+QUIET_START_DEFAULT = "21:00"
+QUIET_END_DEFAULT = "07:00"
 
 # VAPID requires a contact address so a push service can reach us about abuse.
 # A constant rather than a DB lookup: HD Settings has no outgoing-account field,
@@ -206,27 +217,97 @@ def unsubscribe(endpoint: str) -> dict:
     return {"status": "ok"}
 
 
-def should_push(user: str, notification_type: str | None) -> bool:
-    """Has `user` opted out of pushes for this notification type?
-
-    Fails OPEN, matching the team-notification filter's policy: an unknown
-    type, a missing agent row, or a lookup error must never silently mute a
-    notification. Only an explicit 0 on the agent's own pref field skips.
-    """
-    field = PUSH_PREF_FIELDS.get(notification_type or "")
-    if not field:
-        return True
+def _parse_hhmm(value: str | None, fallback: str) -> tuple[int, int]:
+    """'21:00' -> (21, 0). Anything unparseable falls back to the default —
+    a typo in a settings field must not decide whether pushes flow."""
+    raw = (value or fallback).strip()
     try:
-        value = frappe.db.get_value("HD Agent", {"user": user}, field)
+        h, m = raw.split(":")
+        h, m = int(h), int(m)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return h, m
+    except Exception:
+        pass
+    h, m = fallback.split(":")
+    return int(h), int(m)
+
+
+def _in_quiet_hours(user: str) -> bool:
+    """Is `user` inside their quiet window right now (site time)?
+
+    Quiet hours default ON (NULL reads as enabled with the 21:00–07:00
+    window). Unlike the type prefs this fails CLOSED-to-noise, not
+    closed-to-silence: a lookup ERROR returns False (push flows) so a broken
+    query can't mute urgent traffic — only a working window suppresses.
+    """
+    try:
+        row = frappe.db.get_value(
+            "HD Agent",
+            {"user": user},
+            [QUIET_ENABLED_FIELD, QUIET_START_FIELD, QUIET_END_FIELD],
+            as_dict=True,
+        )
+        if not row:
+            return False
+        enabled = row.get(QUIET_ENABLED_FIELD)
+        if enabled is not None and not int(enabled):
+            return False
+        sh, sm = _parse_hhmm(row.get(QUIET_START_FIELD), QUIET_START_DEFAULT)
+        eh, em = _parse_hhmm(row.get(QUIET_END_FIELD), QUIET_END_DEFAULT)
+        now = frappe.utils.now_datetime()
+        minutes = now.hour * 60 + now.minute
+        start, end = sh * 60 + sm, eh * 60 + em
+        if start == end:
+            return False  # zero-length window = no quiet hours
+        if start < end:
+            return start <= minutes < end
+        # Overnight window (the default 21:00–07:00 wraps midnight).
+        return minutes >= start or minutes < end
     except Exception:
         frappe.log_error(
-            title="PMIT push: pref lookup failed",
-            message=f"user={user} type={notification_type}\n{frappe.get_traceback()}",
+            title="PMIT push: quiet-hours lookup failed",
+            message=f"user={user}\n{frappe.get_traceback()}",
         )
-        return True
-    if value is None:
-        return True
-    return bool(int(value))
+        return False
+
+
+def should_push(
+    user: str, notification_type: str | None, ticket: str | None = None
+) -> bool:
+    """Has `user` opted out of pushes for this notification type — or is it
+    their quiet hours?
+
+    Type prefs fail OPEN, matching the team-notification filter's policy: an
+    unknown type, a missing agent row, or a lookup error must never silently
+    mute a notification. Only an explicit 0 on the agent's own pref field
+    skips. Quiet hours suppress everything except tickets whose priority is
+    Urgent at send time (a park-offline alert still buzzes at 2am).
+    """
+    field = PUSH_PREF_FIELDS.get(notification_type or "")
+    if field:
+        try:
+            value = frappe.db.get_value("HD Agent", {"user": user}, field)
+            if value is not None and not int(value):
+                return False
+        except Exception:
+            frappe.log_error(
+                title="PMIT push: pref lookup failed",
+                message=f"user={user} type={notification_type}\n{frappe.get_traceback()}",
+            )
+
+    if _in_quiet_hours(user):
+        try:
+            priority = (
+                frappe.db.get_value("HD Ticket", ticket, "priority")
+                if ticket
+                else None
+            )
+        except Exception:
+            priority = None
+        if priority != "Urgent":
+            return False
+
+    return True
 
 
 @frappe.whitelist()
@@ -240,15 +321,25 @@ def get_push_prefs() -> dict:
     row = frappe.db.get_value(
         "HD Agent",
         {"user": frappe.session.user},
-        list(PUSH_PREF_FIELDS.values()),
+        list(PUSH_PREF_FIELDS.values())
+        + [QUIET_ENABLED_FIELD, QUIET_START_FIELD, QUIET_END_FIELD],
         as_dict=True,
     )
     # No agent row (should not happen behind is_agent, but fail open the same
     # way the send path does): everything reads as enabled.
-    return {
+    prefs = {
         key: bool(int(row[field])) if row and row.get(field) is not None else True
         for key, field in PUSH_PREF_FIELDS.items()
     }
+    quiet_enabled = row.get(QUIET_ENABLED_FIELD) if row else None
+    prefs["_quiet"] = {
+        "enabled": bool(int(quiet_enabled)) if quiet_enabled is not None else True,
+        "start": "%02d:%02d"
+        % _parse_hhmm(row.get(QUIET_START_FIELD) if row else None, QUIET_START_DEFAULT),
+        "end": "%02d:%02d"
+        % _parse_hhmm(row.get(QUIET_END_FIELD) if row else None, QUIET_END_DEFAULT),
+    }
+    return prefs
 
 
 @frappe.whitelist()
@@ -270,6 +361,32 @@ def set_push_pref(notification_type: str, enabled) -> dict:
     value = 1 if frappe.utils.cint(enabled) else 0
     frappe.db.set_value("HD Agent", name, field, value)
     return {notification_type: bool(value)}
+
+
+@frappe.whitelist()
+def set_quiet_hours(enabled, start: str | None = None, end: str | None = None) -> dict:
+    """Set the session agent's quiet window. Times are HH:MM, site time."""
+    import re as _re
+
+    from helpdesk.utils import is_agent
+
+    if not is_agent():
+        frappe.throw(frappe._("Not permitted"), frappe.PermissionError)
+
+    name = frappe.db.get_value("HD Agent", {"user": frappe.session.user}, "name")
+    if not name:
+        frappe.throw(frappe._("No agent record"))
+
+    hhmm = _re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+    updates = {QUIET_ENABLED_FIELD: 1 if frappe.utils.cint(enabled) else 0}
+    for field, value in ((QUIET_START_FIELD, start), (QUIET_END_FIELD, end)):
+        if value is not None:
+            if not hhmm.match(value.strip()):
+                frappe.throw(frappe._("Times must be HH:MM, e.g. 21:00"))
+            updates[field] = value.strip()
+    for field, value in updates.items():
+        frappe.db.set_value("HD Agent", name, field, value)
+    return {"ok": True}
 
 
 def notify_user(user: str, title: str, body: str, url: str, tag: str | None = None):

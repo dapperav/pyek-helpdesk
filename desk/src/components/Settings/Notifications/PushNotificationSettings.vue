@@ -50,6 +50,52 @@
         </div>
       </div>
     </div>
+
+    <!-- Quiet hours: default on 9pm–7am (site time), Urgent tickets still
+         push. Times save on change; the window may wrap midnight. -->
+    <div>
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-base-semibold text-ink-gray-9">
+            {{ __("Quiet hours") }}
+          </div>
+          <div class="mt-0.5 text-sm text-ink-gray-5">
+            {{ __("No pushes during these hours — except Urgent tickets.") }}
+          </div>
+        </div>
+        <Switch
+          size="sm"
+          :model-value="quiet.enabled"
+          :disabled="prefs.loading || saving"
+          @update:model-value="(v) => saveQuiet({ enabled: v })"
+        />
+      </div>
+      <div
+        v-if="quiet.enabled"
+        class="mt-3 flex items-center gap-3 text-base text-ink-gray-8"
+      >
+        <label class="flex items-center gap-2">
+          {{ __("From") }}
+          <input
+            type="time"
+            class="rounded border-outline-gray-2 bg-surface-base px-2 py-1 text-base text-ink-gray-8 focus:border-outline-gray-4 focus:ring-0"
+            :value="quiet.start"
+            :disabled="saving"
+            @change="(e: any) => saveQuiet({ start: e.target.value })"
+          />
+        </label>
+        <label class="flex items-center gap-2">
+          {{ __("to") }}
+          <input
+            type="time"
+            class="rounded border-outline-gray-2 bg-surface-base px-2 py-1 text-base text-ink-gray-8 focus:border-outline-gray-4 focus:ring-0"
+            :value="quiet.end"
+            :disabled="saving"
+            @change="(e: any) => saveQuiet({ end: e.target.value })"
+          />
+        </label>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -93,6 +139,12 @@ const rows: PrefRow[] = [
     label: __("Replies"),
     hint: __("A requester replies on a ticket assigned to you"),
   },
+  {
+    key: "sla",
+    types: ["SLA due"],
+    label: __("SLA warnings"),
+    hint: __("A ticket assigned to you is due a first response within 2 hours"),
+  },
 ];
 
 const prefs = createResource({
@@ -108,6 +160,35 @@ function prefValue(row: PrefRow): boolean {
   // A combined row reads as ON unless every type in it is off, so flipping it
   // on from a mixed state is a single tap.
   return row.types.some((t) => data[t] !== false);
+}
+
+// Quiet-hours state: server truth when loaded, defaults (on, 21:00–07:00)
+// while loading or when no agent row exists — matching the send path.
+const quiet = computed(() => {
+  const q = prefs.data?._quiet;
+  return {
+    enabled: q ? q.enabled !== false : true,
+    start: q?.start || "21:00",
+    end: q?.end || "07:00",
+  };
+});
+
+async function saveQuiet(patch: { enabled?: boolean; start?: string; end?: string }) {
+  saving.value = true;
+  try {
+    const next = { ...quiet.value, ...patch };
+    await call("helpdesk.helpdesk.web_push.set_quiet_hours", {
+      enabled: next.enabled ? 1 : 0,
+      start: next.start,
+      end: next.end,
+    });
+    if (prefs.data) prefs.data._quiet = next;
+  } catch (e) {
+    toast.error(__("Could not save quiet hours."));
+    prefs.reload();
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function setPref(row: PrefRow, enabled: boolean) {
