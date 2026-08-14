@@ -5,12 +5,14 @@
     >
       <div
         v-if="relatedActivities.length > 1"
-        class="inline-flex flex-wrap gap-1.5 text-ink-gray-8 font-medium w-4/5"
+        class="inline-flex flex-wrap gap-1.5 text-ink-gray-5 w-4/5"
       >
-        <span>{{ `${show_others ? "Hide " : "Show "}` }}</span>
-        <span>+{{ relatedActivities.length }} </span>
-        <span>changes from </span>
-        <span>{{ user }}</span>
+        <span>{{ `${show_others ? "Hide" : "Show"}` }}</span>
+        <span>{{ relatedActivities.length }}</span>
+        <!-- Mixed actors = a grouped run of system events (status flips,
+             views); a single actor keeps the older "changes from" phrasing. -->
+        <span v-if="sameUser">{{ `changes from ${user}` }}</span>
+        <span v-else>system events</span>
 
         <Button
           class="!size-4"
@@ -71,7 +73,12 @@ const props = defineProps({
 });
 
 const { user, content, creation } = props.activity;
-const relatedActivities = computed(() => props.activity.relatedActivities);
+// Plain (ungrouped) items carry no relatedActivities — default to empty so
+// the group header simply doesn't render for them.
+const relatedActivities = computed(() => props.activity.relatedActivities ?? []);
+const sameUser = computed(
+  () => new Set(relatedActivities.value.map((r) => r.user)).size === 1
+);
 
 let show_others = ref(false);
 </script>

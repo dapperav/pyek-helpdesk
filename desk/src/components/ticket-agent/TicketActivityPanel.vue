@@ -322,7 +322,10 @@ const _activities = computed(() => {
       key: h.creation,
       content: h.action ? h.action : "viewed this",
       creation: h.creation,
-      user: h.user.name + " ",
+      // Automation runs as Administrator; everywhere requesters look the
+      // automation is Echo, so the agent feed says Echo too (display only —
+      // the audit trail keeps the real actor).
+      user: (h.user.name === "Administrator" ? "Echo" : h.user.name) + " ",
     };
   });
 
@@ -346,36 +349,36 @@ const _activities = computed(() => {
     ...historyProps,
     ...callProps,
   ].sort((a, b) => new Date(a.creation) - new Date(b.creation));
+
+  // Group runs of 3+ consecutive system events (status flips, views — any
+  // actor) into one collapsed line: a reply/reopen round-trip otherwise
+  // stamps a pair of status lines per round (0171 carried ten). Assignments
+  // stay their own line — someone chose those. Runs of 1-2 render as-is.
+  const isGroupable = (a) =>
+    a.type === "history" &&
+    !a.content.includes("assigned") &&
+    !a.content.includes("unassigned");
   const data = [];
-  let i = 0;
-
-  while (i < sorted.length) {
-    const currentActivity = sorted[i];
-
-    if (currentActivity.type === "history") {
-      currentActivity.relatedActivities = [currentActivity];
-      for (let j = i + 1; j < sorted.length + 1; j++) {
-        const nextActivity = sorted[j];
-
-        if (
-          nextActivity &&
-          nextActivity.user === currentActivity.user &&
-          nextActivity.content !== "viewed this" &&
-          !nextActivity.content.includes("assigned") &&
-          !nextActivity.content.includes("unassigned")
-        ) {
-          currentActivity.relatedActivities.push(nextActivity);
-        } else {
-          data.push(currentActivity);
-          i = j - 1;
-          break;
-        }
-      }
+  let run = [];
+  const flushRun = () => {
+    if (!run.length) return;
+    if (run.length < 3) {
+      data.push(...run);
     } else {
-      data.push(currentActivity);
+      const last = run[run.length - 1];
+      data.push({ ...last, relatedActivities: [...run] });
     }
-    i++;
+    run = [];
+  };
+  for (const item of sorted) {
+    if (isGroupable(item)) {
+      run.push(item);
+    } else {
+      flushRun();
+      data.push(item);
+    }
   }
+  flushRun();
   // add feedback data at the last always
   // name is email
   // full_name is name

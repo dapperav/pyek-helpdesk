@@ -10,6 +10,7 @@ from frappe.email.doctype.email_queue.email_queue import EmailQueue
 from frappe.email.receive import InboundMail
 
 from helpdesk.helpdesk.utils.agent_email import (
+    _own_addresses,
     agent_user_for_email,
     is_email_reply_enabled,
     note_unrelayed_reply,
@@ -32,6 +33,37 @@ class CustomInboundMail(InboundMail):
     # None = not worked out yet, False = not an agent reply, tuple = it is one.
     _pyek_agent_reply = None
     _pyek_relay_ready = False
+    # None = not worked out yet, True/False = cached answer.
+    _pyek_self_echo = None
+
+    def _is_self_echo(self) -> bool:
+        """True when this inbound email was SENT BY one of the site's own
+        helpdesk accounts (help.pyek@ / pos.pyek@).
+
+        Our outbound replies come back into the mailbox whenever the thread
+        carries an alias that delivers here (help@pyekgroup.com forwards into
+        the help.pyek mailbox) or a reply-all CC's the account itself. Filed
+        as a normal "Received" Communication, such an echo shows the same
+        reply twice in the thread, reopens the ticket, stamps
+        last_customer_response and fires a bogus Reply push ~10 minutes after
+        every agent reply (measured on ticket 0171). Recognising the sender
+        lets ingestion file it as an "Automated Message" instead — kept for
+        audit, invisible in the thread, no side effects.
+        """
+        if self._pyek_self_echo is None:
+            try:
+                sender = (
+                    getattr(self, "from_email", None)
+                    or parseaddr(self.mail.get("From") or "")[1]
+                )
+                self._pyek_self_echo = (sender or "").lower() in _own_addresses()
+            except Exception:
+                frappe.log_error(
+                    title=_("HD self-echo detection failed"),
+                    message=frappe.get_traceback(),
+                )
+                self._pyek_self_echo = False
+        return self._pyek_self_echo
 
     def _find_communication_by_message_id(self, msg_id: str):
         """Return a Communication for msg_id, checking both Communication and EmailQueue."""
@@ -108,6 +140,15 @@ class CustomInboundMail(InboundMail):
         return context
 
     def as_dict(self):
+        # Our own outbound mail, echoed back via an alias or reply-all CC.
+        # File it out of sight instead of letting it masquerade as a customer
+        # reply (see _is_self_echo). Checked before the agent-reply context so
+        # an echo can never be relayed back out again.
+        if self._is_self_echo():
+            data = super().as_dict()
+            data["communication_type"] = "Automated Message"
+            return data
+
         context = self._agent_reply_context()
         if not context:
             return super().as_dict()
@@ -130,6 +171,11 @@ class CustomInboundMail(InboundMail):
 
     def process(self):
         communication = super().process()
+
+        # A self-echo must never be relayed, even if the shared address were
+        # ever (mis)configured as an agent alias — that would be a mail loop.
+        if self._is_self_echo():
+            return communication
 
         context = self._agent_reply_context()
         # is_new_communication is False when the same message is pulled twice —

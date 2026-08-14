@@ -1414,6 +1414,13 @@ class HDTicket(Document):
         # be reopened.
         # handle re opening tickets for email
         if c.sent_or_received == "Received":
+            # PYEK: an inbound "Automated Message" is our own outbound mail
+            # echoed back through an alias (see CustomInboundMail._is_self_echo).
+            # It is not a customer reply — reopening / stamping
+            # last_customer_response off it caused the Waiting-on-Customer →
+            # Open ping-pong visible on long threads.
+            if c.communication_type == "Automated Message":
+                return
             # check if agent has replied
 
             if self.has_agent_replied:
