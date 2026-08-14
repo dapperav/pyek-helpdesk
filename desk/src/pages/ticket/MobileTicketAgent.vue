@@ -589,7 +589,9 @@ const _activities = computed(() => {
       key: h.creation,
       content: h.action ? h.action : __("viewed this"),
       creation: h.creation,
-      user: h.user.name + " ",
+      // Automation runs as Administrator; the feed shows it as Echo (display
+      // only — mirrors TicketActivityPanel).
+      user: (h.user.name === "Administrator" ? "Echo" : h.user.name) + " ",
     };
   });
 
@@ -616,35 +618,33 @@ const _activities = computed(() => {
     (a, b) => new Date(a.creation).getTime() - new Date(b.creation).getTime()
   );
 
+  // Group runs of 3+ consecutive system events into one collapsed line —
+  // mirrors TicketActivityPanel (see the comment there).
+  const isGroupable = (a) =>
+    a.type === "history" &&
+    !a.content.includes("assigned") &&
+    !a.content.includes("unassigned");
   const data = [];
-  let i = 0;
-
-  while (i < sorted.length) {
-    const currentActivity = sorted[i];
-    if (currentActivity.type === "history") {
-      currentActivity.relatedActivities = [currentActivity];
-      for (let j = i + 1; j < sorted.length + 1; j++) {
-        const nextActivity = sorted[j];
-
-        if (
-          nextActivity &&
-          nextActivity.user === currentActivity.user &&
-          nextActivity.content !== "viewed this" &&
-          !nextActivity.content.includes("assigned") &&
-          !nextActivity.content.includes("unassigned")
-        ) {
-          currentActivity.relatedActivities.push(nextActivity);
-        } else {
-          data.push(currentActivity);
-          i = j - 1;
-          break;
-        }
-      }
+  let run = [];
+  const flushRun = () => {
+    if (!run.length) return;
+    if (run.length < 3) {
+      data.push(...run);
     } else {
-      data.push(currentActivity);
+      const last = run[run.length - 1];
+      data.push({ ...last, relatedActivities: [...run] });
     }
-    i++;
+    run = [];
+  };
+  for (const item of sorted) {
+    if (isGroupable(item)) {
+      run.push(item);
+    } else {
+      flushRun();
+      data.push(item);
+    }
   }
+  flushRun();
 
   if (ticket.value.doc?.feedback_rating === 0) {
     return data;

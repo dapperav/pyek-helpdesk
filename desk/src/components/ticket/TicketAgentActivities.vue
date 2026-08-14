@@ -64,6 +64,16 @@
                 "
                 class="text-ink-gray-5 left-[7.5px] size-4"
               />
+              <!-- Automation events display as Echo, avatar included, so the
+                   feed matches the identity requesters already know. -->
+              <!-- :src (not src) — a static src is a bundle-time asset import
+                   to vite, but this is a runtime file served by Frappe. -->
+              <img
+                v-else-if="activity.user?.trim() === 'Echo'"
+                :src="'/files/echo-finley.png'"
+                alt="Echo"
+                class="size-5 rounded-full object-cover"
+              />
               <DotIcon
                 v-else
                 class="text-ink-gray-5 absolute left-[7.5px] top-[6px]"
