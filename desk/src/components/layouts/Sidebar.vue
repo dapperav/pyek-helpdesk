@@ -21,8 +21,10 @@
           :isSidebarCollapsed="isCollapsed"
         />
       </div>
+      <!-- Help no longer waits for onboarding steps (the banner driving them
+           is retired) — always available to agents. -->
       <SidebarItem
-        v-if="isOnboardingStepsCompleted && !isCustomerPortal"
+        v-if="!isCustomerPortal"
         :label="__('Help')"
         :icon="HelpIcon"
         :on-click="
@@ -215,13 +217,12 @@ const showPermissionNoticeBanner = computed(() => {
   );
 });
 
-const showOnboardingBanner = computed(() => {
-  return (
-    !isCustomerPortal.value &&
-    !isOnboardingStepsCompleted.value &&
-    authStore.isManager
-  );
-});
+// PYEK: the stock "Getting started — Welcome to Frappe Helpdesk, 0/10 steps"
+// banner greeted managers on every load of a system that has been live for
+// months ("Connect your support email", "Invite agents"). Retired 2026-08-14
+// (product review, Mark's call). The Help modal and its articles stay
+// reachable from the always-visible Help item.
+const showOnboardingBanner = computed(() => false);
 
 const steps = [
   {

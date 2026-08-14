@@ -110,6 +110,14 @@ const greeting = computed(() => {
 });
 const todayLabel = computed(() => dayjs().format("dddd, MMMM D"));
 
+// Human-scoped counts from the backend (same human/bot test as the ack
+// suppression and AI skip) — feeds the "Awaiting reply" tile, which replaced
+// "SLA breached" (that number was historical machine failures, unactionable).
+const homeStats = createResource({
+  url: "helpdesk.api.pyek_home.get_home_stats",
+  auto: true,
+});
+
 // One fetch of all tickets; every count is derived client-side (mirrors the
 // desktop PyekHome dashboard).
 const tickets = createResource({
@@ -120,7 +128,6 @@ const tickets = createResource({
       "name",
       "status",
       "status_category",
-      "agreement_status",
       "pyek_requested_due_date",
       "agent_group",
       "email_account",
@@ -135,7 +142,10 @@ const rows = computed<any[]>(() => tickets.data || []);
 
 // Same gesture as the ticket screen. The Refresh button in the header stays — the
 // gesture is the idiom, the button is the discoverable version of it.
-const { pull, refreshing, threshold } = usePullToRefresh(() => tickets.reload());
+const { pull, refreshing, threshold } = usePullToRefresh(() => {
+  homeStats.reload();
+  return tickets.reload();
+});
 
 const startOfTomorrow = () => dayjs().add(1, "day").startOf("day");
 const notResolved = (t: any) => t.status_category !== "Resolved";
@@ -163,7 +173,6 @@ const counts = computed(() => {
         t.pyek_requested_due_date &&
         dayjs(t.pyek_requested_due_date).isBefore(startOfTomorrow())
     ).length,
-    slaBreached: r.filter((t) => t.agreement_status === "Failed").length,
     pos: r.filter((t) => t.agent_group === "POS Support").length,
     // IT queue mirrors the "IT Tickets" view, which filters by mailbox.
     it: r.filter((t) => t.email_account === "IT Support").length,
@@ -201,10 +210,10 @@ const tiles = computed(() => [
     style: { backgroundColor: "#FFFBEB" },
   },
   {
-    key: "sla",
-    label: __("SLA breached"),
-    value: counts.value.slaBreached,
-    view: "All Open Tickets",
+    key: "awaiting",
+    label: __("Awaiting reply"),
+    value: homeStats.data?.awaiting_first_reply ?? 0,
+    view: "Awaiting first reply",
     fg: "#B91C1C",
     style: { backgroundColor: "#FEF2F2" },
   },
