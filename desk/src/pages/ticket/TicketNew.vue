@@ -147,6 +147,7 @@ import { capture } from "@/telemetry";
 import { __ } from "@/translation";
 import { Field } from "@/types";
 import { isCustomerPortal, uploadFunction } from "@/utils";
+import { useScreenSize } from "@/composables/screen";
 import {
   Breadcrumbs,
   Button,
@@ -231,11 +232,26 @@ function applyFilters(fieldname: string, filters: any = null) {
 
 const customOnChange = computed(() => template.data?._customOnChange);
 
+// Enricher-owned OUTPUTS have no business on a human input form — "AI
+// Summary" as a hand-typed field was the review's example. The enricher
+// fills them within a minute of creation anyway.
+const ENRICHER_OWNED = new Set(["pyek_summary"]);
+
+// Phone fast path (review decision): on an agent phone the form is subject +
+// description with property optional — not the desktop grid squeezed to
+// 375px. The enricher classifies the rest. Customer portal is untouched.
+const PHONE_FIELDS = new Set(["pyek_property"]);
+const { isMobileView } = useScreenSize();
+
 const visibleFields = computed(() => {
   let _fields = template.data?.fields?.filter(
     (f) => !isCustomerPortal.value || !f.hide_from_customer
   );
   if (!_fields) return [];
+  _fields = _fields.filter((f) => !ENRICHER_OWNED.has(f.fieldname));
+  if (!isCustomerPortal.value && isMobileView.value) {
+    _fields = _fields.filter((f) => PHONE_FIELDS.has(f.fieldname));
+  }
   return _fields.map((field) => parseField(field, templateFields));
 });
 
