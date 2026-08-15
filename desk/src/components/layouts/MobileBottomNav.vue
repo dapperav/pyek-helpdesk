@@ -14,26 +14,42 @@
        left the bar; Mine stays because the agent's own queue is the one they
        hit most; Menu opens the branded bottom sheet (all queues,
        notifications, settings). -->
-  <!-- Navy bar to match the sidebar brand; white/muted icons, bright-blue
-       active. paddingBottom carries the iOS home-indicator safe-area inset so
-       the labels never sit under the home bar. -->
+  <!-- Frosted glass overlay (Apple material: blur + saturate). Positioned by
+       MobileLayout as an absolute layer over the scroller, so page content
+       scrolls beneath it and the tide menu rises BEHIND it (sheet z-40, this
+       z-50). paddingBottom carries the iOS home-indicator safe-area inset.
+       The active accent is brand cyan; Mine is the user's own avatar. -->
   <nav
-    class="flex shrink-0 items-stretch"
-    :style="{
-      backgroundColor: '#1B2A4A',
-      borderTop: '1px solid rgba(255,255,255,0.08)',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }"
+    class="glassnav absolute inset-x-0 bottom-0 z-50 flex items-stretch"
+    :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
   >
     <button
       v-for="item in items"
       :key="item.key"
       class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 py-2 transition active:bg-white/5"
-      :style="{ color: isActive(item) ? '#60A5FA' : 'rgba(255,255,255,0.64)' }"
+      :style="{ color: isActive(item) ? '#67E8F9' : 'rgba(255,255,255,0.66)' }"
       @click="go(item)"
     >
       <span class="relative grid size-6 place-items-center">
-        <component :is="item.icon" class="size-6" />
+        <!-- Mine = you: photo when the account has one, initials otherwise. -->
+        <template v-if="item.key === 'mine'">
+          <img
+            v-if="meImage"
+            :src="meImage"
+            class="me-avatar object-cover"
+            :class="isActive(item) && 'me-avatar-active'"
+            alt=""
+          />
+          <span
+            v-else
+            class="me-avatar grid place-items-center text-[9.5px] font-extrabold"
+            :class="isActive(item) && 'me-avatar-active'"
+            style="background-color: #67e8f9; color: #10202e"
+          >
+            {{ meInitials }}
+          </span>
+        </template>
+        <component :is="item.icon" v-else class="size-6" />
         <span
           v-if="item.badge"
           class="absolute -right-1.5 -top-1.5 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 text-white"
@@ -51,6 +67,8 @@
 import { useView } from "@/composables/useView";
 import { useNotificationStore } from "@/stores/notification";
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
+import { useAuthStore } from "@/stores/auth";
+import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -62,6 +80,18 @@ const route = useRoute();
 const router = useRouter();
 const notificationStore = useNotificationStore();
 const { publicViews } = useView();
+
+const { userId } = useAuthStore();
+const { getUser } = useUserStore();
+const meImage = computed(() => getUser(userId)?.user_image || "");
+const meInitials = computed(() =>
+  (getUser(userId)?.full_name || userId || "?")
+    .split(/[\s.@_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p: string) => p[0]?.toUpperCase())
+    .join("")
+);
 
 // Resolve a saved HD View id from its label (POS Tickets / IT Tickets / Open
 // Wrike Tickets), so those tabs open the exact queues. Falls back to the plain
@@ -90,8 +120,10 @@ const items = computed<Item[]>(() => [
     icon: LucideHouse,
     route: "Home",
   },
-  // The agent's own queue. Same saved view Home's "My tickets" card opens, so
-  // the count they tap on Home and this tab are the same list.
+  // The agent's own queue. Same saved view Home's "Mine" pool opens, so the
+  // count they tap on Home and this tab are the same list. The icon slot is
+  // the user's avatar (special-cased in the template); LucideUser is only the
+  // typed fallback and never renders for this key.
   {
     key: "mine",
     label: __("Mine"),
@@ -105,7 +137,9 @@ const items = computed<Item[]>(() => [
     key: "menu",
     label: __("Menu"),
     icon: LucideMenu,
-    action: () => (sidebarOpened.value = true),
+    // Toggle, not open: tapping Menu while the tide is up sends it back out
+    // (Mark's spec — "when you hit it while menu is open it comes down").
+    action: () => (sidebarOpened.value = !sidebarOpened.value),
     badge: notificationStore.unread,
   },
 ]);
@@ -131,3 +165,21 @@ function go(item: Item) {
   }
 }
 </script>
+
+<style scoped>
+.glassnav {
+  background: rgba(27, 42, 74, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.me-avatar {
+  width: 21px;
+  height: 21px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+}
+.me-avatar-active {
+  border-color: #67e8f9;
+}
+</style>

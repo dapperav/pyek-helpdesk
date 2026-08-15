@@ -142,8 +142,14 @@
           <!-- Sticky footer: act bar + composer share one container so both sit
                in thumb reach. The act bar hides itself while an editor is open
                (v-show inside the component — it is multi-root, so v-show here
-               would land on a fragment and silently do nothing). -->
-          <div class="sticky bottom-0 z-50 bg-surface-base">
+               would land on a fragment and silently do nothing).
+               bottom = the glass nav's height (0 when it's hidden, which is
+               the normal tapped-in case), so a cold-launched ticket's composer
+               sits ABOVE the frosted nav instead of underneath it. -->
+          <div
+            class="sticky z-50 bg-surface-base"
+            style="bottom: var(--pyek-nav-h, 0px)"
+          >
           <MobileTicketActBar />
           <CommunicationArea
             ref="communicationAreaRef"

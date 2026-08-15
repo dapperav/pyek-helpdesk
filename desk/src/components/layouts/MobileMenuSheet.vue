@@ -1,21 +1,44 @@
 <template>
-  <!-- PYEK: the branded replacement for the old mobile drawer, which wrapped the
-       DESKTOP AppSidebar in a sheet — stock Frappe chrome that looked bolted on
-       next to the navy shell. This is a bottom sheet in the same design language
-       as TicketActionSheet (Mark's pick, 2026-08-14): navy brand header with the
-       agent's identity + availability, the saved queues, and the device/account
-       rows. Opened by the bottom bar's Menu tab (same `mobileSidebarOpened` ref
-       the drawer used). Plain overlay, no headlessui — which also sidesteps the
-       drawer's empty-render wart under vite dev. -->
-  <div v-if="sidebarOpened" class="fixed inset-0 z-50" @click.self="close">
-    <div class="absolute inset-0 bg-black-overlay-400" @click="close" />
-    <div
-      class="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl shadow-2xl bg-surface-base"
-    >
-      <!-- Navy brand header -->
-      <div class="shrink-0 px-5 pb-4 pt-2.5" style="background-color: #1b2a4a">
-        <div class="mx-auto mb-3 h-1 w-9 rounded-full bg-white/30" />
-        <div class="flex items-center gap-2">
+  <!-- PYEK: the tide menu (Mark's approved Wave design, 2026-08-15). The Menu
+       tab makes the sheet RISE like a wave (fast crest, ~0.6s) and recede like
+       the tide going out (slow pull, ~0.85s) — the two different easings are
+       what sell it. A drifting wave-crest SVG forms the top edge, the body is
+       frosted navy glass, and the whole sheet slides up BEHIND the glass bottom
+       nav (sheet z-40, nav z-50), blurred through it.
+       Always mounted (transform-based show/hide) so the exit animation can
+       play — v-if would snap it away. Plain overlay, no headlessui. -->
+  <div
+    class="fixed inset-0 z-40"
+    :class="!sidebarOpened && 'pointer-events-none'"
+  >
+    <button
+      class="absolute inset-0 bg-black-overlay-400 transition-opacity duration-500"
+      :class="sidebarOpened ? 'opacity-100' : 'opacity-0'"
+      :aria-hidden="!sidebarOpened"
+      :tabindex="sidebarOpened ? 0 : -1"
+      aria-label="Close menu"
+      @click="close"
+    />
+    <div class="tide" :class="sidebarOpened && 'open'" :aria-hidden="!sidebarOpened">
+      <div class="overflow-hidden">
+        <svg
+          class="crest"
+          viewBox="0 0 750 40"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M0 24 Q 47 6 94 20 T 188 18 T 282 22 T 375 14 T 470 20 T 564 16 T 658 22 T 750 14 L 750 40 L 0 40 Z"
+            fill="rgba(103,232,249,0.35)"
+          />
+          <path
+            d="M0 30 Q 47 14 94 26 T 188 24 T 282 28 T 375 22 T 470 28 T 564 24 T 658 28 T 750 22 L 750 40 L 0 40 Z"
+            fill="rgba(27,42,74,0.82)"
+          />
+        </svg>
+      </div>
+      <div class="body">
+        <div class="flex items-center gap-2 pb-3 pt-1.5">
           <PyekMark class="h-5 w-auto shrink-0" />
           <span class="text-base tracking-tight">
             <span class="font-bold text-white">PYEK</span
@@ -50,7 +73,7 @@
             </div>
           </div>
         </div>
-        <div v-if="statusPicking" class="mt-3 flex flex-wrap gap-2">
+        <div v-if="statusPicking" class="mb-2 flex flex-wrap gap-2">
           <button
             v-for="option in agentStatusStore.statusOptions"
             :key="option"
@@ -64,96 +87,75 @@
             {{ __(option) }}
           </button>
         </div>
-      </div>
 
-      <!-- Scrollable body -->
-      <div
-        class="min-h-0 flex-1 overflow-y-auto"
-        style="padding-bottom: env(safe-area-inset-bottom)"
-      >
-        <template v-if="!isCustomerPortal">
-          <p class="menu-section">{{ __("Queues") }}</p>
+        <div class="scroll min-h-0 flex-1 overflow-y-auto">
+          <template v-if="!isCustomerPortal">
+            <p class="grp">{{ __("Queues") }}</p>
+            <button
+              v-for="view in publicViews"
+              :key="view.name"
+              class="item"
+              @click="view.onClick()"
+            >
+              <component :is="view.icon" class="ic size-5 shrink-0" />
+              {{ view.label }}
+            </button>
+
+            <p class="grp">{{ __("Workspace") }}</p>
+            <button class="item" @click="go('Notifications')">
+              <LucideBell class="ic size-5 shrink-0" />
+              {{ __("Notifications") }}
+              <span v-if="notificationStore.unread" class="badge">
+                {{ notificationStore.unread > 9 ? "9+" : notificationStore.unread }}
+              </span>
+            </button>
+            <button class="item" @click="go('AgentKnowledgeBase')">
+              <LucideBookOpen class="ic size-5 shrink-0" />
+              {{ __("Knowledge Base") }}
+              <span v-if="kbConfirmCount.data" class="badge">
+                {{ kbConfirmCount.data > 9 ? "9+" : kbConfirmCount.data }}
+              </span>
+            </button>
+            <button class="item" @click="openCustomerPortal">
+              <LucideUsers class="ic size-5 shrink-0" />
+              {{ __("Customer portal") }}
+            </button>
+
+            <p class="grp">{{ __("This device") }}</p>
+            <button
+              v-if="pushState !== 'unsupported'"
+              class="item"
+              @click="togglePush()"
+            >
+              <LucideBellRing v-if="pushState === 'on'" class="ic size-5 shrink-0" />
+              <LucideBellPlus v-else class="ic size-5 shrink-0" />
+              {{ pushLabel }}
+            </button>
+            <button class="item" @click="go('NotificationSettings')">
+              <LucideSlidersHorizontal class="ic size-5 shrink-0" />
+              {{ __("Notification settings") }}
+            </button>
+          </template>
+
+          <!-- Customers keep a route to their ticket list. -->
           <button
-            v-for="view in publicViews"
-            :key="view.name"
-            class="menu-btn"
-            @click="view.onClick()"
+            v-if="isCustomerPortal"
+            class="item"
+            @click="go('TicketsCustomer')"
           >
-            <component
-              :is="view.icon"
-              class="size-5 shrink-0 text-ink-gray-6"
-            />
-            {{ view.label }}
+            <LucideTicket class="ic size-5 shrink-0" />
+            {{ __("My tickets") }}
           </button>
-
-          <p class="menu-section">{{ __("Workspace") }}</p>
-          <button class="menu-btn" @click="go('Notifications')">
-            <LucideBell class="size-5 shrink-0 text-ink-gray-6" />
-            {{ __("Notifications") }}
-            <span v-if="notificationStore.unread" class="menu-badge">
-              {{ notificationStore.unread > 9 ? "9+" : notificationStore.unread }}
-            </span>
+          <button class="item" @click="toggleTheme()">
+            <LucideSun v-if="currentTheme === 'dark'" class="ic size-5 shrink-0" />
+            <LucideMoon v-else class="ic size-5 shrink-0" />
+            {{ __("Toggle theme") }}
           </button>
-          <button class="menu-btn" @click="go('AgentKnowledgeBase')">
-            <LucideBookOpen class="size-5 shrink-0 text-ink-gray-6" />
-            {{ __("Knowledge Base") }}
-            <span v-if="kbConfirmCount.data" class="menu-badge">
-              {{ kbConfirmCount.data > 9 ? "9+" : kbConfirmCount.data }}
-            </span>
+          <button class="item" @click="authStore.logout()">
+            <LucideLogOut class="ic size-5 shrink-0" />
+            {{ __("Log out") }}
           </button>
-          <button class="menu-btn" @click="openCustomerPortal">
-            <LucideUsers class="size-5 shrink-0 text-ink-gray-6" />
-            {{ __("Customer portal") }}
-          </button>
-
-          <p class="menu-section">{{ __("This device") }}</p>
-          <button
-            v-if="pushState !== 'unsupported'"
-            class="menu-btn"
-            @click="togglePush()"
-          >
-            <LucideBellRing
-              v-if="pushState === 'on'"
-              class="size-5 shrink-0 text-ink-gray-6"
-            />
-            <LucideBellPlus v-else class="size-5 shrink-0 text-ink-gray-6" />
-            {{ pushLabel }}
-          </button>
-          <button class="menu-btn" @click="go('NotificationSettings')">
-            <LucideSlidersHorizontal class="size-5 shrink-0 text-ink-gray-6" />
-            {{ __("Notification settings") }}
-          </button>
-        </template>
-
-        <!-- Customers keep a route to their ticket list — the old drawer's
-             sidebar carried it, so the sheet must too. -->
-        <button
-          v-if="isCustomerPortal"
-          class="menu-btn mt-2"
-          @click="go('TicketsCustomer')"
-        >
-          <LucideTicket class="size-5 shrink-0 text-ink-gray-6" />
-          {{ __("My tickets") }}
-        </button>
-        <button class="menu-btn" @click="toggleTheme()">
-          <LucideSun
-            v-if="currentTheme === 'dark'"
-            class="size-5 shrink-0 text-ink-gray-6"
-          />
-          <LucideMoon v-else class="size-5 shrink-0 text-ink-gray-6" />
-          {{ __("Toggle theme") }}
-        </button>
-        <button class="menu-btn" @click="authStore.logout()">
-          <LucideLogOut class="size-5 shrink-0 text-ink-gray-6" />
-          {{ __("Log out") }}
-        </button>
-
-        <button
-          class="w-full border-t border-outline-gray-1 py-3.5 text-center text-sm font-medium text-ink-gray-6"
-          @click="close"
-        >
-          {{ __("Close") }}
-        </button>
+        </div>
       </div>
     </div>
   </div>
@@ -248,37 +250,91 @@ watch(() => route.fullPath, close);
 </script>
 
 <style scoped>
-.menu-section {
-  padding: 14px 20px 4px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-gray-5);
+/* The tide: base rule carries the CLOSING transition (slow pull, tide going
+   out); .open carries the OPENING one (fast rise, soft crest overshoot).
+   CSS applies the destination state's transition, so each direction gets its
+   own feel from just these two rules. */
+.tide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 88dvh;
+  transform: translateY(103%);
+  transition: transform 0.85s cubic-bezier(0.5, 0, 0.75, 0.6);
 }
-.menu-btn {
+.tide.open {
+  transform: translateY(0);
+  transition: transform 0.6s cubic-bezier(0.22, 1.1, 0.32, 1);
+}
+.crest {
+  display: block;
+  width: 200%;
+  margin-bottom: -1px;
+  animation: drift 7s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-12%);
+  }
+}
+/* Frosted navy glass; the sheet rises behind the glass nav, so leave room for
+   it (--pyek-nav-h set by MobileLayout) plus the home-indicator inset. */
+.body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 20px calc(var(--pyek-nav-h, 60px) + 10px);
+  color: #fff;
+  background: rgba(27, 42, 74, 0.82);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+}
+.grp {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.item {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
+  gap: 10px;
+  padding: 9px 0;
   text-align: left;
-  font-size: 15px;
-  color: var(--ink-gray-8);
+  font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.92);
 }
-.menu-btn:active {
-  background: var(--surface-gray-2);
+.item:active {
+  color: #fff;
 }
-.menu-badge {
-  margin-inline-start: auto;
-  min-width: 20px;
+.ic {
+  color: #67e8f9;
+}
+.badge {
+  margin-left: auto;
   border-radius: 9999px;
-  background-color: #2563eb;
-  padding: 2px 6px;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  color: white;
+  background: #2563eb;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .crest {
+    animation: none;
+  }
+  .tide,
+  .tide.open {
+    transition-duration: 0.01s;
+  }
 }
 </style>
