@@ -6,15 +6,32 @@
        scrolling: previously any page whose content overflowed this column grew
        the body, and the bottom nav rendered below the fold until you scrolled.
        The inner .min-h-0 container is the ONLY scroller on a phone. -->
-  <div class="flex" style="position: fixed; inset: 0">
+  <!-- --pyek-nav-h: the glass nav is an OVERLAY now (content scrolls beneath
+       it, the tide menu rises behind it), so everything that must clear it —
+       the scroller's bottom padding, the ticket screen's sticky composer, the
+       list's bulk bar — reads this one variable. 0px when the nav is hidden. -->
+  <div
+    class="relative flex"
+    style="position: fixed; inset: 0"
+    :style="{
+      '--pyek-nav-h': showBottomNav
+        ? 'calc(62px + env(safe-area-inset-bottom))'
+        : '0px',
+    }"
+  >
     <MobileMenuSheet />
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <MobileAppHeader />
-      <!-- Scrollable content between the header and the pinned bottom nav. This
+      <!-- Scrollable content between the header and the glass bottom nav. This
            is the only scrolling element on a phone, so it's shared with pages
            that want a pull-to-refresh gesture — they can't listen on their own
-           root, which doesn't scroll. -->
-      <div ref="scrollEl" class="min-h-0 flex-1 overflow-auto">
+           root, which doesn't scroll. Bottom padding keeps the last row
+           readable above the frosted nav. -->
+      <div
+        ref="scrollEl"
+        class="min-h-0 flex-1 overflow-auto"
+        :style="{ paddingBottom: 'var(--pyek-nav-h)' }"
+      >
         <slot />
       </div>
       <!-- Hidden on the ticket detail screen, which has its own sticky reply box
