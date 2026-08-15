@@ -132,6 +132,11 @@ def get_list_data(
                 "description",
                 "modified",
                 "creation",
+                # PYEK: the mobile ticket card's SLA chip ("reply due 2h")
+                # needs the first-response clock — same fields the act bar
+                # reads off the full doc.
+                "response_by",
+                "first_responded_on",
             ):
                 if _pyek_field not in rows:
                     rows.append(_pyek_field)
