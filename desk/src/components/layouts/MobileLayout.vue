@@ -16,8 +16,10 @@
     class="relative flex"
     style="position: fixed; inset: 0; background: var(--surface-base)"
     :style="{
+      // Matches the slimmed nav: ~54px of content row plus its reduced
+      // home-indicator padding (see MobileBottomNav).
       '--pyek-nav-h': showBottomNav
-        ? 'calc(62px + env(safe-area-inset-bottom))'
+        ? 'calc(54px + max(env(safe-area-inset-bottom) - 10px, 0px))'
         : '0px',
     }"
   >
