@@ -28,6 +28,10 @@
     class="glassnav absolute inset-x-0 bottom-0 z-50 flex items-stretch"
     :style="{
       paddingBottom: 'max(env(safe-area-inset-bottom) - 10px, 0px)',
+      // Hang below the viewport edge by the letterbox dead gap so the bar
+      // hugs the PHYSICAL screen bottom (0 on healthy viewports) — set by
+      // MobileLayout, see --pyek-nav-drop there.
+      bottom: 'calc(-1 * var(--pyek-nav-drop, 0px))',
     }"
   >
     <button
