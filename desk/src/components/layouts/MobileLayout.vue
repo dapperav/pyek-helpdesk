@@ -17,10 +17,19 @@
     style="position: fixed; inset: 0; background: var(--surface-base)"
     :style="{
       // Matches the slimmed nav: ~54px of content row plus its reduced
-      // home-indicator padding (see MobileBottomNav).
+      // home-indicator padding (see MobileBottomNav). The drop (below) is
+      // subtracted because that part of the nav hangs below the viewport.
       '--pyek-nav-h': showBottomNav
-        ? 'calc(54px + max(env(safe-area-inset-bottom) - 10px, 0px))'
+        ? `calc(54px + max(env(safe-area-inset-bottom) - 10px, 0px) - ${navDrop}px)`
         : '0px',
+      // iOS letterbox drop: on Mark's iPhone the standalone viewport is
+      // top-anchored and ends ~59pt above the physical screen bottom (the
+      // navy letterbox). The render canvas continues below the viewport
+      // edge (the document background paints there), so the nav shifts
+      // DOWN by that dead gap to hug the physical edge like a native tab
+      // bar. Zero on healthy phones (no gap), Safari (not standalone),
+      // landscape, and bottom-anchored viewports (envT ~0).
+      '--pyek-nav-drop': `${navDrop}px`,
     }"
   >
     <MobileMenuSheet />
@@ -69,8 +78,12 @@
       <div
         v-show="showBottomNav"
         aria-hidden="true"
-        class="pointer-events-none absolute inset-x-0 bottom-0 z-30"
-        style="height: env(safe-area-inset-bottom); background: #1b2a4a"
+        class="pointer-events-none absolute inset-x-0 z-30"
+        style="
+          bottom: calc(-1 * var(--pyek-nav-drop, 0px));
+          height: calc(env(safe-area-inset-bottom) + var(--pyek-nav-drop, 0px));
+          background: #1b2a4a;
+        "
       />
       <MobileBottomNav v-show="showBottomNav" />
     </div>
@@ -91,6 +104,36 @@ const showBottomNav = computed(
   () => route.name !== "TicketAgent" || !canGoBackInApp.value
 );
 
+// --- iOS letterbox drop (see the --pyek-nav-drop comment in the template).
+// Conditions, all measured live: installed standalone app, portrait, the
+// viewport is short of the screen by a status-bar-ish amount (8..80),
+// AND env(safe-area-inset-top) is real (>20) — that combination is the
+// top-anchored letterboxed state; a bottom-anchored viewport (envT 0)
+// must NOT drop or the nav would slide off the physical screen.
+const navDrop = ref(0);
+function computeNavDrop() {
+  try {
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      navigator.standalone === true;
+    const portrait = window.innerWidth < window.innerHeight;
+    const gap = window.screen.height - window.innerHeight;
+    let envTop = 0;
+    if (standalone && portrait && gap > 8 && gap < 80) {
+      const probe = document.createElement("div");
+      probe.style.cssText =
+        "position:fixed;top:0;left:0;width:1px;visibility:hidden;height:env(safe-area-inset-top)";
+      document.body.appendChild(probe);
+      envTop = probe.getBoundingClientRect().height;
+      probe.remove();
+    }
+    navDrop.value =
+      standalone && portrait && gap > 8 && gap < 80 && envTop > 20 ? gap : 0;
+  } catch {
+    navDrop.value = 0;
+  }
+}
+
 const scrollEl = ref(null);
 provideMobileScrollEl(scrollEl);
 
@@ -103,9 +146,12 @@ onMounted(() => {
   // inset the first time the keyboard opens and never recovers — see
   // composables/viewportHeal.ts for the whole story.
   teardownHeal = installViewportHeal(() => scrollEl.value);
+  computeNavDrop();
+  window.addEventListener("resize", computeNavDrop);
 });
 onUnmounted(() => {
   document.documentElement.classList.remove("pyek-mobile-shell");
   teardownHeal?.();
+  window.removeEventListener("resize", computeNavDrop);
 });
 </script>

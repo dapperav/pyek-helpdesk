@@ -233,9 +233,12 @@ function envProbe(edge: "top" | "bottom"): number {
 watch(sidebarOpened, (open) => {
   if (!open) return;
   try {
-    const navRect = document.querySelector(".glassnav")?.getBoundingClientRect();
+    const nav = document.querySelector(".glassnav");
+    const navRect = nav?.getBoundingClientRect();
+    const drop = nav ? getComputedStyle(nav).bottom : "?";
     shellGeo.value =
-      `b7 · ih ${window.innerHeight}` +
+      `b8 · drop ${drop}` +
+      ` · ih ${window.innerHeight}` +
       ` · max ${maxViewportHeight.value}` +
       ` · scr ${screen.height}` +
       ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
