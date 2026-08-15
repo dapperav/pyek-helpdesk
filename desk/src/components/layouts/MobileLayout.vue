@@ -1,9 +1,12 @@
 <template>
-  <!-- Use dynamic viewport height (100dvh), not 100vh. With viewport-fit=cover,
-       100vh on iOS extends past the visible area and pushes the bottom nav
-       (labels + safe-area padding) off-screen. 100dvh matches what's actually
-       visible; the vh line is the fallback for browsers without dvh. -->
-  <div class="flex w-screen" style="height: 100vh; height: 100dvh">
+  <!-- position:fixed + inset:0 pins the shell to the VISUAL viewport — no vh
+       unit involved, so there is nothing for iOS's collapsing toolbar or the
+       keyboard to desynchronize. Paired with html.pyek-mobile-shell (added in
+       onMounted, rules in index.css), which forbids the document itself from
+       scrolling: previously any page whose content overflowed this column grew
+       the body, and the bottom nav rendered below the fold until you scrolled.
+       The inner .min-h-0 container is the ONLY scroller on a phone. -->
+  <div class="flex" style="position: fixed; inset: 0">
     <MobileMenuSheet />
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <MobileAppHeader />
@@ -39,7 +42,7 @@
   </div>
 </template>
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import MobileMenuSheet from "./MobileMenuSheet.vue";
 import MobileAppHeader from "./MobileAppHeader.vue";
@@ -54,4 +57,11 @@ const showBottomNav = computed(
 
 const scrollEl = ref(null);
 provideMobileScrollEl(scrollEl);
+
+// Scoped to this layout's lifetime so a window resized back to desktop (which
+// swaps the layout component) returns the document to normal scrolling.
+onMounted(() => document.documentElement.classList.add("pyek-mobile-shell"));
+onUnmounted(() =>
+  document.documentElement.classList.remove("pyek-mobile-shell")
+);
 </script>
