@@ -19,18 +19,25 @@
        scrolls beneath it and the tide menu rises BEHIND it (sheet z-40, this
        z-50). paddingBottom carries the iOS home-indicator safe-area inset.
        The active accent is brand cyan; Mine is the user's own avatar. -->
+  <!-- Slimmed 2026-08-15 (Mark: "a true nav bar instead of that massive
+       chunk"): bigger icons, tighter row, and the content sits LOWER — we
+       reclaim 10px of the home-indicator inset (the pill still clears) so
+       the bar + iOS's letterbox below read as one compact nav. max() keeps
+       the padding at 0 where env() is 0 (desktop, dev). -->
   <nav
     class="glassnav absolute inset-x-0 bottom-0 z-50 flex items-stretch"
-    :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
+    :style="{
+      paddingBottom: 'max(env(safe-area-inset-bottom) - 10px, 0px)',
+    }"
   >
     <button
       v-for="item in items"
       :key="item.key"
-      class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 py-2 transition active:bg-white/5"
+      class="flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 pb-1 pt-1.5 transition active:bg-white/5"
       :style="{ color: isActive(item) ? '#67E8F9' : 'rgba(255,255,255,0.66)' }"
       @click="go(item)"
     >
-      <span class="relative grid size-6 place-items-center">
+      <span class="relative grid size-7 place-items-center">
         <!-- Mine = you: photo when the account has one, initials otherwise. -->
         <template v-if="item.key === 'mine'">
           <img
@@ -49,7 +56,7 @@
             {{ meInitials }}
           </span>
         </template>
-        <component :is="item.icon" v-else class="size-6" />
+        <component :is="item.icon" v-else class="size-7" />
         <span
           v-if="item.badge"
           class="absolute -right-1.5 -top-1.5 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 text-white"
@@ -174,8 +181,8 @@ function go(item: Item) {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 .me-avatar {
-  width: 21px;
-  height: 21px;
+  width: 25px;
+  height: 25px;
   border-radius: 9999px;
   border: 1.5px solid rgba(255, 255, 255, 0.7);
 }

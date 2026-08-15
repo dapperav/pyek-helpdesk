@@ -235,7 +235,7 @@ watch(sidebarOpened, (open) => {
   try {
     const navRect = document.querySelector(".glassnav")?.getBoundingClientRect();
     shellGeo.value =
-      `b6 · ih ${window.innerHeight}` +
+      `b7 · ih ${window.innerHeight}` +
       ` · max ${maxViewportHeight.value}` +
       ` · scr ${screen.height}` +
       ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
