@@ -28,9 +28,10 @@
     <!-- ============ CLEAN CARD (mobile, IT/HR) ============ -->
     <div
       v-if="isCard"
-      class="relative cursor-pointer select-none overflow-hidden rounded-[14px] border border-[#dbe7f0] py-[11px] pl-4 pr-[13px] shadow-[0_3px_12px_rgba(18,54,94,0.06)]"
+      class="pyek-card relative cursor-pointer select-none overflow-hidden rounded-[14px] border border-[#dbe7f0] py-[11px] pl-4 pr-[13px] shadow-[0_3px_12px_rgba(18,54,94,0.06)]"
       :style="foregroundStyle"
       @click="onRowClick"
+      @contextmenu.prevent
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerEnd"
@@ -48,7 +49,7 @@
           <button
             type="button"
             role="checkbox"
-            class="grid size-[30px] shrink-0 place-items-center rounded-full text-[11px] font-bold"
+            class="grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-full text-[11px] font-bold"
             :class="
               selected
                 ? 'bg-surface-blue-5 text-white'
@@ -61,6 +62,12 @@
             @click.stop="$emit('toggle')"
           >
             <LucideCheck v-if="selected" class="size-4" />
+            <img
+              v-else-if="row._sender_photo"
+              :src="row._sender_photo"
+              class="size-full object-cover"
+              alt=""
+            />
             <template v-else>{{ initials }}</template>
           </button>
           <span class="min-w-0 flex-1">
@@ -330,7 +337,13 @@ import { computed, ref } from "vue";
 import LucideCheck from "~icons/lucide/check";
 import LucideMoreHorizontal from "~icons/lucide/more-horizontal";
 
-const props = defineProps<{ row: Record<string, any>; selected?: boolean }>();
+const props = defineProps<{
+  row: Record<string, any>;
+  selected?: boolean;
+  // True while ANY row is selected — a tap then toggles instead of opening,
+  // so building a multi-selection is one tap per card (Gmail-style).
+  selecting?: boolean;
+}>();
 const emit = defineEmits<{
   (e: "click"): void;
   (e: "toggle"): void;
@@ -373,6 +386,19 @@ const foregroundStyle = computed(() =>
     : {}
 );
 
+// Long-press a card to select it (the avatar tap does the same; this is the
+// discoverable path). Cancelled by any real movement, so it never fights the
+// swipe or the scroll.
+const LONG_PRESS_MS = 450;
+let lpTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressed = false;
+function clearLongPress() {
+  if (lpTimer) {
+    clearTimeout(lpTimer);
+    lpTimer = null;
+  }
+}
+
 function onPointerDown(e: PointerEvent) {
   if (!isMobileView.value) return;
   active = true;
@@ -382,11 +408,25 @@ function onPointerDown(e: PointerEvent) {
   startX = e.clientX;
   startY = e.clientY;
   base = offset.value; // start from the current (possibly held-open) position
+  if (isCard.value) {
+    longPressed = false;
+    clearLongPress();
+    lpTimer = setTimeout(() => {
+      lpTimer = null;
+      if (moved || decided) return; // a swipe/scroll took over
+      longPressed = true;
+      active = false; // the same touch must not also start a swipe
+      emit("toggle");
+    }, LONG_PRESS_MS);
+  }
 }
 function onPointerMove(e: PointerEvent) {
   if (!active) return;
   const dx = e.clientX - startX;
   const dy = e.clientY - startY;
+  if (lpTimer && (Math.abs(dx) >= DECIDE_AT || Math.abs(dy) >= DECIDE_AT)) {
+    clearLongPress(); // real movement — this is a swipe or a scroll
+  }
   if (!decided) {
     if (Math.abs(dx) < DECIDE_AT && Math.abs(dy) < DECIDE_AT) return;
     // Engage only on a clearly-horizontal drag; otherwise release so the list
@@ -409,6 +449,7 @@ function onPointerMove(e: PointerEvent) {
   offset.value = Math.max(-REVEAL, Math.min(0, base + dx)); // clamp to reveal
 }
 function onPointerEnd() {
+  clearLongPress();
   const wasHorizontal = horizontal;
   active = false;
   dragging.value = false;
@@ -419,12 +460,20 @@ function onPointerEnd() {
   offset.value = offset.value <= -OPEN_AT ? -REVEAL : 0;
 }
 function onRowClick() {
+  if (longPressed) {
+    longPressed = false;
+    return; // the long-press already toggled — swallow its click
+  }
   if (moved) {
     moved = false;
     return; // swallow the click that follows a swipe
   }
   if (offset.value !== 0) {
     offset.value = 0; // tap on an open row just closes it
+    return;
+  }
+  if (props.selecting && isCard.value) {
+    emit("toggle"); // selection in progress: taps build it, not open tickets
     return;
   }
   emit("click");
@@ -715,6 +764,10 @@ const apFlags = computed(() => {
 <style scoped>
 /* Clean Card vocabulary (Mark's V1 mockup, label ticket-cards). Sub-11px
    sizes and the chip palette aren't in the Tailwind scale, so they live here. */
+.pyek-card {
+  /* Long-press selects — keep iOS from offering its copy/share callout. */
+  -webkit-touch-callout: none;
+}
 .pyek-clamp2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;

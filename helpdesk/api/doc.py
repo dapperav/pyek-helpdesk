@@ -319,6 +319,45 @@ def get_list_data(
                 _d["_last_message"] = _preview(_html)
                 _d["_ai_summary"] = (_summaries.get(_n) or "").strip()
 
+            # PYEK: sender photo for the mobile card avatar — the ticket
+            # contact's image when set, else the sender's User.user_image
+            # (internal staff). Batched (two IN queries for the whole page);
+            # empty string → the frontend falls back to initials.
+            _contact_names = {_d.get("contact") for _d in data if _d.get("contact")}
+            _contact_img = {}
+            if _contact_names:
+                _contact_img = {
+                    _c.get("name"): _c.get("image")
+                    for _c in frappe.get_all(
+                        "Contact",
+                        filters={"name": ["in", list(_contact_names)]},
+                        fields=["name", "image"],
+                    )
+                    if _c.get("image")
+                }
+            _sender_emails = {
+                (_d.get("raised_by") or "").strip()
+                for _d in data
+                if _d.get("raised_by")
+            }
+            _user_img = {}
+            if _sender_emails:
+                _user_img = {
+                    _u.get("name"): _u.get("user_image")
+                    for _u in frappe.get_all(
+                        "User",
+                        filters={"name": ["in", list(_sender_emails)]},
+                        fields=["name", "user_image"],
+                    )
+                    if _u.get("user_image")
+                }
+            for _d in data:
+                _d["_sender_photo"] = (
+                    _contact_img.get(_d.get("contact"))
+                    or _user_img.get((_d.get("raised_by") or "").strip())
+                    or ""
+                )
+
     fields = frappe.get_meta(doctype).fields
     fields = [field for field in fields if field.fieldtype not in no_value_fields]
     fields = [

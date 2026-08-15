@@ -54,6 +54,22 @@
            flip mid-transition and reproduced the crash. v-show removes the whole
            class of problem — the nav element always exists and only its display
            changes, which reclaims the row just as v-if did. -->
+      <!-- Safe-area underlay: on a real iPhone the nav's translucent
+           home-indicator padding zone has nothing white behind it to blur
+           (the OS underlay shows through), so it rendered as a solid navy
+           slab and the nav read as floating above a dead band. This paints
+           the page surface behind exactly that zone so the frosted nav looks
+           continuous. Invisible wherever env() is 0 (desktop, dev Chrome).
+           z-30: above page content, below the tide sheet (40) and nav (50). -->
+      <div
+        v-show="showBottomNav"
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-x-0 bottom-0 z-30"
+        style="
+          height: env(safe-area-inset-bottom);
+          background: var(--surface-base);
+        "
+      />
       <MobileBottomNav v-show="showBottomNav" />
     </div>
   </div>

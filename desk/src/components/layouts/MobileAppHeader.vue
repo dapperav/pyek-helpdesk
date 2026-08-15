@@ -56,8 +56,12 @@
        vanished (and blocked ticket clicks). v-show keeps the target permanently
        in the DOM (display:none reclaims the row's space on the list just like
        v-if did), so the teleport is always stable. -->
+  <!-- Hidden on the tickets list (switcher lives in the navy bar) AND on Home
+       (Mark, 2026-08-15: "Home" + Refresh was dead weight — the navy bar
+       already brands the page and pull-to-refresh covers refreshing).
+       Still v-show, never v-if — the teleport-target rule below. -->
   <div
-    v-show="route.name !== 'TicketsAgent'"
+    v-show="route.name !== 'TicketsAgent' && route.name !== 'Home'"
     class="flex h-12 items-center border-b border-outline-gray-2 pl-1 pr-2"
   >
     <header id="app-header" class="w-full min-w-0"></header>
