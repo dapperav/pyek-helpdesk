@@ -10,9 +10,11 @@
        it, the tide menu rises behind it), so everything that must clear it —
        the scroller's bottom padding, the ticket screen's sticky composer, the
        list's bulk bar — reads this one variable. 0px when the nav is hidden. -->
+  <!-- Own surface ground: the document behind is navy (letterbox absorb,
+       see index.css), so the shell must paint the app's white itself. -->
   <div
     class="relative flex"
-    style="position: fixed; inset: 0"
+    style="position: fixed; inset: 0; background: var(--surface-base)"
     :style="{
       '--pyek-nav-h': showBottomNav
         ? 'calc(62px + env(safe-area-inset-bottom))'

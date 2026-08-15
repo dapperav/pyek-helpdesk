@@ -16,7 +16,7 @@
          into it visually (Mark, 2026-08-15). -->
     <button
       class="absolute inset-0 transition-opacity duration-500"
-      style="background: rgba(8, 15, 30, 0.55)"
+      style="background: rgba(8, 15, 30, 0.78)"
       :class="sidebarOpened ? 'opacity-100' : 'opacity-0'"
       :aria-hidden="!sidebarOpened"
       :tabindex="sidebarOpened ? 0 : -1"
@@ -235,7 +235,7 @@ watch(sidebarOpened, (open) => {
   try {
     const navRect = document.querySelector(".glassnav")?.getBoundingClientRect();
     shellGeo.value =
-      `b5 · ih ${window.innerHeight}` +
+      `b6 · ih ${window.innerHeight}` +
       ` · max ${maxViewportHeight.value}` +
       ` · scr ${screen.height}` +
       ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
