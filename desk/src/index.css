@@ -33,6 +33,19 @@ body {
   background-color: var(--surface-base);
 }
 
+/* Mobile shell discipline (class added by MobileLayout while mounted): the
+   document itself must NEVER scroll on a phone — the shell's inner container
+   is the only scroller. When page content overflowed the shell, the body
+   grew, the bottom nav rendered below the fold until you scrolled, and
+   Safari's collapsing toolbar made 100vh/dvh dance. With the body clamped,
+   browser chrome stays put and the fixed shell always matches the screen. */
+html.pyek-mobile-shell,
+html.pyek-mobile-shell body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 :root {
   color-scheme: light;
 }

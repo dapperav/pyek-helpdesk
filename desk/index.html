@@ -2,9 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- maximum-scale=1 does NOT disable pinch-zoom on iOS (ignored for user
+         gestures since iOS 10) — it only stops the automatic zoom-in when a
+         sub-16px input gets focus, which left the page scaled and the bottom
+         nav pushed off-screen. interactive-widget keeps the keyboard resizing
+         the viewport instead of overlaying it. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <title>Helpdesk</title>
     <meta name="mobile-web-app-capable" content="yes" />
