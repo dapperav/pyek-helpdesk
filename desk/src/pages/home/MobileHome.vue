@@ -152,6 +152,54 @@
         </div>
       </div>
     </div>
+
+    <!-- SOS life ring: surfaces (bobbing) only when the site is objectively
+         slammed — awaiting-first-reply at/above the server's threshold and no
+         cooldown running. Fixed above the glass nav. -->
+    <button
+      v-if="showBuoy"
+      class="sos"
+      :aria-label="__('Send SOS to the team')"
+      @click="showSosConfirm = true"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="#dc2626" stroke-width="9" />
+        <circle
+          cx="20" cy="20" r="16" fill="none" stroke="#ffffff" stroke-width="9"
+          stroke-dasharray="12.56 12.56" stroke-dashoffset="6.28"
+        />
+        <circle cx="20" cy="20" r="16" fill="none" stroke="#94a3b8" stroke-width="1" />
+        <circle cx="20" cy="20" r="7.5" fill="#fff" stroke="#94a3b8" stroke-width="1" />
+      </svg>
+    </button>
+
+    <!-- SOS confirm: glass card, shows the exact push before it goes out. -->
+    <div v-if="showSosConfirm" class="sos-confirm" @click.self="showSosConfirm = false">
+      <div class="sos-card">
+        <h3 class="mb-1 mt-2 text-[17px] font-bold text-ink-gray-9">
+          {{ __("All hands?") }}
+        </h3>
+        <p class="mb-3 text-xs leading-relaxed text-ink-gray-6">
+          {{ __("Every agent gets a push right now, quiet hours included. One SOS per 30 minutes.") }}
+        </p>
+        <div class="mb-3.5 rounded-[10px] bg-surface-gray-2 px-3 py-2 text-left text-xs text-ink-gray-8">
+          <b class="block">🚨 {{ __("SOS from") }} {{ firstName }}</b>
+          {{ homeStats.data?.awaiting_first_reply ?? 0 }}
+          {{ __("tickets waiting on a first reply — queues are overflowing. Jump in if you can.") }}
+        </div>
+        <div class="flex gap-2">
+          <Button class="flex-1" :label="__('Not yet')" @click="showSosConfirm = false" />
+          <Button
+            class="flex-1"
+            variant="solid"
+            theme="red"
+            :label="__('Send SOS')"
+            :loading="sosSending"
+            @click="fireSos"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -163,7 +211,7 @@ import { useView } from "@/composables/useView";
 import { useAuthStore } from "@/stores/auth";
 import { __ } from "@/translation";
 import { prettyDate } from "@/utils";
-import { Button, createResource, dayjs, usePageMeta } from "frappe-ui";
+import { Button, createResource, dayjs, toast, usePageMeta } from "frappe-ui";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -448,6 +496,40 @@ function queueTag(t: any): { label: string; cls: string } | null {
   return null;
 }
 
+// ------------------------------------------------------------------- SOS ----
+const sosState = createResource({
+  url: "helpdesk.api.pyek_sos.get_sos_state",
+  auto: true,
+});
+const showSosConfirm = ref(false);
+const sosSending = ref(false);
+
+const showBuoy = computed(() => {
+  const waiting = homeStats.data?.awaiting_first_reply ?? 0;
+  const threshold = sosState.data?.threshold ?? 999;
+  const cooling = (sosState.data?.cooldown_remaining ?? 0) > 0;
+  return waiting >= threshold && !cooling;
+});
+
+const sosSend = createResource({ url: "helpdesk.api.pyek_sos.send_sos" });
+async function fireSos() {
+  if (sosSending.value) return;
+  sosSending.value = true;
+  try {
+    const r = await sosSend.submit();
+    toast.success(
+      __("🚨 SOS sent — push delivered to {0} agents", String(r.sent_to))
+    );
+    showSosConfirm.value = false;
+    sosState.reload();
+  } catch (e: any) {
+    const msg = e?.messages?.join(", ") || e?.message || __("SOS failed");
+    toast.error(msg);
+  } finally {
+    sosSending.value = false;
+  }
+}
+
 const { publicViews } = useView();
 function openView(label: string) {
   const v = (publicViews.value || []).find((x: any) => x.label === label);
@@ -686,12 +768,62 @@ function openTicket(name: string) {
   color: #6ee7b7;
 }
 
+/* --- SOS life ring --- */
+.sos {
+  position: fixed;
+  right: 14px;
+  bottom: calc(var(--pyek-nav-h, 62px) + 14px);
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(185, 28, 28, 0.35);
+  display: grid;
+  place-items: center;
+  animation: bob 2.6s ease-in-out infinite;
+}
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(4deg);
+  }
+}
+.sos-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 16, 34, 0.4);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.sos-card {
+  width: 82%;
+  max-width: 340px;
+  border-radius: 20px;
+  padding: 18px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 18px 50px rgba(8, 16, 34, 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .waveedge {
     animation: none;
   }
   .water {
     transition-duration: 0.01s;
+  }
+  .sos {
+    animation: none;
   }
 }
 </style>
