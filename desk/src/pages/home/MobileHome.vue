@@ -123,8 +123,8 @@
               @click="openTicket(t.name)"
             >
               <img
-                v-if="senderPhoto(t.raised_by)"
-                :src="senderPhoto(t.raised_by)"
+                v-if="senderPhoto(t)"
+                :src="senderPhoto(t)"
                 class="who shrink-0 object-cover"
                 alt=""
               />
@@ -214,7 +214,7 @@ import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
 import { prettyDate } from "@/utils";
 import { Button, createResource, dayjs, toast, usePageMeta } from "frappe-ui";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 usePageMeta(() => ({ title: __("Home") }));
@@ -424,6 +424,7 @@ const recent = createResource({
       "subject",
       "pyek_summary",
       "raised_by",
+      "contact",
       "creation",
       "first_responded_on",
       "agent_group",
@@ -482,11 +483,38 @@ const queuePools = computed(() => [
   { key: "mine", label: __("Mine"), value: counts.value.mine, level: level(counts.value.mine), view: "My Open Tickets" },
 ]);
 
-// Sender photo when the sender is a known User (internal staff) with an
-// image — the same source the Mine tab's avatar uses. Initials otherwise.
+// Sender photo, same two sources as the ticket LIST cards: the ticket
+// contact's image first (that's where most requester photos live), else a
+// matching User's user_image (internal staff). Initials otherwise.
 const { getUser } = useUserStore();
-function senderPhoto(email: string): string {
-  return getUser(email)?.user_image || "";
+const contactImages = ref<Record<string, string>>({});
+const contactImgFetch = createResource({
+  url: "frappe.client.get_list",
+  onSuccess(rows: any[]) {
+    const map: Record<string, string> = {};
+    for (const r of rows || []) if (r.image) map[r.name] = r.image;
+    contactImages.value = map;
+  },
+});
+watch(
+  () => recent.data,
+  (rows: any[]) => {
+    const names = [
+      ...new Set((rows || []).map((t: any) => t.contact).filter(Boolean)),
+    ];
+    if (!names.length) return;
+    contactImgFetch.submit({
+      doctype: "Contact",
+      filters: { name: ["in", names] },
+      fields: ["name", "image"],
+      limit_page_length: 0,
+    });
+  }
+);
+function senderPhoto(t: any): string {
+  return (
+    contactImages.value[t.contact] || getUser(t.raised_by)?.user_image || ""
+  );
 }
 
 function initials(email: string): string {

@@ -5,11 +5,19 @@
     <!-- maximum-scale=1 does NOT disable pinch-zoom on iOS (ignored for user
          gestures since iOS 10) — it only stops the automatic zoom-in when a
          sub-16px input gets focus, which left the page scaled and the bottom
-         nav pushed off-screen. interactive-widget keeps the keyboard resizing
-         the viewport instead of overlaying it. -->
+         nav pushed off-screen.
+         interactive-widget=resizes-content was REMOVED 2026-08-15: in the
+         installed iOS PWA it made the layout viewport stop honoring
+         viewport-fit=cover — the app got screen-minus-status-bar height
+         (measured on Mark's phone: innerHeight 873 vs screen 932, exactly the
+         59pt top inset), top-aligned, so iOS letterboxed a dead band UNDER
+         the bottom nav. That band survived two fixes aimed at the nav itself;
+         the shell-geometry readout in the tide menu is what finally showed
+         the viewport was short. iOS keyboards overlay the visual viewport by
+         default, which the composer already handles. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover"
     />
     <title>Helpdesk</title>
     <meta name="mobile-web-app-capable" content="yes" />
