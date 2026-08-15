@@ -161,14 +161,6 @@
             <LucideLogOut class="ic size-5 shrink-0" />
             {{ __("Log out") }}
           </button>
-          <!-- Shell geometry readout (temporary diagnostic, 2026-08-15): the
-               bottom-nav band on Mark's iPhone has survived two blind fixes,
-               so this prints the real numbers where he can screenshot them —
-               a standalone PWA has no address bar for a ?debug URL. Remove
-               once the band is understood and fixed. -->
-          <p class="mt-3 text-center text-[10px] leading-4 text-white/40">
-            {{ shellGeo }}
-          </p>
         </div>
       </div>
     </div>
@@ -179,7 +171,6 @@
 import PyekMark from "@/components/PyekMark.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
-import { maxViewportHeight } from "@/composables/viewportHeal";
 import { useView } from "@/composables/useView";
 import { pushState, refreshPushState, togglePush } from "@/composables/webPush";
 import { useAgentStatusStore } from "@/stores/agentStatus";
@@ -217,36 +208,10 @@ const userName = computed(() => getUser(userId)?.full_name || userId);
 
 const statusPicking = ref(false);
 
-// Shell geometry (diagnostic — see the template note). Measured on each open
-// so the numbers reflect the moment Mark screenshots them. "b4" is the build
-// tag — bump it whenever this line's build changes, so a screenshot is never
-// ambiguous about which deploy it came from.
-const shellGeo = ref("");
-function envProbe(edge: "top" | "bottom"): number {
-  const probe = document.createElement("div");
-  probe.style.cssText = `position:fixed;${edge}:0;left:0;width:1px;visibility:hidden;height:env(safe-area-inset-${edge})`;
-  document.body.appendChild(probe);
-  const v = probe.getBoundingClientRect().height;
-  probe.remove();
-  return Math.round(v);
-}
-watch(sidebarOpened, (open) => {
-  if (!open) return;
-  try {
-    const nav = document.querySelector(".glassnav");
-    const navRect = nav?.getBoundingClientRect();
-    const drop = nav ? getComputedStyle(nav).bottom : "?";
-    shellGeo.value =
-      `b9 · drop ${drop}` +
-      ` · ih ${window.innerHeight}` +
-      ` · max ${maxViewportHeight.value}` +
-      ` · scr ${screen.height}` +
-      ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
-      ` · nav ${Math.round(navRect?.top ?? -1)}–${Math.round(navRect?.bottom ?? -1)}`;
-  } catch (e) {
-    shellGeo.value = String(e);
-  }
-});
+// (The temporary shell-geometry readout that lived here 2026-08-15 solved
+// the bottom-nav band — its findings are recorded on PRs #131–#138. The
+// letterboxed-viewport story it uncovered lives in MobileLayout's
+// --pyek-nav-drop comment and composables/viewportHeal.ts.)
 
 // Same source (and cache key) as the desktop sidebar's KB badge.
 const kbConfirmCount = createResource({
