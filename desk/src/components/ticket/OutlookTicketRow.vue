@@ -1,10 +1,13 @@
 <template>
-  <!-- Outlook-inbox style row. The left line is an Outlook-style status
-       indicator (blue = open/needs our reply, red = urgent, grey = automated
-       no-reply/notification mail, none = we've replied & are waiting). Then a
-       3-line block (requester + date / priority + subject + status / preview
-       snippet + due date + assignee). Bold when unread for the current agent. -->
-  <div class="relative overflow-hidden border-b border-outline-gray-1">
+  <!-- Outlook-inbox style row (desktop + AP) or a "Clean Card" (mobile IT/HR —
+       Mark's V1 pick, 2026-08-15). The old left status line survives in both:
+       as the stripe on the row, and as the card's colored EDGE (blue =
+       open/needs our reply, red = urgent, grey = automated no-reply mail,
+       none = we've replied & are waiting). Bold when unread for the agent. -->
+  <div
+    class="relative"
+    :class="isCard ? 'shrink-0' : 'overflow-hidden border-b border-outline-gray-1'"
+  >
     <!-- Swipe hint (mobile only), behind the sliding row on the right. Swiping
          the row left reveals it; releasing past the threshold opens the action
          sheet (Assign / Resolve / Close / On hold). -->
@@ -13,6 +16,7 @@
       v-show="offset < 0"
       type="button"
       class="absolute inset-y-0 right-0 flex items-center justify-center gap-1.5 text-sm font-medium text-white"
+      :class="isCard ? 'rounded-[14px]' : ''"
       :style="{ backgroundColor: '#1B2A4A', width: REVEAL + 'px' }"
       aria-label="Ticket actions"
       @click.stop="openSheet"
@@ -21,9 +25,110 @@
       Actions
     </button>
 
+    <!-- ============ CLEAN CARD (mobile, IT/HR) ============ -->
+    <div
+      v-if="isCard"
+      class="relative cursor-pointer select-none overflow-hidden rounded-[14px] border border-[#dbe7f0] py-[11px] pl-4 pr-[13px] shadow-[0_3px_12px_rgba(18,54,94,0.06)]"
+      :style="foregroundStyle"
+      @click="onRowClick"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerEnd"
+      @pointercancel="onPointerEnd"
+    >
+      <!-- The old Outlook stripe, promoted to the card edge. -->
+      <span
+        class="absolute inset-y-0 left-0 w-1"
+        :class="edgeClass"
+        :title="stripTitle"
+      />
+      <div :class="isNotificationSender ? 'opacity-70' : ''">
+        <!-- Sender leads: avatar doubles as the select checkbox. -->
+        <div class="mb-1 flex items-center gap-2">
+          <button
+            type="button"
+            role="checkbox"
+            class="grid size-[30px] shrink-0 place-items-center rounded-full text-[11px] font-bold"
+            :class="
+              selected
+                ? 'bg-surface-blue-5 text-white'
+                : isNotificationSender
+                ? 'bg-[#eef2f6] text-[#94a3b8]'
+                : 'bg-gradient-to-b from-[#e0f6ff] to-[#bfeefb] text-[#0b6e8f]'
+            "
+            :aria-label="selected ? 'Deselect ticket' : 'Select ticket'"
+            :aria-checked="selected"
+            @click.stop="$emit('toggle')"
+          >
+            <LucideCheck v-if="selected" class="size-4" />
+            <template v-else>{{ initials }}</template>
+          </button>
+          <span class="min-w-0 flex-1">
+            <span
+              class="block truncate text-[12.5px] font-semibold"
+              :class="isNotificationSender ? 'text-[#64748b]' : 'text-[#12365e]'"
+            >{{ cardName }}</span>
+            <span
+              v-if="cardVia"
+              class="block truncate text-[10.5px] text-[#7d9ab5]"
+            >{{ cardVia }}</span>
+          </span>
+          <span class="shrink-0 self-start pt-0.5 text-[10.5px] text-[#7d9ab5]">
+            {{ dateLabel }}
+          </span>
+        </div>
+
+        <!-- Subject: the unread signal lives here. -->
+        <div class="flex items-center gap-1.5">
+          <span
+            v-if="row.priority === 'High'"
+            class="size-2 shrink-0 rounded-full"
+            :style="{ backgroundColor: priorityColor }"
+            :title="row.priority"
+          />
+          <span
+            class="min-w-0 flex-1 truncate text-sm"
+            :class="[
+              unread ? 'font-semibold' : 'font-medium',
+              isNotificationSender ? 'text-[#475569]' : 'text-[#12365e]',
+            ]"
+          >{{ row.subject || __("(No subject)") }}</span>
+        </div>
+
+        <!-- AI summary (or the requester's words) — bots don't get one. -->
+        <div
+          v-if="!isNotificationSender && (aiSummary || snippet)"
+          class="pyek-clamp2 mt-0.5 text-[12.5px] leading-snug text-[#48708f]"
+        >{{ aiSummary || snippet }}</div>
+
+        <!-- Footer: queue tag + one chip (SLA clock when running, else
+             status) + assignees + the ticket number riding quietly. -->
+        <div class="mt-2 flex items-center gap-1.5">
+          <span v-if="queueTag" class="pyek-qtag" :class="queueTag.cls">{{
+            queueTag.label
+          }}</span>
+          <span v-if="cardChip" class="pyek-schip truncate" :class="cardChip.cls">{{
+            cardChip.text
+          }}</span>
+          <span class="ml-auto flex shrink-0 items-center gap-1.5">
+            <MultipleAvatar
+              v-if="row._assign"
+              :avatars="row._assign"
+              :hide-name="true"
+            />
+            <span class="text-[10px] font-bold tracking-[0.08em] text-[#a8bccd]"
+              >#{{ row.name }}</span
+            >
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ OUTLOOK ROW (desktop + AP) ============ -->
     <!-- Sliding foreground = the ticket row (opaque so it covers the panels
          when closed). -->
     <div
+      v-else
       class="relative flex cursor-pointer items-stretch"
       :class="
         selected
@@ -370,6 +475,86 @@ const stripColor = computed(() => {
   if (needsAction.value) return "#2563EB"; // blue
   return "transparent"; // replied / waiting / done → no bar
 });
+
+// --- Clean Card (mobile IT/HR — Mark's V1 pick over the Ticket Stub) --------
+// Same precedence as the stripe, worn as the card's left edge.
+const isCard = computed(() => isMobileView.value && !isAP.value);
+const edgeClass = computed(() => {
+  if (isNotificationSender.value) return "pyek-edge--grey";
+  if (isUrgent.value) return "pyek-edge--red";
+  if (needsAction.value) return "pyek-edge--blue";
+  return "";
+});
+
+// Sender-first header: person (or bot) name, then the address it came from.
+const cardName = computed(
+  () => props.row.contact || (props.row.raised_by || "").split("@")[0] || "—"
+);
+const cardVia = computed(() => {
+  if (isNotificationSender.value) return __("automated");
+  const email = props.row.raised_by || "";
+  return email && email !== cardName.value ? email : "";
+});
+
+// Queue tag (POS / IT), from the ticket's team.
+const queueTag = computed(() => {
+  const group = (props.row.agent_group || "").trim();
+  if (!group) return null;
+  const word = group.split(/\s+/)[0].toUpperCase();
+  if (word.startsWith("POS")) return { label: "POS", cls: "pyek-qtag--pos" };
+  if (word === "IT") return { label: "IT", cls: "pyek-qtag--it" };
+  return { label: word, cls: "pyek-qtag--other" };
+});
+
+// One chip: the SLA clock while it's running (list edition of
+// MobileTicketActBar's slaChip), else the status. A breach older than a day
+// is history, not a call to action — same rule as the act bar.
+function parseFrappeDate(value: string): number {
+  // Frappe datetimes are site-local "YYYY-MM-DD HH:mm:ss"; Safari wants the T.
+  return new Date(value.replace(" ", "T")).getTime();
+}
+function fmtSpan(ms: number): string {
+  const mins = Math.max(1, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  if (h >= 48) {
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return rh ? `${d}d ${rh}h` : `${d}d`;
+  }
+  const m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+const cardChip = computed(() => {
+  if (
+    needsAction.value &&
+    !isNotificationSender.value &&
+    !props.row.first_responded_on &&
+    props.row.response_by
+  ) {
+    const diff = parseFrappeDate(props.row.response_by) - Date.now();
+    // A deadline beyond a week (some SLAs hand out year-long response
+    // windows) isn't a running clock worth a chip — show the status instead.
+    if (diff >= 0 && diff <= 7 * 24 * 3600_000) {
+      return {
+        text: `${__("reply due")} ${fmtSpan(diff)}`,
+        cls: diff < 2 * 3600_000 ? "pyek-schip--due" : "pyek-schip--wait",
+      };
+    }
+    if (diff < 0 && -diff <= 24 * 3600_000) {
+      return {
+        text: `${__("reply overdue")} ${fmtSpan(-diff)}`,
+        cls: "pyek-schip--due",
+      };
+    }
+  }
+  const label = (statusLabel.value || "").toLowerCase();
+  if (!label) return null;
+  return {
+    text: label,
+    cls: needsAction.value ? "pyek-schip--open" : "pyek-schip--wait",
+  };
+});
 const stripTitle = computed(() => {
   if (isNotificationSender.value) return "Automated / no-reply";
   if (isUrgent.value) return "Urgent";
@@ -526,3 +711,60 @@ const apFlags = computed(() => {
   return flags;
 });
 </script>
+
+<style scoped>
+/* Clean Card vocabulary (Mark's V1 mockup, label ticket-cards). Sub-11px
+   sizes and the chip palette aren't in the Tailwind scale, so they live here. */
+.pyek-clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pyek-qtag {
+  font-size: 9.5px;
+  font-weight: 800;
+  border-radius: 5px;
+  padding: 1.5px 6px;
+  letter-spacing: 0.04em;
+}
+.pyek-qtag--pos {
+  background: #e0edff;
+  color: #1d4ed8;
+}
+.pyek-qtag--it {
+  background: #d9f5ee;
+  color: #047857;
+}
+.pyek-qtag--other {
+  background: #eef2f6;
+  color: #64748b;
+}
+.pyek-schip {
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.pyek-schip--open {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.pyek-schip--wait {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.pyek-schip--due {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.pyek-edge--blue {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+}
+.pyek-edge--red {
+  background: linear-gradient(180deg, #f87171, #dc2626);
+}
+.pyek-edge--grey {
+  background: #cbd5e1;
+}
+</style>

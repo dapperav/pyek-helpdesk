@@ -47,6 +47,7 @@
   <div
     v-else-if="options.outlookRows && list.data?.data.length > 0"
     class="flex-1 overflow-y-auto"
+    :class="isMobileView ? 'flex flex-col gap-[9px] bg-[#fbfdff] px-3 pt-2 pb-3' : ''"
   >
     <OutlookTicketRow
       v-for="row in list.data.data"
@@ -59,9 +60,14 @@
     />
     <!-- Bulk action bar (PYEK): sticky at the bottom of the list whenever rows
          are selected, so the status control is always visible. -->
+    <!-- On the phone the list's scroll happens on a MobileLayout ancestor
+         (the PR 125 fixed shell), so `sticky` inside this grown container
+         never engages — pin the bar to the viewport above the glass nav
+         instead. Desktop keeps sticky (its container is the scroller). -->
     <div
       v-if="outlookSelected.size"
-      class="sticky z-10 flex items-center justify-between gap-3 border-t bg-surface-base px-4 py-3 shadow-lg"
+      class="flex items-center justify-between gap-3 border-t bg-surface-base px-4 py-3 shadow-lg"
+      :class="isMobileView ? 'fixed inset-x-0 z-30' : 'sticky z-10'"
       style="bottom: var(--pyek-nav-h, 0px)"
     >
       <span class="text-sm font-medium text-ink-gray-7">
