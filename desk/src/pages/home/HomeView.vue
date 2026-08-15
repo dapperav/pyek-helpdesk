@@ -1,5 +1,7 @@
 <template>
-  <div class="flex flex-col h-full">
+  <!-- Mobile grows with its content (the layout scroller scrolls it);
+       desktop stays a fixed-height column (PyekHome scrolls itself). -->
+  <div class="flex flex-col" :class="isMobileView ? 'min-h-full' : 'h-full'">
     <component :is="isMobileView ? MobileHome : PyekHome" class="min-h-0 flex-1" />
   </div>
 </template>

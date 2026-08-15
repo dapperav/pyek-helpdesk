@@ -8,8 +8,15 @@
        hero + glass chips (the ONLY numbers), three clean pools (name / count /
        waterline — deliberately NO per-queue waiting indicator), "Just came in".
        ?scene=dawn|day|golden|night overrides the clock for testing. -->
+  <!-- min-h-full (not h-full) + NO inner scroller: the page flows in
+       MobileLayout's shared scroller. The old inner overflow-y-auto nested a
+       second scroller inside the shell's — on a real iPhone a scroll-down
+       could strand the OUTER scroller ~96px down (its own nav-height bottom
+       padding) with no gesture able to chain back up, hiding the hero until
+       you left the page (Mark, 2026-08-15). One scroller = no stuck state,
+       and pull-to-refresh listens on that same scroller. -->
   <div
-    class="scene-root flex h-full flex-col"
+    class="scene-root flex min-h-full flex-col"
     :class="`scene-${sceneKey}`"
     :style="sceneVars"
   >
@@ -22,7 +29,7 @@
          under the branded navy bar, and pull-to-refresh already covers the
          Refresh button. The white strip is hidden for this route in
          MobileAppHeader. -->
-    <div class="min-h-0 flex-1 overflow-y-auto" style="background: var(--page-bg)">
+    <div class="flex-1" style="background: var(--page-bg)">
       <!-- HERO -->
       <div class="hero">
         <!-- scene decor -->
