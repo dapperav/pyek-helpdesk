@@ -237,7 +237,7 @@ watch(sidebarOpened, (open) => {
     const navRect = nav?.getBoundingClientRect();
     const drop = nav ? getComputedStyle(nav).bottom : "?";
     shellGeo.value =
-      `b8 · drop ${drop}` +
+      `b9 · drop ${drop}` +
       ` · ih ${window.innerHeight}` +
       ` · max ${maxViewportHeight.value}` +
       ` · scr ${screen.height}` +

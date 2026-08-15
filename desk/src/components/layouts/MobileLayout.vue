@@ -127,8 +127,16 @@ function computeNavDrop() {
       envTop = probe.getBoundingClientRect().height;
       probe.remove();
     }
+    // b8 field test: the nav's BOX paints all the way to the physical
+    // bottom, but iOS CLIPS fixed-layer CONTENT at the viewport line — a
+    // full-gap drop sliced the icons in half. Cap the drop so the icon
+    // cluster ends just above the clip line; the navy box + underlay keep
+    // running below it to the physical edge.
+    const CONTENT_SAFE_DROP = 20;
     navDrop.value =
-      standalone && portrait && gap > 8 && gap < 80 && envTop > 20 ? gap : 0;
+      standalone && portrait && gap > 8 && gap < 80 && envTop > 20
+        ? Math.min(gap, CONTENT_SAFE_DROP)
+        : 0;
   } catch {
     navDrop.value = 0;
   }
