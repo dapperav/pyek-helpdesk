@@ -11,8 +11,12 @@
     class="fixed inset-0 z-40"
     :class="!sidebarOpened && 'pointer-events-none'"
   >
+    <!-- Dimmer is a touch darker than the stock overlay token: the Home
+         hero's bright teal wave sat right behind the sheet's crest and cut
+         into it visually (Mark, 2026-08-15). -->
     <button
-      class="absolute inset-0 bg-black-overlay-400 transition-opacity duration-500"
+      class="absolute inset-0 transition-opacity duration-500"
+      style="background: rgba(8, 15, 30, 0.55)"
       :class="sidebarOpened ? 'opacity-100' : 'opacity-0'"
       :aria-hidden="!sidebarOpened"
       :tabindex="sidebarOpened ? 0 : -1"
@@ -31,9 +35,11 @@
             d="M0 24 Q 47 6 94 20 T 188 18 T 282 22 T 375 14 T 470 20 T 564 16 T 658 22 T 750 14 L 750 40 L 0 40 Z"
             fill="rgba(103,232,249,0.35)"
           />
+          <!-- Near-opaque so page content (e.g. the hero's teal wave) can't
+               bleed through the crest and muddy the sheet's top edge. -->
           <path
             d="M0 30 Q 47 14 94 26 T 188 24 T 282 28 T 375 22 T 470 28 T 564 24 T 658 28 T 750 22 L 750 40 L 0 40 Z"
-            fill="rgba(27,42,74,0.82)"
+            fill="rgba(27,42,74,0.97)"
           />
         </svg>
       </div>
@@ -229,7 +235,7 @@ watch(sidebarOpened, (open) => {
   try {
     const navRect = document.querySelector(".glassnav")?.getBoundingClientRect();
     shellGeo.value =
-      `b4 · ih ${window.innerHeight}` +
+      `b5 · ih ${window.innerHeight}` +
       ` · max ${maxViewportHeight.value}` +
       ` · scr ${screen.height}` +
       ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
