@@ -18,21 +18,10 @@
       :refreshing="refreshing"
       :threshold="threshold"
     />
-    <LayoutHeader>
-      <template #left-header>
-        <div class="text-lg-medium text-ink-gray-9">{{ __("Home") }}</div>
-      </template>
-      <template #right-header>
-        <Button
-          :label="__('Refresh')"
-          variant="subtle"
-          icon-left="lucide-refresh-ccw"
-          :loading="tickets.loading"
-          @click="refreshAll"
-        />
-      </template>
-    </LayoutHeader>
-
+    <!-- No LayoutHeader row here (Mark, 2026-08-15): "Home" was redundant
+         under the branded navy bar, and pull-to-refresh already covers the
+         Refresh button. The white strip is hidden for this route in
+         MobileAppHeader. -->
     <div class="min-h-0 flex-1 overflow-y-auto" style="background: var(--page-bg)">
       <!-- HERO -->
       <div class="hero">
@@ -126,7 +115,13 @@
               class="jcard"
               @click="openTicket(t.name)"
             >
-              <span class="who">{{ initials(t.raised_by) }}</span>
+              <img
+                v-if="senderPhoto(t.raised_by)"
+                :src="senderPhoto(t.raised_by)"
+                class="who shrink-0 object-cover"
+                alt=""
+              />
+              <span v-else class="who">{{ initials(t.raised_by) }}</span>
               <span class="min-w-0 flex-1 text-left">
                 <span class="flex items-baseline justify-between gap-2">
                   <span class="truncate text-sm font-semibold" style="color: var(--ink-strong)">
@@ -204,11 +199,11 @@
 </template>
 
 <script setup lang="ts">
-import { LayoutHeader } from "@/components";
 import PullToRefreshIndicator from "@/components/PullToRefreshIndicator.vue";
 import { usePullToRefresh } from "@/composables/pullToRefresh";
 import { useView } from "@/composables/useView";
 import { useAuthStore } from "@/stores/auth";
+import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
 import { prettyDate } from "@/utils";
 import { Button, createResource, dayjs, toast, usePageMeta } from "frappe-ui";
@@ -479,6 +474,13 @@ const queuePools = computed(() => [
   { key: "it", label: __("IT"), value: counts.value.it, level: level(counts.value.it), view: "IT Tickets" },
   { key: "mine", label: __("Mine"), value: counts.value.mine, level: level(counts.value.mine), view: "My Open Tickets" },
 ]);
+
+// Sender photo when the sender is a known User (internal staff) with an
+// image — the same source the Mine tab's avatar uses. Initials otherwise.
+const { getUser } = useUserStore();
+function senderPhoto(email: string): string {
+  return getUser(email)?.user_image || "";
+}
 
 function initials(email: string): string {
   return (email || "?")

@@ -54,6 +54,7 @@
       :key="row.name"
       :row="row"
       :selected="outlookSelected.has(row.name)"
+      :selecting="outlookSelected.size > 0"
       @click="openOutlookRow(row)"
       @toggle="toggleOutlookSelect(row.name)"
       @actions="actionTicket = row"
