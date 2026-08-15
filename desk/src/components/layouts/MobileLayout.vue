@@ -81,6 +81,7 @@ import MobileMenuSheet from "./MobileMenuSheet.vue";
 import MobileAppHeader from "./MobileAppHeader.vue";
 import MobileBottomNav from "./MobileBottomNav.vue";
 import { provideMobileScrollEl } from "@/composables/pullToRefresh";
+import { installViewportHeal } from "@/composables/viewportHeal";
 import { canGoBackInApp } from "@/composables/mobile";
 
 const route = useRoute();
@@ -93,8 +94,16 @@ provideMobileScrollEl(scrollEl);
 
 // Scoped to this layout's lifetime so a window resized back to desktop (which
 // swaps the layout component) returns the document to normal scrolling.
-onMounted(() => document.documentElement.classList.add("pyek-mobile-shell"));
-onUnmounted(() =>
-  document.documentElement.classList.remove("pyek-mobile-shell")
-);
+let teardownHeal = null;
+onMounted(() => {
+  document.documentElement.classList.add("pyek-mobile-shell");
+  // iOS standalone keyboard bug: the viewport shrinks by the status-bar
+  // inset the first time the keyboard opens and never recovers — see
+  // composables/viewportHeal.ts for the whole story.
+  teardownHeal = installViewportHeal(() => scrollEl.value);
+});
+onUnmounted(() => {
+  document.documentElement.classList.remove("pyek-mobile-shell");
+  teardownHeal?.();
+});
 </script>

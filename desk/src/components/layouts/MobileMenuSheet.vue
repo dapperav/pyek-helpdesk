@@ -173,6 +173,7 @@
 import PyekMark from "@/components/PyekMark.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import { mobileSidebarOpened as sidebarOpened } from "@/composables/mobile";
+import { maxViewportHeight } from "@/composables/viewportHeal";
 import { useView } from "@/composables/useView";
 import { pushState, refreshPushState, togglePush } from "@/composables/webPush";
 import { useAgentStatusStore } from "@/stores/agentStatus";
@@ -211,28 +212,28 @@ const userName = computed(() => getUser(userId)?.full_name || userId);
 const statusPicking = ref(false);
 
 // Shell geometry (diagnostic — see the template note). Measured on each open
-// so the numbers reflect the moment Mark screenshots them.
+// so the numbers reflect the moment Mark screenshots them. "b4" is the build
+// tag — bump it whenever this line's build changes, so a screenshot is never
+// ambiguous about which deploy it came from.
 const shellGeo = ref("");
+function envProbe(edge: "top" | "bottom"): number {
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:fixed;${edge}:0;left:0;width:1px;visibility:hidden;height:env(safe-area-inset-${edge})`;
+  document.body.appendChild(probe);
+  const v = probe.getBoundingClientRect().height;
+  probe.remove();
+  return Math.round(v);
+}
 watch(sidebarOpened, (open) => {
   if (!open) return;
   try {
-    const nav = document.querySelector(".glassnav");
-    const navRect = nav?.getBoundingClientRect();
-    const shell = nav?.closest('[style*="position: fixed"], [style*="position:fixed"]');
-    const shellRect = shell?.getBoundingClientRect();
-    const probe = document.createElement("div");
-    probe.style.cssText =
-      "position:fixed;bottom:0;left:0;width:1px;visibility:hidden;height:env(safe-area-inset-bottom)";
-    document.body.appendChild(probe);
-    const envBottom = probe.getBoundingClientRect().height;
-    probe.remove();
-    const vv = window.visualViewport;
+    const navRect = document.querySelector(".glassnav")?.getBoundingClientRect();
     shellGeo.value =
-      `ih ${window.innerHeight} · vv ${vv ? Math.round(vv.height) : "?"}` +
-      `+${vv ? Math.round(vv.offsetTop) : "?"} · scr ${screen.height}` +
-      ` · env ${Math.round(envBottom)}` +
-      ` · nav ${Math.round(navRect?.top ?? -1)}–${Math.round(navRect?.bottom ?? -1)}` +
-      ` · shell ${Math.round(shellRect?.top ?? -1)}–${Math.round(shellRect?.bottom ?? -1)}`;
+      `b4 · ih ${window.innerHeight}` +
+      ` · max ${maxViewportHeight.value}` +
+      ` · scr ${screen.height}` +
+      ` · envT ${envProbe("top")} · envB ${envProbe("bottom")}` +
+      ` · nav ${Math.round(navRect?.top ?? -1)}–${Math.round(navRect?.bottom ?? -1)}`;
   } catch (e) {
     shellGeo.value = String(e);
   }
