@@ -28,9 +28,11 @@ const portalRoutes = [
   // Agent Portal Routes
   {
     path: "",
-    // PYEK: phones open straight to the ticket inbox; desktop lands on the
-    // dashboard home.
-    redirect: () => (isMobileView.value ? "/tickets" : "/home"),
+    // PYEK: everyone lands on Home. Phones used to open the ticket inbox,
+    // but since Home became the phone's router (queue pools + needs-you-now),
+    // a cold-launched PWA landing on "All tickets" was just disorienting
+    // (Mark, 2026-08-15).
+    redirect: "/home",
   },
   {
     path: "/home",

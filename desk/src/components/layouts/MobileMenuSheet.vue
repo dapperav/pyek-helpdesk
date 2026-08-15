@@ -155,6 +155,14 @@
             <LucideLogOut class="ic size-5 shrink-0" />
             {{ __("Log out") }}
           </button>
+          <!-- Shell geometry readout (temporary diagnostic, 2026-08-15): the
+               bottom-nav band on Mark's iPhone has survived two blind fixes,
+               so this prints the real numbers where he can screenshot them —
+               a standalone PWA has no address bar for a ?debug URL. Remove
+               once the band is understood and fixed. -->
+          <p class="mt-3 text-center text-[10px] leading-4 text-white/40">
+            {{ shellGeo }}
+          </p>
         </div>
       </div>
     </div>
@@ -201,6 +209,34 @@ const { userId } = authStore;
 const userName = computed(() => getUser(userId)?.full_name || userId);
 
 const statusPicking = ref(false);
+
+// Shell geometry (diagnostic — see the template note). Measured on each open
+// so the numbers reflect the moment Mark screenshots them.
+const shellGeo = ref("");
+watch(sidebarOpened, (open) => {
+  if (!open) return;
+  try {
+    const nav = document.querySelector(".glassnav");
+    const navRect = nav?.getBoundingClientRect();
+    const shell = nav?.closest('[style*="position: fixed"], [style*="position:fixed"]');
+    const shellRect = shell?.getBoundingClientRect();
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:fixed;bottom:0;left:0;width:1px;visibility:hidden;height:env(safe-area-inset-bottom)";
+    document.body.appendChild(probe);
+    const envBottom = probe.getBoundingClientRect().height;
+    probe.remove();
+    const vv = window.visualViewport;
+    shellGeo.value =
+      `ih ${window.innerHeight} · vv ${vv ? Math.round(vv.height) : "?"}` +
+      `+${vv ? Math.round(vv.offsetTop) : "?"} · scr ${screen.height}` +
+      ` · env ${Math.round(envBottom)}` +
+      ` · nav ${Math.round(navRect?.top ?? -1)}–${Math.round(navRect?.bottom ?? -1)}` +
+      ` · shell ${Math.round(shellRect?.top ?? -1)}–${Math.round(shellRect?.bottom ?? -1)}`;
+  } catch (e) {
+    shellGeo.value = String(e);
+  }
+});
 
 // Same source (and cache key) as the desktop sidebar's KB badge.
 const kbConfirmCount = createResource({
