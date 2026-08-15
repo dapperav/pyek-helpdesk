@@ -44,6 +44,13 @@ html.pyek-mobile-shell body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+  /* iOS standalone letterboxes the bottom ~59pt OUTSIDE the app's viewport
+     (measured: innerHeight 873 vs screen 932 with the shell flush at 873)
+     and paints that dead strip with the DOCUMENT background — white made it
+     read as a broken band under the nav. Navy makes it continuous with the
+     frosted nav + safe-area underlay above it. The shell paints its own
+     surface ground, so nothing inside the app inherits this. */
+  background-color: #1b2a4a;
 }
 
 :root {
