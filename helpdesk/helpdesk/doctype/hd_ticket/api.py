@@ -511,32 +511,57 @@ def _bubble_text(html: str):
     return out, truncated
 
 
-# Trailing contact-info furniture: bare phone numbers ("D 346.388.4180"),
-# bare email addresses, bare URLs. Only ever stripped from the END of a
-# bubble, so a phone number quoted mid-message survives.
+# Trailing contact-info furniture, only ever peeled from the END of a bubble
+# so a phone number quoted mid-message survives. Measured against real PYEK
+# signatures (2026-08-16 live check on ticket 0392):
+#   "D 346.388.4180"            -> letter-prefixed phone
+#   "O 346.788.PYEK"            -> phone with a vanity-letter tail
+#   "allannha.eyerly@pyekgroup.com"
+#   "www.pyek.com 24616 Kingsland Blvd. Katy, Texas 77494"
+#                               -> URL and postal line FLATTENED TOGETHER,
+#                                  which is why the URL rule allows a tail
 _SIGNATURE_FURNITURE = re.compile(
-    r"^(www\.|https?://)\S+$|^[\w.+-]+@[\w.-]+\.\w+$|^d?\s*[\d .()+-]{7,}$",
+    r"^(www\.|https?://)\S+(\s.*)?$"  # URL line, possibly merged with an address
+    r"|^[\w.+-]+@[\w.-]+\.\w+$"  # bare email address
+    # Phone with optional letter prefix ("D", "O") or vanity tail ("PYEK");
+    # at least six digits so "10 000 units" style content never matches.
+    r"|^[a-z]{0,2}[\s:.]*(?:[ .()+-]*\d){6,}[ .()+-]*[a-z]{0,8}$",
+
     re.IGNORECASE,
 )
 
 
-def _trim_signature(lines, sender_name):
+def _trim_signature(lines, comm):
     """Drop a trailing signature block from bubble lines.
 
     Two passes, both bubble-only (the original email keeps its signature —
     that's the point of "sends like an email, reads like a text"):
-    1. If the sender's own display name appears as a line in the tail, cut
-       there — that's where a signature block starts.
+    1. If the sender's own name appears as a line in the tail, cut there —
+       that's where a signature block starts. Candidates: the resolved
+       avatar display name AND the sender address's local part with dots/
+       underscores as spaces ("john.pham@…" -> "john pham"), which covers
+       senders with no User record.
     2. Then peel trailing furniture lines (phones, emails, URLs).
     Never empties the bubble: a cut that would leave nothing is skipped.
     """
     if not lines:
         return lines
-    name = (sender_name or "").strip().lower()
-    if name:
+    user = comm.get("user") or {}
+    candidates = set()
+    if isinstance(user, dict):
+        for key in ("full_name", "name"):
+            value = (user.get(key) or "").strip().lower()
+            # An unresolved avatar echoes the email address back; that's not
+            # a display name and never appears as a signature line.
+            if value and "@" not in value:
+                candidates.add(value)
+    sender = (comm.get("sender") or "").strip().lower()
+    if "@" in sender:
+        candidates.add(re.sub(r"[._]+", " ", sender.split("@", 1)[0]).strip())
+    if candidates:
         tail_start = max(1, len(lines) - 8)
         for i in range(len(lines) - 1, tail_start - 1, -1):
-            if lines[i].strip().lower() == name:
+            if lines[i].strip().lower() in candidates:
                 lines = lines[:i]
                 break
     while len(lines) > 1 and _SIGNATURE_FURNITURE.match(lines[-1].strip()):
@@ -560,10 +585,8 @@ def mark_compact_communications(communications):
         )
         lines, truncated = _bubble_text(c.get("content"))
         # c["user"] was already resolved to the avatar dict by
-        # get_communications before this pass runs.
-        user = c.get("user") or {}
-        full_name = user.get("full_name") if isinstance(user, dict) else None
-        c["bubble_lines"] = _trim_signature(lines, full_name)
+        # get_communications before this pass runs; _trim_signature reads it.
+        c["bubble_lines"] = _trim_signature(lines, c)
         c["bubble_truncated"] = truncated
 
 
