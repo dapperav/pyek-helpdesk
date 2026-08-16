@@ -494,28 +494,29 @@ const dropdownOptions = computed(() =>
 );
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
-  // PYEK: Activity (the email/conversation thread) is first so tapping a ticket
-  // opens on the thread, matching desktop. Details is moved to the end (still a
-  // tab, just not the landing).
+  // PYEK: Emails is the LANDING tab (Mark, 2026-08-16): with the bubble
+  // thread it reads like a text conversation, while Activity interleaves
+  // every viewed/assigned/status event and "doesn't feel fluid". Activity
+  // stays two tabs over for the full audit trail. Safe to reorder —
+  // useActiveTabManager resolves tabs by name via the URL hash, not by a
+  // stored index, so nobody's remembered tab shifts.
   const _tabs = [
     {
-      name: "activity",
-      label: __("Activity"),
-      icon: ActivityIcon,
+      name: "email",
+      label: __("Emails"),
+      icon: EmailIcon,
     },
     // Second, not buried at the end: the build sheet, the blocker and the
-    // suggested steps are what an agent away from a desk actually needs. Safe to
-    // insert mid-list — useActiveTabManager resolves tabs by name via the URL
-    // hash, not by a stored index, so nobody's remembered tab shifts.
+    // suggested steps are what an agent away from a desk actually needs.
     {
       name: "ai",
       label: __("AI"),
       icon: LucideSparkles,
     },
     {
-      name: "email",
-      label: __("Emails"),
-      icon: EmailIcon,
+      name: "activity",
+      label: __("Activity"),
+      icon: ActivityIcon,
     },
     {
       name: "comment",
