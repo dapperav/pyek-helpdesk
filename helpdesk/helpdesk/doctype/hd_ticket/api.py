@@ -417,19 +417,38 @@ def _automated_sender(sender: str) -> bool:
     return any(p in addr for p in patterns)
 
 
-def _compact_lines(html: str):
-    """Visible lines of an email, or None when flattening would lose something.
+# The mobile bubble thread trims long mail instead of giving up on it —
+# unlike compact_lines, the bubble is a reading surface with the original
+# always one tap away, so losing the tail is acceptable there and only there.
+BUBBLE_MAX_LINES = 40
+BUBBLE_MAX_CHARS = 2500
+
+# Reply chains quote the whole prior thread below the new text; a bubble must
+# show only the new text. Frappe's own composer wraps the tail in a
+# <blockquote> (decomposed during parsing); clients that inline it instead are
+# caught by these header lines. Deliberately conservative — a missed quote
+# header just means a longer bubble, while a false match eats real content.
+_QUOTE_HEADER = re.compile(
+    r"^on .{0,140}wrote:?$|^-{2,}\s*original message\s*-{2,}$|^_{5,}$",
+    re.IGNORECASE,
+)
+
+
+def _visible_lines(html: str, strip_quotes: bool = False):
+    """The visible text lines of an email, block-structure aware.
 
     Uses the block structure rather than a naive tag strip so a table row
-    doesn't run into the next one. Returns None for anything long enough that
-    the markup is probably carrying meaning.
+    doesn't run into the next one.
     """
     if not html:
-        return None
+        return []
 
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "head", "title"]):
         tag.decompose()
+    if strip_quotes:
+        for tag in soup.find_all("blockquote"):
+            tag.decompose()
     # Block boundaries become newlines; cells within a row stay on one line so
     # "Device Name: Typhoon Texas Austin" survives as a single readable line.
     for tag in soup.find_all(["br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4"]):
@@ -442,6 +461,8 @@ def _compact_lines(html: str):
         line = " ".join(raw.split())
         if not line or _COMPACT_NOISE.search(line):
             continue
+        if strip_quotes and _QUOTE_HEADER.match(line):
+            break
         # These alerts lay their fields out as one table row per label and
         # another per value, so a bare strip leaves "Device Name:" stranded
         # above "Typhoon Texas Austin". Rejoin the pair.
@@ -455,7 +476,16 @@ def _compact_lines(html: str):
         lines.append(line)
 
     # A label with nothing after it tells the reader less than nothing.
-    lines = [x for x in lines if not x.endswith(":")]
+    return [x for x in lines if not x.endswith(":")]
+
+
+def _compact_lines(html: str):
+    """Visible lines of an email, or None when flattening would lose something.
+
+    Returns None for anything long enough that the markup is probably
+    carrying meaning — nothing is allowed to get worse than the status quo.
+    """
+    lines = _visible_lines(html)
     if not lines:
         return None
     if len(lines) > COMPACT_MAX_LINES:
@@ -465,18 +495,76 @@ def _compact_lines(html: str):
     return lines
 
 
+def _bubble_text(html: str):
+    """(lines, truncated) for the mobile bubble thread. Never gives up on a
+    message the way _compact_lines does — it trims and flags instead."""
+    lines = _visible_lines(html, strip_quotes=True)
+    if not lines:
+        return None, False
+    out, chars, truncated = [], 0, False
+    for line in lines:
+        if len(out) >= BUBBLE_MAX_LINES or chars > BUBBLE_MAX_CHARS:
+            truncated = True
+            break
+        out.append(line)
+        chars += len(line)
+    return out, truncated
+
+
+# Trailing contact-info furniture: bare phone numbers ("D 346.388.4180"),
+# bare email addresses, bare URLs. Only ever stripped from the END of a
+# bubble, so a phone number quoted mid-message survives.
+_SIGNATURE_FURNITURE = re.compile(
+    r"^(www\.|https?://)\S+$|^[\w.+-]+@[\w.-]+\.\w+$|^d?\s*[\d .()+-]{7,}$",
+    re.IGNORECASE,
+)
+
+
+def _trim_signature(lines, sender_name):
+    """Drop a trailing signature block from bubble lines.
+
+    Two passes, both bubble-only (the original email keeps its signature —
+    that's the point of "sends like an email, reads like a text"):
+    1. If the sender's own display name appears as a line in the tail, cut
+       there — that's where a signature block starts.
+    2. Then peel trailing furniture lines (phones, emails, URLs).
+    Never empties the bubble: a cut that would leave nothing is skipped.
+    """
+    if not lines:
+        return lines
+    name = (sender_name or "").strip().lower()
+    if name:
+        tail_start = max(1, len(lines) - 8)
+        for i in range(len(lines) - 1, tail_start - 1, -1):
+            if lines[i].strip().lower() == name:
+                lines = lines[:i]
+                break
+    while len(lines) > 1 and _SIGNATURE_FURNITURE.match(lines[-1].strip()):
+        lines = lines[:-1]
+    return lines
+
+
 def mark_compact_communications(communications):
     """Flag machine mail and, where it is short, precompute its readable lines.
 
     Done server-side so the rule lives in one testable place and the panel
     stays a renderer. `compact_lines` is None whenever the original HTML
     should be shown, which is the default for anything uncertain.
+    `bubble_lines` is the mobile thread's plain-text rendering and exists for
+    every email that has any visible text at all.
     """
     for c in communications:
         c["is_automated"] = _automated_sender(c.get("sender"))
         c["compact_lines"] = (
             _compact_lines(c.get("content")) if c["is_automated"] else None
         )
+        lines, truncated = _bubble_text(c.get("content"))
+        # c["user"] was already resolved to the avatar dict by
+        # get_communications before this pass runs.
+        user = c.get("user") or {}
+        full_name = user.get("full_name") if isinstance(user, dict) else None
+        c["bubble_lines"] = _trim_signature(lines, full_name)
+        c["bubble_truncated"] = truncated
 
 
 def _ticket_spread(content_hashes):

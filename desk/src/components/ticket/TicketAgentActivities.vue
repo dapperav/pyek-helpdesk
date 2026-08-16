@@ -5,7 +5,10 @@
     :mask-length="20"
   >
     <div v-if="activities.length" class="activities flex-1 h-full mt-0.5">
-      <div v-if="collapsedCount" class="flex justify-end px-6 md:px-5 pt-1">
+      <div
+        v-if="collapsedCount && !bubble"
+        class="flex justify-end px-6 md:px-5 pt-1"
+      >
         <button
           class="text-p-sm text-ink-gray-5 hover:text-ink-gray-7 underline underline-offset-2"
           @click="expandAll"
@@ -20,8 +23,39 @@
         tabindex="0"
         :id="activity.key"
       >
+        <!-- Bubble mode (mobile only — the desktop panel never passes the
+             prop): emails render as message bubbles, system history as
+             centered event lines, no avatar rail. Comments/calls/feedback
+             keep their boxes, just full-width. -->
+        <div v-if="bubble" class="w-full px-4">
+          <MobileMessageBubble
+            v-if="activity.type === 'email'"
+            :activity="activity"
+            @reply="(e) => emit('email:reply', e)"
+          />
+          <CommentBox
+            v-else-if="activity.type === 'comment'"
+            :activity="activity"
+            @update="() => emit('update')"
+          />
+          <CallArea
+            v-else-if="activity.type === 'call'"
+            :activity="activity"
+          />
+          <FeedbackBox
+            :activity="activity"
+            v-else-if="activity.type === 'feedback'"
+          />
+          <div
+            v-else
+            class="flex justify-center py-0.5 text-xs text-ink-gray-4"
+          >
+            <HistoryBox :activity="activity" />
+          </div>
+        </div>
         <!-- single activity -->
         <div
+          v-else
           class="w-full px-6 md:px-5 grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4"
         >
           <div
@@ -156,6 +190,7 @@ import FeedbackBox from "../ticket-agent/FeedbackBox.vue";
 import CommentBox from "@/components/CommentBox.vue";
 import EmailArea from "@/components/EmailArea.vue";
 import HistoryBox from "@/components/HistoryBox.vue";
+import MobileMessageBubble from "@/components/ticket/MobileMessageBubble.vue";
 
 const props = defineProps({
   activities: {
@@ -169,6 +204,12 @@ const props = defineProps({
   ticketStatus: {
     type: String,
     default: "",
+  },
+  // Message-bubble rendering (the mobile ticket screen). Desktop's
+  // TicketActivityPanel never passes this and is untouched.
+  bubble: {
+    type: Boolean,
+    default: false,
   },
 });
 
