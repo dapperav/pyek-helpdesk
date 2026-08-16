@@ -130,6 +130,7 @@
                 :activities="filterActivities(tab.name)"
                 :title="tab.label"
                 :ticket-status="ticket.doc?.status"
+                bubble
                 @update="() => reloadTicket(props.ticketId)"
                 @email:reply="
                   (e) => {
@@ -569,6 +570,9 @@ const _activities = computed(() => {
         isFirstEmail: idx === 0,
         compactLines: email.compact_lines,
         isAutomated: email.is_automated,
+        bubbleLines: email.bubble_lines,
+        bubbleTruncated: email.bubble_truncated,
+        outgoing: email.sent_or_received === "Sent",
       };
     }
   );
