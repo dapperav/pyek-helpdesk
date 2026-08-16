@@ -381,6 +381,7 @@
 
 <script setup lang="ts">
 import { __ } from "@/translation";
+import { buildAiReplyDraft } from "@/composables/aiReplyDraft";
 import { parkColor, parkLabel } from "@/config/parks";
 import { RecentSimilarTicketsSymbol, TicketSymbol } from "@/types";
 import { useStorage } from "@vueuse/core";
@@ -781,59 +782,9 @@ const replyDraft = ref("");
 const replyCopied = ref(false);
 
 function generateReply() {
-  const bs = buildSheet.value;
-  const it = itAssist.value;
-  // Summary-only tickets — the ones the enricher analysed but couldn't put in a
-  // build-sheet or IT branch, mostly request type "Other" — used to get no button
-  // at all, which is about a third of currently-classified tickets. They get a
-  // plain acknowledgement. Deliberately does NOT echo pyek_summary back: it's
-  // written in the third person for an agent to read ("Request to add daily
-  // utilization section…") and reads oddly returned to the person who wrote in.
-  if (!bs && !it) {
-    replyDraft.value = [
-      "Hi,",
-      "",
-      "Thanks for flagging this — I'm looking into it now and will follow up shortly.",
-      "",
-      "Thanks!",
-    ].join("\n");
-    return;
-  }
-  const lines = ["Hi,", ""];
-  if (bs) {
-    if (artifactUrls.value.length) {
-      lines.push(
-        artifactUrls.value.length > 1
-          ? "Here are the links:"
-          : "Here's the link:"
-      );
-      artifactUrls.value.forEach((u) => lines.push(u));
-    } else if (bs.fields?.length) {
-      lines.push("Done — here's what was set up:");
-      bs.fields.forEach((f) => lines.push(`• ${f.label}: ${f.value}`));
-    }
-  } else if (it) {
-    // Deliberately does NOT list it.steps: those are the agent's internal checklist
-    // (revoking tokens, confirming approval with a system owner) and don't belong in
-    // a requester-facing reply. State the outcome instead.
-    const a = it.access_request;
-    if (a?.system) {
-      const who = a.user ? ` for ${a.user}` : "";
-      const scope = a.scope ? ` (${a.scope})` : "";
-      lines.push(`I'm taking care of the ${a.system} access${who}${scope}.`);
-    } else {
-      lines.push("Thanks for flagging this — I'm looking into it now.");
-    }
-  }
-  const missingItems: string[] = (bs || it)?.missing || [];
-  if (missingItems.length) {
-    lines.push("");
-    lines.push(
-      `Before I can finish, could you confirm: ${missingItems.join("; ")}?`
-    );
-  }
-  lines.push("", "Thanks!");
-  replyDraft.value = lines.join("\n");
+  // Draft assembly lives in composables/aiReplyDraft.ts, shared with the
+  // mobile quick-reply bar's chip so the two surfaces never drift on wording.
+  replyDraft.value = buildAiReplyDraft(ticket.value?.doc);
 }
 
 function copyReply() {

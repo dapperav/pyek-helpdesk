@@ -90,7 +90,7 @@
                   v-if="contact.data"
                   :contact="contact.data"
                   :ticketId="ticket.doc?.name"
-                  @email:open="communicationAreaRef.toggleEmailBox()"
+                  @email:open="replyFlowRef?.openQuick()"
                 />
                 <!-- feedback component -->
                 <TicketFeedback
@@ -133,32 +133,34 @@
                 @update="() => reloadTicket(props.ticketId)"
                 @email:reply="
                   (e) => {
-                    communicationAreaRef.replyToEmail(e);
+                    replyFlowRef?.openCompose(e);
                   }
                 "
               />
             </template>
           </Tabs>
-          <!-- Sticky footer: act bar + composer share one container so both sit
-               in thumb reach. The act bar hides itself while an editor is open
-               (v-show inside the component — it is multi-root, so v-show here
-               would land on a fragment and silently do nothing).
+          <!-- Sticky footer: just the act bar now — Reply on it opens
+               MobileReplyFlow's quick bar (fixed overlays, so the flow itself
+               lives outside this container). The act bar hides itself while
+               the flow is open (v-show inside the component — it is
+               multi-root, so v-show here would land on a fragment and
+               silently do nothing).
                bottom = the glass nav's height (0 when it's hidden, which is
-               the normal tapped-in case), so a cold-launched ticket's composer
+               the normal tapped-in case), so a cold-launched ticket's act bar
                sits ABOVE the frosted nav instead of underneath it. -->
           <div
             class="sticky z-50 bg-surface-base"
             style="bottom: var(--pyek-nav-h, 0px)"
           >
-          <MobileTicketActBar />
-          <CommunicationArea
-            ref="communicationAreaRef"
-            v-model="ticket.doc"
-            :ticketId="ticket.doc?.name"
-            :to-emails="[ticket.doc.raised_by]"
-            :cc-emails="[]"
-            :bcc-emails="[]"
+            <MobileTicketActBar
+              :suppressed="replyFlowOpen"
+              @reply="replyFlowRef?.openQuick()"
+            />
+          </div>
+          <MobileReplyFlow
+            ref="replyFlowRef"
             :key="ticket.doc?.name"
+            @state="(v: boolean) => (replyFlowOpen = v)"
             @update="
               () => {
                 reloadTicket(props.ticketId);
@@ -167,7 +169,6 @@
               }
             "
           />
-          </div>
         </div>
       </div>
     </div>
@@ -237,7 +238,7 @@ import {
   watchEffect,
 } from "vue";
 
-import { CommunicationArea, LayoutHeader } from "@/components";
+import { LayoutHeader } from "@/components";
 import PullToRefreshIndicator from "@/components/PullToRefreshIndicator.vue";
 import {
   ActivityIcon,
@@ -254,6 +255,7 @@ import TicketAttachments from "@/components/ticket/TicketAttachments.vue";
 import CustomActions from "@/components/CustomActions.vue";
 import LucideSparkles from "~icons/lucide/sparkles";
 import AiAssistPanel from "@/components/ticket-agent/AiAssistPanel.vue";
+import MobileReplyFlow from "@/components/ticket-agent/MobileReplyFlow.vue";
 import MobileTicketActBar from "@/components/ticket-agent/MobileTicketActBar.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
@@ -305,9 +307,8 @@ const { $dialog, $socket } = globalStore();
 const ticketAgentActivitiesRef = ref<InstanceType<
   typeof TicketAgentActivities
 > | null>(null);
-const communicationAreaRef = ref<InstanceType<typeof CommunicationArea> | null>(
-  null
-);
+const replyFlowRef = ref<InstanceType<typeof MobileReplyFlow> | null>(null);
+const replyFlowOpen = ref(false);
 
 const subjectInput = ref(null);
 const showPhoneModal = ref(false);
@@ -451,7 +452,6 @@ provide(
   ActivitiesSymbol,
   computed(() => ticketComposable.value.activities)
 );
-provide("communicationArea", communicationAreaRef);
 provide("makeCall", () => {
   if (!contact.value.data?.mobile_no && !contact.value.data?.phone) {
     showPhoneModal.value = true;

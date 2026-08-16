@@ -8,7 +8,7 @@
        nothing. The bar steps aside while either editor is open. -->
   <div
     v-if="ticketDoc?.name"
-    v-show="!showEmailBox && !showCommentBox"
+    v-show="!suppressed"
     class="flex items-center gap-2 border-t px-3 py-1.5"
   >
     <!-- SLA countdown: the reason the push was worth acting on. Hidden once
@@ -22,6 +22,14 @@
       {{ slaChip.text }}
     </span>
     <div class="ms-auto flex shrink-0 items-center gap-1.5">
+      <!-- Reply is THE primary action (Mark's reply-flow pick #2, 2026-08-15):
+           it opens the chat-style quick bar, which self-assigns on send — so
+           on unassigned tickets it subsumes "Take it" and earns its slot. -->
+      <Button variant="solid" :label="__('Reply')" @click="emit('reply')">
+        <template #prefix>
+          <LucideReply class="size-4" />
+        </template>
+      </Button>
       <Button
         v-if="!isMine"
         :label="__('Take it')"
@@ -62,7 +70,6 @@
 <script setup lang="ts">
 import TicketActionSheet from "@/components/ticket/TicketActionSheet.vue";
 import { parseAssign, selfAssignTicket } from "@/composables/selfAssign";
-import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import { AssigneeSymbol, TicketSymbol } from "@/types";
@@ -70,7 +77,19 @@ import { Button, toast } from "frappe-ui";
 import { computed, inject, onMounted, onUnmounted, ref } from "vue";
 import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideMoreHorizontal from "~icons/lucide/more-horizontal";
+import LucideReply from "~icons/lucide/reply";
 import LucideUserPlus from "~icons/lucide/user-plus";
+
+// Hidden while the reply flow (quick bar / full composer) is open. The signal
+// arrives as a prop now — the module-level showEmailBox/showCommentBox refs
+// this used to read are desktop-only state since the mobile reply redesign.
+defineProps({
+  suppressed: {
+    type: Boolean,
+    default: false,
+  },
+});
+const emit = defineEmits(["reply"]);
 
 const ticket = inject(TicketSymbol)!;
 const assignees = inject(AssigneeSymbol, null);
