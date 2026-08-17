@@ -36,6 +36,7 @@
           <MobileMessageBubble
             v-if="activity.type === 'email'"
             :activity="activity"
+            :show-delivery="activity.key === lastOutgoingEmailKey"
             @reply="(e) => emit('email:reply', e)"
           />
           <CommentBox
@@ -219,6 +220,16 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["email:reply", "update"]);
+
+// iMessage shows one "Delivered" under the LATEST sent message; the bubble
+// with this key is the only one that renders its delivery status.
+const lastOutgoingEmailKey = computed(() => {
+  for (let i = props.activities.length - 1; i >= 0; i--) {
+    const a = props.activities[i] as any;
+    if (a.type === "email" && a.outgoing) return a.key;
+  }
+  return null;
+});
 
 const route = useRoute();
 const router = useRouter();
