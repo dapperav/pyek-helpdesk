@@ -26,7 +26,11 @@ class HDNotification(Document):
         if self.reference_ticket:
             res += "/tickets/" + str(self.reference_ticket)
         if self.reference_comment:
-            res += "#" + self.reference_comment
+            # "comment-<name>" matches the id CommentBox actually renders
+            # (a bare docname matched nothing, so the anchor was dead); the
+            # mobile ticket screen also keys its open-the-Comments-tab
+            # behavior on this prefix. (2026-08-17, Josh's mention tap)
+            res += "#comment-" + self.reference_comment
         return frappe.utils.get_url(res)
 
     def parse_html(self):
@@ -104,6 +108,20 @@ class HDNotification(Document):
             if ticket.get("subject")
             else f"Ticket #{self.reference_ticket}"
         )
+
+        # A mention's whole point is what was said — lead with the comment
+        # text itself, ticket context second (Mark, 2026-08-17: "it would be
+        # nice to see the comment I put to him").
+        if self.notification_type == "Mention" and self.message:
+            from bs4 import BeautifulSoup
+
+            said = BeautifulSoup(self.message, "html.parser").get_text(
+                " ", strip=True
+            )
+            if said:
+                if len(said) > 160:
+                    said = said[:159].rstrip() + "…"
+                return f"{said}\n{head}"
 
         summary = (ticket.get("pyek_summary") or "").strip()
         if not summary:
