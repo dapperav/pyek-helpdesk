@@ -47,6 +47,23 @@
     </button>
 
     <div class="border-t bg-surface-base px-2.5 pt-1.5" :style="quickBarStyle">
+      <!-- Photo/screenshot chips: uploaded already, sent with the message. -->
+      <div v-if="quickAttachments.length" class="mb-1.5 flex flex-wrap gap-1.5">
+        <AttachmentItem
+          v-for="a in quickAttachments"
+          :key="a.file_url"
+          :label="a.file_name"
+          :url="a.file_url"
+        >
+          <template #suffix>
+            <FeatherIcon
+              class="h-3.5"
+              name="x"
+              @click.self.stop="removeQuickAttachment(a)"
+            />
+          </template>
+        </AttachmentItem>
+      </div>
       <div v-if="expanded" class="mb-1.5 flex items-center gap-2">
         <div class="flex rounded-lg bg-surface-gray-2 p-0.5">
           <button
@@ -96,6 +113,28 @@
           <template v-if="resolveArmed">{{ __("Resolve?") }}</template>
           <LucideCircleCheck v-else class="size-4.5" />
         </button>
+        <!-- Photo from the phone (Mark, 2026-08-17: screenshots). Unrestricted
+             file input on iOS shows the Photo Library / Take Photo / Choose
+             File sheet, which is exactly the right picker. Expanded-only —
+             the collapsed row keeps its three controls. -->
+        <FileUploader
+          v-if="expanded"
+          class="shrink-0"
+          :upload-args="{ doctype: 'HD Ticket', docname: tid, private: true }"
+          @success="(f) => quickAttachments.push(f)"
+        >
+          <template #default="{ openFileSelector, uploading }">
+            <button
+              class="flex h-[38px] w-9 shrink-0 items-center justify-center text-ink-gray-5 disabled:opacity-40"
+              :disabled="uploading"
+              :aria-label="__('Add photo')"
+              @mousedown.prevent
+              @click="openFileSelector()"
+            >
+              <LucideImagePlus class="size-4.5" />
+            </button>
+          </template>
+        </FileUploader>
         <textarea
           ref="quickInput"
           v-model="quickText"
@@ -119,7 +158,7 @@
         <button
           class="flex size-[38px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
           :style="{ backgroundColor: mode === 'note' ? '#b45309' : '#1b2a4a' }"
-          :disabled="!quickText.trim() || sending"
+          :disabled="(!quickText.trim() && !quickAttachments.length) || sending"
           :aria-label="mode === 'note' ? __('Add note') : __('Send reply')"
           @mousedown.prevent
           @click="sendQuick"
@@ -409,6 +448,7 @@ import {
 import LucideArrowUp from "~icons/lucide/arrow-up";
 import LucideChevronRight from "~icons/lucide/chevron-right";
 import LucideCircleCheck from "~icons/lucide/circle-check";
+import LucideImagePlus from "~icons/lucide/image-plus";
 import LucideMaximize2 from "~icons/lucide/maximize-2";
 import LucidePaperclip from "~icons/lucide/paperclip";
 import LucideSparkles from "~icons/lucide/sparkles";
@@ -433,7 +473,16 @@ const { onUserType, cleanup: cleanupTyping } = useTyping(tid);
 // reply never collapses out of view on blur.
 const composeOpen = ref(false);
 const focused = ref(false);
-const expanded = computed(() => focused.value || !!quickText.value.trim());
+const quickAttachments = ref<any[]>([]);
+const expanded = computed(
+  () =>
+    focused.value || !!quickText.value.trim() || !!quickAttachments.value.length
+);
+
+async function removeQuickAttachment(a: any) {
+  quickAttachments.value = quickAttachments.value.filter((x) => x !== a);
+  await removeAttachmentFromServer(a.name);
+}
 
 // ── Quick bar ────────────────────────────────────────────────────────────
 const mode = ref<"reply" | "note">("reply");
@@ -678,6 +727,7 @@ const sendMail = createResource({
     sending.value = false;
     if (out.origin.value === "quick") {
       quickText.value = "";
+      quickAttachments.value = [];
       nextTick(autogrow);
     } else {
       newEmail.value = null;
@@ -697,17 +747,18 @@ const sendMail = createResource({
 
 function sendQuick() {
   const text = quickText.value.trim();
-  if (!text || sending.value) return;
+  // A screenshot with no words is a legitimate reply.
+  if ((!text && !quickAttachments.value.length) || sending.value) return;
   if (mode.value === "note") {
     sendNote(text);
     return;
   }
   out.origin.value = "quick";
-  out.message.value = textToHtml(text) + signatureHtml.value;
+  out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
   out.to.value = doc.value?.raised_by || "";
   out.cc.value = "";
   out.bcc.value = "";
-  out.attachments.value = [];
+  out.attachments.value = quickAttachments.value.map((x) => x.name);
   if (!out.to.value) {
     toast.warning(__("This ticket has no requester email to reply to."));
     return;
@@ -752,11 +803,17 @@ function sendNote(text: string) {
       dt: "HD Ticket",
       dn: tid,
       method: "new_comment",
-      args: { content: textToHtml(text), attachments: [] },
+      // new_comment wants the file OBJECTS (it reads .file_url), unlike
+      // reply_via_agent which wants names.
+      args: {
+        content: text ? textToHtml(text) : "",
+        attachments: quickAttachments.value,
+      },
     }),
     onSuccess: () => {
       sending.value = false;
       quickText.value = "";
+      quickAttachments.value = [];
       mode.value = "reply";
       nextTick(autogrow);
       emit("update");
