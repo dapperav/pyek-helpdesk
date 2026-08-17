@@ -39,11 +39,14 @@
             :show-delivery="activity.key === lastOutgoingEmailKey"
             @reply="(e) => emit('email:reply', e)"
           />
-          <CommentBox
-            v-else-if="activity.type === 'comment'"
-            :activity="activity"
-            @update="() => emit('update')"
-          />
+          <!-- The flex wrapper is load-bearing: CommentBox zeroes its own
+               inline width on mount (an upstream min-width hack) and relies
+               on flex-1 in a flex row to stretch back. In a plain block
+               parent that leaves it 0px wide — the comment rendered one
+               letter per line (Josh, 2026-08-17). -->
+          <div v-else-if="activity.type === 'comment'" class="flex w-full">
+            <CommentBox :activity="activity" @update="() => emit('update')" />
+          </div>
           <CallArea
             v-else-if="activity.type === 'call'"
             :activity="activity"

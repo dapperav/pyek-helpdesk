@@ -220,6 +220,7 @@ import {
   computed,
   ComputedRef,
   h,
+  nextTick,
   onMounted,
   onUnmounted,
   PropType,
@@ -283,7 +284,7 @@ import {
 } from "@/types";
 import { HDTicketStatus } from "@/types/doctypes";
 import { storeToRefs } from "pinia";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 const telephonyStore = useTelephonyStore();
 const { isCallingEnabled } = storeToRefs(telephonyStore);
@@ -291,6 +292,7 @@ const { isCallingEnabled } = storeToRefs(telephonyStore);
 const ticketStatusStore = useTicketStatusStore();
 const { getUser } = useUserStore();
 const router = useRouter();
+const route = useRoute();
 const { $dialog, $socket } = globalStore();
 
 const ticketAgentActivitiesRef = ref<InstanceType<
@@ -705,6 +707,27 @@ type TicketUpdateData = {
 
 onMounted(() => {
   document.title = props.ticketId;
+  // A mention push deep-links to /tickets/<id>#comment-<name>. The tab
+  // manager only understands tab-name hashes, so land the Comments tab
+  // ourselves, then scroll to and flash the anchored comment once the
+  // activities have rendered (Josh's mention tap, 2026-08-17: it dumped him
+  // on the default tab with no comment in sight).
+  if (route.hash?.startsWith("#comment-")) {
+    const idx = tabs.value.findIndex((t) => t.name === "comment");
+    if (idx >= 0) {
+      nextTick(() => changeTabTo(idx));
+      const elementId = route.hash.slice(1);
+      setTimeout(() => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        (el as any).scrollIntoViewIfNeeded
+          ? (el as any).scrollIntoViewIfNeeded()
+          : el.scrollIntoView({ block: "center" });
+        el.classList.add("bg-surface-yellow-2");
+        setTimeout(() => el.classList.remove("bg-surface-yellow-2"), 2500);
+      }, 1200);
+    }
+  }
   // Revisiting a ticket: show the cached conversation immediately and refresh it
   // in place, since a reply may have arrived while this screen was closed.
   revalidateTicket(props.ticketId);
