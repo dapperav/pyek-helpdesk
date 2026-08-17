@@ -47,6 +47,28 @@
     </button>
 
     <div class="border-t bg-surface-base px-2.5 pt-1.5" :style="quickBarStyle">
+      <!-- @mention picker (Mark, 2026-08-17: "when typing @ it shows people I
+           can at… and I want them to get a push"). Appears while the token
+           under the caret is @something with agent matches. mousedown.prevent
+           — same blur-collapse trap as every transient control here. -->
+      <div
+        v-if="mentionMatches.length"
+        class="mb-1.5 overflow-hidden rounded-xl border border-outline-gray-2 bg-surface-base shadow-lg"
+      >
+        <button
+          v-for="a in mentionMatches"
+          :key="a.user"
+          class="flex w-full items-center gap-2 px-3 py-2 text-left active:bg-surface-gray-2"
+          @mousedown.prevent
+          @click="pickMention(a)"
+        >
+          <Avatar size="sm" :label="a.agent_name" :image="a.user_image" />
+          <span class="text-sm text-ink-gray-8">{{ a.agent_name }}</span>
+          <span class="ms-auto truncate text-xs text-ink-gray-4">{{
+            a.user
+          }}</span>
+        </button>
+      </div>
       <!-- Photo/screenshot chips: uploaded already, sent with the message. -->
       <div v-if="quickAttachments.length" class="mb-1.5 flex flex-wrap gap-1.5">
         <AttachmentItem
@@ -425,8 +447,16 @@ import {
   uploadFunction,
   validateEmailWithZod,
 } from "@/utils";
+import { useAgentStore } from "@/stores/agent";
 import { useStorage } from "@vueuse/core";
-import { createResource, FeatherIcon, FileUploader, toast } from "frappe-ui";
+import {
+  Avatar,
+  call,
+  createResource,
+  FeatherIcon,
+  FileUploader,
+  toast,
+} from "frappe-ui";
 import {
   Bold,
   BulletList,
@@ -520,6 +550,101 @@ function autogrow() {
   if (!el) return;
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  updateMentionFragment();
+}
+
+// ── @mentions ────────────────────────────────────────────────────────────
+// The bar is a plain textarea, so the picker is hand-rolled: while the token
+// under the caret is "@something", agents matching it are offered; picking
+// one inserts "@Agent Name" as plain text and remembers who it refers to.
+// Notes convert those to the desktop tiptap mention markup on send (the
+// server's extract_mentions handles push + email from there); replies keep
+// plain text in the customer-facing email and create the Mention
+// notifications directly after the send lands.
+const agentStore = useAgentStore();
+const mentionFragment = ref<string | null>(null);
+let mentionTokenStart = -1;
+const mentionedAgents = ref<{ label: string; email: string }[]>([]);
+
+function updateMentionFragment() {
+  const el = quickInput.value;
+  if (!el) {
+    mentionFragment.value = null;
+    return;
+  }
+  const upToCaret = el.value.slice(0, el.selectionStart ?? el.value.length);
+  const m = upToCaret.match(/(^|\s)@([\w.'-]{0,30})$/);
+  if (!m) {
+    mentionFragment.value = null;
+    mentionTokenStart = -1;
+    return;
+  }
+  mentionTokenStart = upToCaret.length - m[2].length - 1;
+  mentionFragment.value = m[2].toLowerCase();
+}
+
+const mentionMatches = computed(() => {
+  if (mentionFragment.value === null) return [];
+  const f = mentionFragment.value;
+  return (agentStore.agents.data || [])
+    .filter((a: any) => a.user && a.user !== (window as any).agent)
+    .filter(
+      (a: any) =>
+        !f ||
+        a.agent_name?.toLowerCase().includes(f) ||
+        a.user?.toLowerCase().includes(f)
+    )
+    .slice(0, 5);
+});
+
+function pickMention(a: any) {
+  const el = quickInput.value;
+  if (!el || mentionTokenStart < 0) return;
+  const caret = el.selectionStart ?? el.value.length;
+  const label = a.agent_name;
+  quickText.value =
+    quickText.value.slice(0, mentionTokenStart) +
+    "@" +
+    label +
+    " " +
+    quickText.value.slice(caret);
+  mentionedAgents.value = [
+    ...mentionedAgents.value.filter((m) => m.email !== a.user),
+    { label, email: a.user },
+  ];
+  mentionFragment.value = null;
+  mentionTokenStart = -1;
+  nextTick(() => {
+    autogrow();
+    el.focus();
+  });
+}
+
+// Only people whose "@Name" still exists in the final text get notified —
+// a picked-then-deleted mention must not ping.
+function activeMentions(text: string) {
+  const seen = new Set<string>();
+  return mentionedAgents.value.filter((m) => {
+    if (seen.has(m.email) || !text.includes("@" + m.label)) return false;
+    seen.add(m.email);
+    return true;
+  });
+}
+
+function mentionHtml(text: string): string {
+  // Escape first, then swap each @Label for the exact span the desktop
+  // tiptap mention emits — extract_mentions() and the desktop chip both key
+  // on span[data-type="mention"] with data-id/data-label.
+  let html = textToHtml(text);
+  for (const m of activeMentions(text)) {
+    const token = escapeHtml("@" + m.label);
+    html = html
+      .split(token)
+      .join(
+        `<span class="mention" data-type="mention" data-id="${m.email}" data-label="${escapeHtml(m.label)}">${token}</span>`
+      );
+  }
+  return html;
 }
 watch(quickText, (val, old) => {
   if (val !== old && val) onUserType();
@@ -569,6 +694,11 @@ function updateKbdInset() {
 onMounted(() => {
   window.visualViewport?.addEventListener("resize", updateKbdInset);
   window.visualViewport?.addEventListener("scroll", updateKbdInset);
+  // Same lazy fetch CommentTextEditor does — the store doesn't auto-load.
+  const list: any = agentStore.agents;
+  if (!list.loading && !list.data?.length && !list.list?.promise) {
+    list.fetch();
+  }
 });
 onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("resize", updateKbdInset);
@@ -728,6 +858,24 @@ const sendMail = createResource({
   onSuccess: () => {
     sending.value = false;
     if (out.origin.value === "quick") {
+      // Reply mentions: no server-side mention pass exists for
+      // Communications, so create the HD Notifications here — the doctype's
+      // own after_insert does the push (and respects per-agent prefs).
+      // Fire-and-forget: the reply is already out.
+      for (const m of pendingReplyMentions) {
+        call("frappe.client.insert", {
+          doc: {
+            doctype: "HD Notification",
+            notification_type: "Mention",
+            user_from: (window as any).agent,
+            user_to: m.email,
+            reference_ticket: tid,
+            message: pendingReplyMessage,
+          },
+        }).catch(() => {});
+      }
+      pendingReplyMentions = [];
+      mentionedAgents.value = [];
       quickText.value = "";
       quickAttachments.value = [];
       nextTick(autogrow);
@@ -747,6 +895,9 @@ const sendMail = createResource({
   debounce: 300,
 });
 
+let pendingReplyMentions: { label: string; email: string }[] = [];
+let pendingReplyMessage = "";
+
 function sendQuick() {
   const text = quickText.value.trim();
   // A screenshot with no words is a legitimate reply.
@@ -756,6 +907,8 @@ function sendQuick() {
     return;
   }
   out.origin.value = "quick";
+  pendingReplyMentions = activeMentions(text);
+  pendingReplyMessage = text ? textToHtml(text) : "";
   out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
   out.to.value = doc.value?.raised_by || "";
   out.cc.value = "";
@@ -806,9 +959,11 @@ function sendNote(text: string) {
       dn: tid,
       method: "new_comment",
       // new_comment wants the file OBJECTS (it reads .file_url), unlike
-      // reply_via_agent which wants names.
+      // reply_via_agent which wants names. Mentions ride as the desktop
+      // tiptap markup — HDTicketComment.after_insert extracts them and
+      // pushes/emails the mentioned agents server-side.
       args: {
-        content: text ? textToHtml(text) : "",
+        content: text ? mentionHtml(text) : "",
         attachments: quickAttachments.value,
       },
     }),
@@ -816,6 +971,7 @@ function sendNote(text: string) {
       sending.value = false;
       quickText.value = "";
       quickAttachments.value = [];
+      mentionedAgents.value = [];
       mode.value = "reply";
       nextTick(autogrow);
       emit("update");
