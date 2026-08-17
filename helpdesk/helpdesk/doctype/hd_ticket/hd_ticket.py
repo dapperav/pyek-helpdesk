@@ -667,10 +667,12 @@ class HDTicket(Document):
 
     @frappe.whitelist()
     def assign_agent(self, agent: str):
+        # The Assignment HD Notification (and its push) is created by the ToDo
+        # after_insert hook (helpdesk/extends/todo.py), which fires for EVERY
+        # assignment path — including the UI's frappe.desk.form.assign_to.add,
+        # which never comes through here. Notifying here too would double-ping
+        # this one path (2026-08-17).
         assign({"assign_to": [agent], "doctype": "HD Ticket", "name": self.name})
-
-        if frappe.session.user != agent:
-            self.notify_agent(agent, "Assignment")
 
     def get_assigned_agents(self):
         assignees = get_assignees({"doctype": "HD Ticket", "name": self.name})
