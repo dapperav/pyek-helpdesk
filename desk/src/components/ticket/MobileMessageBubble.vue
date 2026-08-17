@@ -2,9 +2,11 @@
   <!-- One email as an iMessage-style bubble (Mark, 2026-08-17: "mimic what an
        iMessage chat looks like as much as possible"). Incoming: avatar beside
        a gray tail-cornered bubble, sender name in small gray above. Outgoing:
-       iMessage blue, white text, no avatar for your own messages. Time and
-       the Original escape live UNDER the bubble like iMessage's Delivered
-       line; image attachments render as media previews inside the bubble. -->
+       iMessage blue, white text, sender avatar on the RIGHT (a departure from
+       strict iMessage — Mark, later that day: "so it looks like we are
+       replying back and forth with someone"). Time and the Original escape
+       live UNDER the bubble like iMessage's Delivered line; image attachments
+       render as media previews inside the bubble. -->
   <div
     v-if="!showOriginal"
     class="flex w-full gap-1.5"
@@ -94,6 +96,13 @@
         </button>
       </div>
     </div>
+    <Avatar
+      v-if="out"
+      class="mb-5 shrink-0 self-end"
+      size="md"
+      :label="senderName"
+      :image="senderImage"
+    />
   </div>
   <div v-else class="w-full rounded-xl border border-outline-gray-2">
     <div class="flex justify-end px-3 pt-1.5">
@@ -119,9 +128,10 @@ import { AttachmentItem } from "@/components";
 import EmailArea from "@/components/EmailArea.vue";
 import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
+import { TicketContactSymbol } from "@/types";
 import { htmlToText } from "@/utils";
 import { Avatar, dayjs } from "frappe-ui";
-import { computed, ref } from "vue";
+import { computed, inject, ref } from "vue";
 
 const props = defineProps({
   activity: {
@@ -144,9 +154,17 @@ const out = computed(() => !!props.activity.outgoing);
 const senderName = computed(
   () => props.activity.sender?.full_name || props.activity.sender?.name || ""
 );
-const senderImage = computed(
-  () => getUser(props.activity.sender?.name)?.user_image
-);
+// Agents resolve through the user store; external requesters have no User
+// record, but often have a Contact photo (the same Contact.image the ticket
+// cards use) — fall back to it when the sender IS this ticket's contact.
+const ticketContact = inject(TicketContactSymbol, null);
+const senderImage = computed(() => {
+  const userImage = getUser(props.activity.sender?.name)?.user_image;
+  if (userImage) return userImage;
+  const c: any = (ticketContact as any)?.value?.data;
+  if (c?.image && c?.email_id === props.activity.sender?.name) return c.image;
+  return undefined;
+});
 // Incoming always names the sender (ticket threads are group chats — the
 // requester, CC'd people, Echo); your own messages don't need your name, a
 // teammate's outgoing does.
