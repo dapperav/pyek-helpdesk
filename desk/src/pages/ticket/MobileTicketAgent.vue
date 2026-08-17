@@ -140,28 +140,17 @@
               />
             </template>
           </Tabs>
-          <!-- Sticky footer: just the act bar now — Reply on it opens
-               MobileReplyFlow's quick bar (fixed overlays, so the flow itself
-               lives outside this container). The act bar hides itself while
-               the flow is open (v-show inside the component — it is
-               multi-root, so v-show here would land on a fragment and
-               silently do nothing).
-               bottom = the glass nav's height (0 when it's hidden, which is
-               the normal tapped-in case), so a cold-launched ticket's act bar
-               sits ABOVE the frosted nav instead of underneath it. -->
+          <!-- Trailing spacer: MobileReplyFlow's composer bar is fixed to the
+               screen bottom, so page-scrolled tabs (Details etc.) need this
+               much runway to keep their last row readable above it. The
+               thread tab pads its own scroller (TicketAgentActivities). -->
           <div
-            class="sticky z-50 bg-surface-base"
-            style="bottom: var(--pyek-nav-h, 0px)"
-          >
-            <MobileTicketActBar
-              :suppressed="replyFlowOpen"
-              @reply="replyFlowRef?.openQuick()"
-            />
-          </div>
+            aria-hidden="true"
+            style="height: calc(76px + env(safe-area-inset-bottom, 0px))"
+          />
           <MobileReplyFlow
             ref="replyFlowRef"
             :key="ticket.doc?.name"
-            @state="(v: boolean) => (replyFlowOpen = v)"
             @update="
               () => {
                 reloadTicket(props.ticketId);
@@ -257,7 +246,6 @@ import CustomActions from "@/components/CustomActions.vue";
 import LucideSparkles from "~icons/lucide/sparkles";
 import AiAssistPanel from "@/components/ticket-agent/AiAssistPanel.vue";
 import MobileReplyFlow from "@/components/ticket-agent/MobileReplyFlow.vue";
-import MobileTicketActBar from "@/components/ticket-agent/MobileTicketActBar.vue";
 import AssignTo from "@/components/ticket-agent/AssignTo.vue";
 import MoveTeamButton from "@/components/ticket-agent/MoveTeamButton.vue";
 import SetContactPhoneModal from "@/components/ticket/SetContactPhoneModal.vue";
@@ -309,7 +297,6 @@ const ticketAgentActivitiesRef = ref<InstanceType<
   typeof TicketAgentActivities
 > | null>(null);
 const replyFlowRef = ref<InstanceType<typeof MobileReplyFlow> | null>(null);
-const replyFlowOpen = ref(false);
 
 const subjectInput = ref(null);
 const showPhoneModal = ref(false);

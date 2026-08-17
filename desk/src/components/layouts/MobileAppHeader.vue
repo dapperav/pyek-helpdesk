@@ -14,6 +14,19 @@
       padding-top: env(safe-area-inset-top);
     "
   >
+    <!-- Back arrow on the ticket detail (Mark, 2026-08-17: "no way to go back
+         without swiping"). v-show, never v-if — its condition flips on the
+         exact list <-> detail transition, same teleport-churn rule as
+         everything else in this bar. Falls back to the tickets list when the
+         app was cold-launched onto the ticket (no in-app history). -->
+    <button
+      v-show="showBack"
+      class="-ms-1 flex size-8 shrink-0 items-center justify-center text-white active:opacity-70"
+      :aria-label="__('Back')"
+      @click="goBack"
+    >
+      <FeatherIcon name="chevron-left" class="size-6" />
+    </button>
     <!-- Brand mark first, then the view-switcher teleport target. On the
          tickets list the switcher renders the view name as the page title
          ("POS Tickets ▾") and the wordmark steps aside (v-show — same rule as
@@ -71,18 +84,29 @@
 
 <script setup>
 import PyekMark from "@/components/PyekMark.vue";
+import { canGoBackInApp } from "@/composables/mobile";
 import { __ } from "@/translation";
 import CallUI from "../telephony/CallUI.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTelephonyStore } from "@/stores/telephony";
 import { computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 const { user } = useAuthStore();
 
 // Show Create in the navy bar only on the tickets list (its create route).
 const route = useRoute();
+const router = useRouter();
 const showCreate = computed(() => route.name === "TicketsAgent");
+const showBack = computed(() => route.name === "TicketAgent");
+
+function goBack() {
+  if (canGoBackInApp.value) {
+    router.back();
+  } else {
+    router.push({ name: "TicketsAgent" });
+  }
+}
 
 const telephonyStore = useTelephonyStore();
 

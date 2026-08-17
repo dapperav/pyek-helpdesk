@@ -8,18 +8,33 @@
        Multi-root on purpose; every root carries its own v-show (v-show on a
        fragment component silently does nothing — the act bar learned that). -->
 
-  <!-- ── Quick bar ─────────────────────────────────────────────────────── -->
-  <div
-    v-show="quickOpen"
-    class="fixed inset-0 z-[60] flex flex-col justify-end bg-black/30"
-    @click.self="closeQuick"
-  >
-    <!-- AI draft chip: floats above the bar, fills the input on tap, and is
-         ignorable. Only for drafts grounded in an enricher branch — a generic
-         acknowledgement isn't worth interruption real estate. -->
+  <!-- ── Persistent composer bar (Mark, 2026-08-17: "the reply button needs
+       to sit at the bottom of the screen always… like a normal texting app").
+       Fixed to the real screen bottom — position:sticky only pins when the
+       content overflows, which is how the old act bar floated mid-screen on
+       short threads. Slim [resolve][input][send] row at rest; focusing the
+       input expands it into the full quick bar (Note toggle, AI chip,
+       full-composer escape). "Take it" is gone: sending claims the ticket,
+       and assignment lives in the header. -->
+  <div v-show="!composeOpen" class="fixed inset-x-0 bottom-0 z-[55]">
+    <!-- SLA pill: floats only when the deadline is close enough to act on
+         (within a day, or breached less than a day ago). -->
+    <div v-show="slaPill" class="mb-1.5 flex justify-center">
+      <span
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium shadow"
+        :class="slaPill?.cls"
+        >{{ slaPill?.text }}</span
+      >
+    </div>
+    <!-- AI draft chip: appears with the expanded bar, fills the input on tap,
+         and is ignorable. Only for drafts grounded in an enricher branch.
+         mousedown.prevent everywhere below: these controls exist only while
+         `expanded` is true, and a bare mousedown would blur the input,
+         collapse the bar, and remove the control before its click lands. -->
     <button
-      v-if="showAiChip"
-      class="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-outline-gray-2 bg-surface-base px-3 py-2 text-left shadow-lg"
+      v-if="expanded && showAiChip"
+      class="mx-3 mb-2 flex w-auto items-center gap-2 rounded-xl border border-outline-gray-2 bg-surface-base px-3 py-2 text-left shadow-lg"
+      @mousedown.prevent
       @click="useAiDraft"
     >
       <LucideSparkles class="size-4 shrink-0 text-ink-gray-6" />
@@ -31,12 +46,8 @@
       }}</span>
     </button>
 
-    <div
-      class="border-t bg-surface-base px-2.5 pt-2"
-      :style="quickBarStyle"
-      @click.stop
-    >
-      <div class="mb-1.5 flex items-center gap-2">
+    <div class="border-t bg-surface-base px-2.5 pt-1.5" :style="quickBarStyle">
+      <div v-if="expanded" class="mb-1.5 flex items-center gap-2">
         <div class="flex rounded-lg bg-surface-gray-2 p-0.5">
           <button
             class="rounded-md px-3 py-0.5 text-xs font-medium"
@@ -45,6 +56,7 @@
                 ? 'bg-surface-base text-ink-gray-9 shadow-sm'
                 : 'text-ink-gray-5'
             "
+            @mousedown.prevent
             @click="setMode('reply')"
           >
             {{ __("Reply") }}
@@ -56,6 +68,7 @@
                 ? 'bg-surface-amber-2 text-ink-amber-6 shadow-sm'
                 : 'text-ink-gray-5'
             "
+            @mousedown.prevent
             @click="setMode('note')"
           >
             {{ __("Note") }}
@@ -63,7 +76,26 @@
         </div>
         <span class="truncate text-xs text-ink-gray-5">{{ modeLabel }}</span>
       </div>
-      <div class="flex items-end gap-1.5 pb-2">
+      <div class="flex items-end gap-1.5 pb-1.5">
+        <!-- Resolve: two taps on purpose — the first arms it ("Resolve?"),
+             the second commits. A bare single-tap next to the keyboard zone
+             invites accidents. Hidden while typing; send is the action then. -->
+        <button
+          v-if="!expanded && canResolve"
+          class="flex h-[38px] shrink-0 items-center justify-center rounded-full border transition-colors"
+          :class="
+            resolveArmed
+              ? 'border-transparent px-3 text-sm font-semibold text-white'
+              : 'w-[38px] border-outline-gray-2 bg-surface-base text-ink-green-3'
+          "
+          :style="resolveArmed ? { backgroundColor: '#2fb383' } : {}"
+          :aria-label="__('Resolve')"
+          :disabled="resolving"
+          @click="tapResolve"
+        >
+          <template v-if="resolveArmed">{{ __("Resolve?") }}</template>
+          <LucideCircleCheck v-else class="size-4.5" />
+        </button>
         <textarea
           ref="quickInput"
           v-model="quickText"
@@ -72,10 +104,14 @@
           class="max-h-[120px] min-h-[38px] flex-1 resize-none rounded-[19px] border border-outline-gray-2 px-3.5 py-2 text-base text-ink-gray-9 placeholder-ink-gray-4 focus:outline-none focus:ring-1 focus:ring-outline-gray-3"
           :class="mode === 'note' ? 'bg-surface-amber-1' : 'bg-surface-gray-1'"
           @input="autogrow"
+          @focus="focused = true"
+          @blur="focused = false"
         />
         <button
+          v-if="expanded"
           class="flex h-[38px] w-9 shrink-0 items-center justify-center text-ink-gray-5"
           :aria-label="__('Full composer')"
+          @mousedown.prevent
           @click="expandFromQuick"
         >
           <LucideMaximize2 class="size-4.5" />
@@ -85,6 +121,7 @@
           :style="{ backgroundColor: mode === 'note' ? '#b45309' : '#1b2a4a' }"
           :disabled="!quickText.trim() || sending"
           :aria-label="mode === 'note' ? __('Add note') : __('Send reply')"
+          @mousedown.prevent
           @click="sendQuick"
         >
           <LucideArrowUp class="size-4.5" />
@@ -368,16 +405,16 @@ import {
   onMounted,
   ref,
   watch,
-  watchEffect,
 } from "vue";
 import LucideArrowUp from "~icons/lucide/arrow-up";
 import LucideChevronRight from "~icons/lucide/chevron-right";
+import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideMaximize2 from "~icons/lucide/maximize-2";
 import LucidePaperclip from "~icons/lucide/paperclip";
 import LucideSparkles from "~icons/lucide/sparkles";
 import LucideX from "~icons/lucide/x";
 
-const emit = defineEmits(["update", "state"]);
+const emit = defineEmits(["update"]);
 
 const ticket = inject(TicketSymbol)!;
 const doc = computed(() => ticket.value?.doc);
@@ -390,10 +427,13 @@ const ticketStatusStore = useTicketStatusStore();
 const userResource = getUserEmailInfo();
 const { onUserType, cleanup: cleanupTyping } = useTyping(tid);
 
-// ── Open/closed state (component-local: nothing here survives this ticket) ──
-const quickOpen = ref(false);
+// ── Bar state (component-local: nothing here survives this ticket) ──
+// The bar is ALWAYS rendered; `expanded` is presentation, not existence.
+// Expanded while focused or while a draft sits in the box, so a half-typed
+// reply never collapses out of view on blur.
 const composeOpen = ref(false);
-watchEffect(() => emit("state", quickOpen.value || composeOpen.value));
+const focused = ref(false);
+const expanded = computed(() => focused.value || !!quickText.value.trim());
 
 // ── Quick bar ────────────────────────────────────────────────────────────
 const mode = ref<"reply" | "note">("reply");
@@ -435,16 +475,14 @@ watch(quickText, (val, old) => {
   nextTick(autogrow);
 });
 
+// Entry points that used to open the overlay (the contact header's email
+// icon) now just focus the always-present bar.
 function openQuick() {
   mode.value = "reply";
-  quickOpen.value = true;
   nextTick(() => {
     autogrow();
     quickInput.value?.focus();
   });
-}
-function closeQuick() {
-  quickOpen.value = false;
 }
 
 // ── AI draft chip ────────────────────────────────────────────────────────
@@ -484,6 +522,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener("resize", updateKbdInset);
   window.visualViewport?.removeEventListener("scroll", updateKbdInset);
+  if (slaTimer) clearInterval(slaTimer);
+  if (armTimer) clearTimeout(armTimer);
+  if (toastTimer) clearTimeout(toastTimer);
   cleanupTyping();
 });
 const quickBarStyle = computed(() => ({
@@ -580,7 +621,7 @@ function openCompose(payload: ComposePayload = {}) {
     ccEmailsM.value = asList(payload.cc);
     bccEmailsM.value = asList(payload.bcc);
   }
-  quickOpen.value = false;
+  quickInput.value?.blur();
   composeOpen.value = true;
   nextTick(() => editorRef.value?.editor?.commands?.focus("start"));
 }
@@ -637,7 +678,7 @@ const sendMail = createResource({
     sending.value = false;
     if (out.origin.value === "quick") {
       quickText.value = "";
-      quickOpen.value = false;
+      nextTick(autogrow);
     } else {
       newEmail.value = null;
       composeDraft.value = null;
@@ -717,7 +758,7 @@ function sendNote(text: string) {
       sending.value = false;
       quickText.value = "";
       mode.value = "reply";
-      quickOpen.value = false;
+      nextTick(autogrow);
       emit("update");
     },
     onError: () => {
@@ -755,19 +796,34 @@ function moveToWaiting() {
   );
 }
 
-// ── Resolve toast ────────────────────────────────────────────────────────
-const toastVisible = ref(false);
+// ── Resolve (bar icon + toast share this) ────────────────────────────────
 const resolving = ref(false);
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
-function showToast() {
-  toastVisible.value = true;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toastVisible.value = false), 6000);
+const resolveArmed = ref(false);
+let armTimer: ReturnType<typeof setTimeout> | null = null;
+
+const canResolve = computed(() => {
+  const status = doc.value?.status;
+  if (!status) return false;
+  return ticketStatusStore.getStatus(status)?.category !== "Resolved";
+});
+
+function tapResolve() {
+  if (!resolveArmed.value) {
+    resolveArmed.value = true;
+    if (armTimer) clearTimeout(armTimer);
+    armTimer = setTimeout(() => (resolveArmed.value = false), 3500);
+    return;
+  }
+  if (armTimer) clearTimeout(armTimer);
+  resolveArmed.value = false;
+  resolveTicket();
 }
-async function resolveFromToast() {
+
+async function resolveTicket() {
   if (resolving.value) return;
   resolving.value = true;
   try {
+    // Acting = taking it: resolving an unassigned ticket claims it first.
     if (!parseAssign(doc.value?._assign).length) {
       await selfAssignTicket(tid);
     }
@@ -782,6 +838,66 @@ async function resolveFromToast() {
     resolving.value = false;
   }
 }
+
+// ── SLA pill ─────────────────────────────────────────────────────────────
+// Ticks every 30s so the countdown moves while the screen stays open. Only
+// shows when the deadline is actionable-close: due within a day, or breached
+// less than a day ago (an older breach is history, not a call to action).
+const now = ref(Date.now());
+let slaTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  slaTimer = setInterval(() => (now.value = Date.now()), 30_000);
+});
+
+function parseFrappeDate(value: string): number {
+  return new Date(value.replace(" ", "T")).getTime();
+}
+function fmtSpan(ms: number): string {
+  const mins = Math.max(1, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+const slaPill = computed(() => {
+  const d = doc.value;
+  if (!d || !canResolve.value) return null;
+  const target =
+    !d.first_responded_on && d.response_by
+      ? { by: d.response_by, verb: __("Reply") }
+      : d.resolution_by
+      ? { by: d.resolution_by, verb: __("Resolve") }
+      : null;
+  if (!target) return null;
+  const diff = parseFrappeDate(target.by) - now.value;
+  if (diff >= 0 && diff < 24 * 3600_000) {
+    return {
+      text: `${target.verb} ${__("due in")} ${fmtSpan(diff)}`,
+      cls:
+        diff < 2 * 3600_000
+          ? "bg-surface-amber-2 text-ink-amber-6"
+          : "bg-surface-gray-2 text-ink-gray-7",
+    };
+  }
+  if (diff < 0 && -diff <= 24 * 3600_000) {
+    return {
+      text: `${target.verb} ${__("overdue")} ${fmtSpan(-diff)}`,
+      cls: "bg-surface-red-1 text-ink-red-6",
+    };
+  }
+  return null;
+});
+
+// ── Resolve toast ────────────────────────────────────────────────────────
+const toastVisible = ref(false);
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+function showToast() {
+  toastVisible.value = true;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastVisible.value = false), 6000);
+}
+const resolveFromToast = resolveTicket;
 
 defineExpose({ openQuick, openCompose });
 </script>

@@ -3,6 +3,11 @@
   <FadedScrollableDiv
     class="flex flex-col flex-1 overflow-y-auto"
     :mask-length="20"
+    :style="
+      bubble
+        ? { paddingBottom: 'calc(76px + env(safe-area-inset-bottom, 0px))' }
+        : undefined
+    "
   >
     <div v-if="activities.length" class="activities flex-1 h-full mt-0.5">
       <div
