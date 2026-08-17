@@ -2,7 +2,7 @@
   <!-- The phone's reply flow (Mark's picks, 2026-08-15): a chat-style quick bar
        as the default path, a full-screen native composer as the escalation, an
        AI-draft chip bridging the enricher into the bar, and an optional
-       "Resolve ticket?" toast after a reply goes out. Replaces the desktop
+       "Close ticket?" toast after a reply goes out. Replaces the desktop
        EmailEditor sheet on mobile entirely — and with it the module-level
        showEmailBox state whose open/closed value used to leak across tickets.
        Multi-root on purpose; every root carries its own v-show (v-show on a
@@ -94,23 +94,25 @@
         <span class="truncate text-xs text-ink-gray-5">{{ modeLabel }}</span>
       </div>
       <div class="flex items-end gap-1.5 pb-1.5">
-        <!-- Resolve: two taps on purpose — the first arms it ("Resolve?"),
-             the second commits. A bare single-tap next to the keyboard zone
-             invites accidents. Hidden while typing; send is the action then. -->
+        <!-- Close: two taps on purpose — the first arms it ("Close?"), the
+             second commits. Sets status CLOSED (Mark, 2026-08-17: "that is
+             the typical way we mark things when we are done"), skipping the
+             desktop resolution-note prompt just like the old Resolve did.
+             Hidden while typing; send is the action then. -->
         <button
-          v-if="!expanded && canResolve"
+          v-if="!expanded && canClose"
           class="flex h-[38px] shrink-0 items-center justify-center rounded-full border transition-colors"
           :class="
-            resolveArmed
+            closeArmed
               ? 'border-transparent px-3 text-sm font-semibold text-white'
               : 'w-[38px] border-outline-gray-2 bg-surface-base text-ink-green-3'
           "
-          :style="resolveArmed ? { backgroundColor: '#2fb383' } : {}"
-          :aria-label="__('Resolve')"
-          :disabled="resolving"
-          @click="tapResolve"
+          :style="closeArmed ? { backgroundColor: '#2fb383' } : {}"
+          :aria-label="__('Close ticket')"
+          :disabled="closing"
+          @click="tapClose"
         >
-          <template v-if="resolveArmed">{{ __("Resolve?") }}</template>
+          <template v-if="closeArmed">{{ __("Close?") }}</template>
           <LucideCircleCheck v-else class="size-4.5" />
         </button>
         <!-- Photo from the phone (Mark, 2026-08-17: screenshots). Unrestricted
@@ -380,15 +382,15 @@
     style="background: #123d2e; bottom: calc(var(--pyek-nav-h, 0px) + 76px)"
   >
     <span class="whitespace-nowrap text-sm font-medium text-white">
-      {{ __("Sent · Resolve ticket?") }}
+      {{ __("Sent · Close ticket?") }}
     </span>
     <button
       class="rounded-lg px-3 py-1 text-sm font-semibold text-[#04120c]"
       style="background: #2fb383"
-      :disabled="resolving"
-      @click="resolveFromToast"
+      :disabled="closing"
+      @click="closeFromToast"
     >
-      {{ __("Resolve") }}
+      {{ __("Close") }}
     </button>
   </div>
 
@@ -853,46 +855,49 @@ function moveToWaiting() {
   );
 }
 
-// ── Resolve (bar icon + toast share this) ────────────────────────────────
-const resolving = ref(false);
-const resolveArmed = ref(false);
+// ── Close (bar icon + toast share this) ──────────────────────────────────
+// Sets status CLOSED, not Resolved — closing is how this team marks done
+// (Mark, 2026-08-17). The desktop resolution-note prompt is deliberately
+// skipped, same as the old one-tap Resolve was.
+const closing = ref(false);
+const closeArmed = ref(false);
 let armTimer: ReturnType<typeof setTimeout> | null = null;
 
-const canResolve = computed(() => {
+const canClose = computed(() => {
   const status = doc.value?.status;
   if (!status) return false;
   return ticketStatusStore.getStatus(status)?.category !== "Resolved";
 });
 
-function tapResolve() {
-  if (!resolveArmed.value) {
-    resolveArmed.value = true;
+function tapClose() {
+  if (!closeArmed.value) {
+    closeArmed.value = true;
     if (armTimer) clearTimeout(armTimer);
-    armTimer = setTimeout(() => (resolveArmed.value = false), 3500);
+    armTimer = setTimeout(() => (closeArmed.value = false), 3500);
     return;
   }
   if (armTimer) clearTimeout(armTimer);
-  resolveArmed.value = false;
-  resolveTicket();
+  closeArmed.value = false;
+  closeTicket();
 }
 
-async function resolveTicket() {
-  if (resolving.value) return;
-  resolving.value = true;
+async function closeTicket() {
+  if (closing.value) return;
+  closing.value = true;
   try {
-    // Acting = taking it: resolving an unassigned ticket claims it first.
+    // Acting = taking it: closing an unassigned ticket claims it first.
     if (!parseAssign(doc.value?._assign).length) {
       await selfAssignTicket(tid);
     }
-    await ticket.value.setValue.submit({ status: "Resolved" });
+    await ticket.value.setValue.submit({ status: "Closed" });
     toastVisible.value = false;
     if (toastTimer) clearTimeout(toastTimer);
-    toast.success(__("Ticket resolved."));
+    toast.success(__("Ticket closed."));
     emit("update");
   } catch {
-    toast.error(__("Could not resolve the ticket."));
+    toast.error(__("Could not close the ticket."));
   } finally {
-    resolving.value = false;
+    closing.value = false;
   }
 }
 
@@ -919,7 +924,7 @@ function fmtSpan(ms: number): string {
 
 const slaPill = computed(() => {
   const d = doc.value;
-  if (!d || !canResolve.value) return null;
+  if (!d || !canClose.value) return null;
   const target =
     !d.first_responded_on && d.response_by
       ? { by: d.response_by, verb: __("Reply") }
@@ -954,7 +959,7 @@ function showToast() {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (toastVisible.value = false), 6000);
 }
-const resolveFromToast = resolveTicket;
+const closeFromToast = closeTicket;
 
 defineExpose({ openQuick, openCompose });
 </script>
