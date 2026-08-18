@@ -52,6 +52,12 @@
                     v-if="item.key === 'notifications' && item.badge"
                     class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-surface-blue-5"
                   />
+                  <!-- Live queue count (POS/IT/Mine): cyan pill riding the
+                       icon so it reads on the collapsed rail too. Red stays
+                       reserved for the notifications bell. -->
+                  <span v-else-if="item.count" class="pyek-railcount">{{
+                    item.count > 99 ? "99+" : item.count
+                  }}</span>
                 </span>
               </template>
               <template #suffix>
@@ -115,6 +121,7 @@ import UserMenu from "@/components/UserMenu.vue";
 import { useDevice } from "@/composables";
 import { currentView, useView } from "@/composables/useView";
 import { useNotificationStore } from "@/stores/notification";
+import { useQueueCountsStore } from "@/stores/queueCounts";
 import { useSidebarStore } from "@/stores/sidebar";
 import { useTelephonyStore } from "@/stores/telephony";
 import { __ } from "@/translation";
@@ -153,7 +160,17 @@ const device = useDevice();
 const notificationStore = useNotificationStore();
 const sidebarStore = useSidebarStore();
 const { isCallingEnabled } = storeToRefs(useTelephonyStore());
-const { pinnedViews, viewActions, handleView } = useView();
+const { pinnedViews, publicViews, viewActions, handleView } = useView();
+
+// Rail queue counts (agent portal only): started once, shared store.
+const queueCounts = useQueueCountsStore();
+if (!isCustomerPortal.value) queueCounts.start();
+
+// Saved-view labels are stable across sites; names are not — resolve at
+// click/render time from the loaded public views.
+function publicViewByLabel(label: string) {
+  return (publicViews.value || []).find((v: any) => v.label === label);
+}
 
 const showCommandPalette = ref(false);
 
@@ -213,17 +230,56 @@ const navItems = computed(() => {
     : agentPortalSidebarOptions;
   return options
     .filter((item) => isCallingEnabled.value || item.label !== __("Call Logs"))
-    .map((option, index) => ({
-      label: option.label,
-      icon: option.icon,
-      isActive: activeItem.value === option.to,
-      onClick: () => selectItem(option.to, { name: option.to }),
-      // Separate the nav group from the search/notification tools above it.
-      spacedTop: index === 0 && !isCustomerPortal.value,
-      key: option.label,
-      badge:
-        option.to === "AgentKnowledgeBase" ? kbConfirmCount.data || 0 : 0,
-    }));
+    .map((option: any, index: number) => {
+      // Queue jump (POS/IT/Mine): opens the saved view, wears its live count.
+      if (option.view) {
+        const v = publicViewByLabel(option.view);
+        return {
+          label: option.label,
+          icon: option.icon,
+          isActive: !!v && activeItem.value === v.name,
+          onClick: () => {
+            const target = publicViewByLabel(option.view);
+            if (!target) return; // views still loading — next click lands
+            selectItem(
+              target.name,
+              { name: "TicketsAgent", query: { view: target.name } },
+              () => {
+                currentView.value = { label: target.label, icon: target.icon };
+              }
+            );
+          },
+          spacedTop: !!option.spacedTop,
+          key: "view:" + option.view,
+          count: queueCounts.counts[option.countKey] || 0,
+          badge: 0,
+        };
+      }
+      // Analytics: a jump to Home's chart section, not a place — never active.
+      if (option.hash) {
+        return {
+          label: option.label,
+          icon: option.icon,
+          isActive: false,
+          onClick: () => router.push({ name: option.to, hash: option.hash }),
+          spacedTop: !!option.spacedTop,
+          key: "hash:" + option.hash,
+          badge: 0,
+        };
+      }
+      return {
+        label: option.label,
+        icon: option.icon,
+        isActive: activeItem.value === option.to,
+        onClick: () => selectItem(option.to, { name: option.to }),
+        // Separate the nav group from the search/notification tools above it.
+        spacedTop:
+          !!option.spacedTop || (index === 0 && !isCustomerPortal.value),
+        key: option.label,
+        badge:
+          option.to === "AgentKnowledgeBase" ? kbConfirmCount.data || 0 : 0,
+      };
+    });
 });
 
 const searchItem = computed(() => ({
@@ -303,3 +359,27 @@ watch(
   () => (activeItem.value = currentRouteKey())
 );
 </script>
+
+<style>
+/* The rail's navy theme itself already ships in index.css, scoped to
+   [data-slot="sidebar"] (the PYEK BRANDING block) — nothing to restyle here.
+
+   Live queue count riding a rail icon: cyan pill, red stays the bell's. */
+.pyek-railcount {
+  position: absolute;
+  right: -10px;
+  top: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3.5px;
+  border-radius: 8px;
+  background: #0891b2;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+</style>
