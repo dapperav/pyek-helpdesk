@@ -208,6 +208,9 @@ const options = computed(() => ({
   isCustomerPortal: isCustomerPortal.value,
   // PYEK: Outlook-inbox row layout for the agent portal only.
   outlookRows: !isCustomerPortal.value,
+  // PYEK: the desktop board (Mark 2026-08-18) — ListViewBuilder gates it to
+  // desktop widths and pairs it with the Board ⇄ List toggle.
+  board: !isCustomerPortal.value,
   selectable: true,
   showSelectBanner: true,
   selectBannerActions,
