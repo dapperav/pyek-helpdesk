@@ -1,6 +1,5 @@
 import LucideBookOpen from "~icons/lucide/book-open";
 import LucideTicket from "~icons/lucide/ticket";
-import LucideLayoutDashboard from "~icons/lucide/layout-dashboard";
 import PhoneIcon from "../icons/PhoneIcon.vue";
 import LucideHome from "~icons/lucide/home";
 import { __ } from "@/translation";
@@ -16,11 +15,9 @@ export const agentPortalSidebarOptions = [
     icon: LucideHome,
     to: "Home",
   },
-  {
-    label: __("Dashboard"),
-    icon: LucideLayoutDashboard,
-    to: "Dashboard"
-  },
+  // Dashboard folded into Home (Mark, 2026-08-18): the ocean Home carries the
+  // analytics now, so the separate entry retired. The route still answers by
+  // URL for anyone with a bookmark.
   {
     label: __("Tickets"),
     icon: LucideTicket,

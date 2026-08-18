@@ -4,7 +4,11 @@ import { useStorage } from "@vueuse/core";
 
 export const useSidebarStore = defineStore("sidebar", () => {
   const isOpen = ref(true);
-  const isExpanded = useStorage("sidebar_is_expanded", true);
+  // The icon rail is the default (Mark, 2026-08-18): navigation collapsed to
+  // icons everywhere; Home's pools carry the views. New storage key on
+  // purpose — everyone lands on the rail once, and their own toggle sticks
+  // from there.
+  const isExpanded = useStorage("sidebar_rail_expanded", false);
   // Match frappe-ui Sidebar's width/collapsedWidth props (15rem/3rem),
   // since the notifications panel anchors against this value.
   const width = computed(() => {

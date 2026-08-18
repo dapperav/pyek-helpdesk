@@ -33,6 +33,7 @@ const SCENES: Record<string, any> = {
     chipDone: "#d8f5c9",
     dateSuffix: __("first light"),
     inboxLabel: __("Overnight arrivals"),
+    deep: "#2e3f66",
   },
   day: {
     pageBg: "#fbfdff",
@@ -57,6 +58,7 @@ const SCENES: Record<string, any> = {
     chipDone: "#86efac",
     glowWarn: "0 2px 16px rgba(253,164,175,0.55)",
     glowDone: "0 2px 16px rgba(134,239,172,0.4)",
+    deep: "#073a52",
   },
   golden: {
     pageBg: "#fdfbf7",
@@ -80,6 +82,7 @@ const SCENES: Record<string, any> = {
     chipMe: "#ffe4b8",
     chipDone: "#d8f5c9",
     dateSuffix: __("golden hour"),
+    deep: "#8a4517",
   },
   night: {
     pageBg: "linear-gradient(180deg, #081226 0%, #0b1e3c 50%, #0c2c4e 100%)",
@@ -107,6 +110,7 @@ const SCENES: Record<string, any> = {
     glowWarn: "0 0 18px rgba(251,113,133,0.8)",
     glowDone: "0 0 18px rgba(134,239,172,0.6)",
     dateSuffix: __("quiet hours on · urgent only"),
+    deep: "#02101f",
   },
 };
 
@@ -156,6 +160,8 @@ export function useSunsetScene() {
     "--who-ink": scene.value.whoInk,
     "--card-bg": scene.value.cardBg || scene.value.poolBg,
     "--card-border": scene.value.cardBorder || scene.value.poolBorder,
+    // What deep water fades to (depth-darkening pools, Mark 2026-08-18)
+    "--deep": scene.value.deep || "#073a52",
   }));
 
   const greeting = computed(() => {

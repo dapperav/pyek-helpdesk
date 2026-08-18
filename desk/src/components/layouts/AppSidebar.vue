@@ -153,7 +153,7 @@ const device = useDevice();
 const notificationStore = useNotificationStore();
 const sidebarStore = useSidebarStore();
 const { isCallingEnabled } = storeToRefs(useTelephonyStore());
-const { pinnedViews, publicViews, viewActions, handleView } = useView();
+const { pinnedViews, viewActions, handleView } = useView();
 
 const showCommandPalette = ref(false);
 
@@ -267,13 +267,9 @@ const mainItems = computed(() => {
 
 const sections = computed(() => {
   const result = [{ label: "", items: mainItems.value, collapsible: false }];
-  if (publicViews.value?.length && !isCustomerPortal.value) {
-    result.push({
-      label: __("Public Views"),
-      items: parseViews(publicViews.value),
-      collapsible: true,
-    });
-  }
+  // Public Views left the sidebar (Mark, 2026-08-18): the Home board's pools
+  // ARE the public views now. Private views stay — they have no Home
+  // representation and are personal by definition.
   if (pinnedViews.value?.length) {
     result.push({
       label: __("Private Views"),
