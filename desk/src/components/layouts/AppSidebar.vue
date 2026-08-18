@@ -107,7 +107,10 @@
       </div>
     </div>
   </Sidebar>
-  <CP v-if="!mobile" v-model="showCommandPalette" />
+  <!-- Universal ticket search (agent desktop) — replaced the old command
+       palette 2026-08-18; CP's only real job was routing to the search page,
+       and customers never had a Search entry at all. -->
+  <PyekUniversalSearch v-if="!mobile && !isCustomerPortal" />
   <ViewModal
     v-if="viewDialogConfig.show"
     v-model="viewDialogConfig"
@@ -116,8 +119,9 @@
 </template>
 
 <script setup lang="ts">
-import CP from "@/components/command-palette/CP.vue";
+import PyekUniversalSearch from "@/components/PyekUniversalSearch.vue";
 import UserMenu from "@/components/UserMenu.vue";
+import { openUniversalSearch } from "@/composables/universalSearch";
 import { useDevice } from "@/composables";
 import { currentView, useView } from "@/composables/useView";
 import { useNotificationStore } from "@/stores/notification";
@@ -172,7 +176,6 @@ function publicViewByLabel(label: string) {
   return (publicViews.value || []).find((v: any) => v.label === label);
 }
 
-const showCommandPalette = ref(false);
 
 // Local modal state for the per-view kebab menu (edit/duplicate). The action
 // logic itself is shared via useView so the sidebar and breadcrumb stay in sync.
@@ -285,7 +288,7 @@ const navItems = computed(() => {
 const searchItem = computed(() => ({
   label: __("Search"),
   icon: LucideSearch,
-  onClick: () => (showCommandPalette.value = true),
+  onClick: () => openUniversalSearch(),
   shortcut: true,
   key: "search",
 }));
