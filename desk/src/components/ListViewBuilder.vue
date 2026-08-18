@@ -7,6 +7,20 @@
     ]"
     v-if="showViewControls"
   >
+    <!-- Universal search (PYEK, desktop tickets): the always-visible door to
+         the same overlay the rail's Search opens — every ticket, every
+         status. -->
+    <button
+      v-if="boardAvailable"
+      type="button"
+      class="pyek-searchbox"
+      :aria-label="__('Search all tickets')"
+      @click="openUniversalSearch()"
+    >
+      <LucideSearch class="size-3.5 shrink-0" />
+      <span class="truncate">{{ __("Search any ticket — name, keyword, or number…") }}</span>
+      <kbd>/</kbd>
+    </button>
     <QuickFilters v-if="!isMobileView" />
     <div v-if="!isMobileView" class="-ml-2 h-5 border-l"></div>
     <div
@@ -283,8 +297,10 @@ import ListRows from "./ListRows.vue";
 import OutlookTicketRow from "./ticket/OutlookTicketRow.vue";
 import PyekTicketBoard from "./ticket/PyekTicketBoard.vue";
 import TicketActionSheet from "./ticket/TicketActionSheet.vue";
+import { openUniversalSearch } from "@/composables/universalSearch";
 import LucideColumns3 from "~icons/lucide/columns-3";
 import LucideList from "~icons/lucide/list";
+import LucideSearch from "~icons/lucide/search";
 
 interface P {
   options: {
@@ -1056,6 +1072,37 @@ defineExpose(exposeFunctions);
 </script>
 
 <style scoped>
+/* Universal-search door (PYEK): looks like an input, opens the overlay. */
+.pyek-searchbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 400px;
+  min-width: 0;
+  border: 1px solid var(--outline-gray-1);
+  border-radius: 9px;
+  background: var(--surface-white, #fff);
+  padding: 6px 11px;
+  font-size: 13px;
+  color: var(--ink-gray-5);
+  cursor: text;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.pyek-searchbox:hover {
+  border-color: var(--outline-gray-2);
+}
+.pyek-searchbox kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-gray-4);
+  border: 1px solid var(--outline-gray-1);
+  border-radius: 5px;
+  padding: 0 6px;
+  background: var(--surface-gray-1, #f7fafd);
+}
+
 /* Board ⇄ List segmented toggle (PYEK). */
 .pyek-vmode {
   display: flex;
