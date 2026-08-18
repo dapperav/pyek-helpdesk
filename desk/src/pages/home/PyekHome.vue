@@ -199,8 +199,9 @@
         </div>
       </div>
 
-      <!-- ANALYTICS: six weeks of swell -->
-      <div>
+      <!-- ANALYTICS: six weeks of swell. The id is the rail's Analytics
+           jump target (#analytics). -->
+      <div id="analytics" class="scroll-mt-3">
         <p class="seclabel">{{ __("Analytics — six weeks of swell") }}</p>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
           <div v-for="ch in waveCharts" :key="ch.title" class="chart-card">
@@ -270,8 +271,8 @@ import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
 import { prettyDate } from "@/utils";
 import { Button, createResource, dayjs, toast, usePageMeta } from "frappe-ui";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 usePageMeta(() => ({ title: __("Home") }));
 
@@ -351,7 +352,21 @@ const humanRows = computed(() =>
 );
 
 const router = useRouter();
+const route = useRoute();
 const { publicViews, pinnedViews } = useView();
+
+// The rail's Analytics icon lands here with #analytics — scroll the charts
+// into view on arrival (mount for cross-page jumps, watch for in-page ones).
+function scrollToHashSection() {
+  if (route.hash !== "#analytics") return;
+  nextTick(() => {
+    document
+      .getElementById("analytics")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+onMounted(scrollToHashSection);
+watch(() => route.hash, scrollToHashSection);
 function openViewByLabel(label: string) {
   const all = [...(publicViews.value || []), ...(pinnedViews.value || [])];
   const v = all.find((x: any) => x.label === label);

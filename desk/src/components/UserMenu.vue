@@ -11,7 +11,7 @@
             : 'w-full px-2 hover:bg-surface-gray-3'
         "
       >
-        <BrandLogo />
+        <PyekWaveMark class="size-8 shrink-0" />
         <div
           class="flex flex-1 flex-col text-left duration-300 ease-in-out overflow-hidden"
           :class="
@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import BrandLogo from "@/components/BrandLogo.vue";
+import PyekWaveMark from "@/components/PyekWaveMark.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useConfigStore } from "@/stores/config";
 import { useSidebarStore } from "@/stores/sidebar";

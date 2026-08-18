@@ -2,6 +2,10 @@ import LucideBookOpen from "~icons/lucide/book-open";
 import LucideTicket from "~icons/lucide/ticket";
 import PhoneIcon from "../icons/PhoneIcon.vue";
 import LucideHome from "~icons/lucide/home";
+import LucideStore from "~icons/lucide/store";
+import LucideMonitor from "~icons/lucide/monitor";
+import LucideCircleUser from "~icons/lucide/circle-user";
+import LucideTrendingUp from "~icons/lucide/trending-up";
 import { __ } from "@/translation";
 
 // PYEK: trimmed the agent nav to what the POS/IT desk actually uses (matches the
@@ -18,10 +22,43 @@ export const agentPortalSidebarOptions = [
   // Dashboard folded into Home (Mark, 2026-08-18): the ocean Home carries the
   // analytics now, so the separate entry retired. The route still answers by
   // URL for anyone with a bookmark.
+  //
+  // Queue jumps (Mark, 2026-08-18 evening: "the sidebar just isn't useful"):
+  // the three hero views + Analytics, one click from any screen. `view` is a
+  // saved-view LABEL resolved via publicViews at click time (names are
+  // per-site); `countKey` wires the live-count pill from the queueCounts
+  // store. Analytics is a jump to Home's chart section, not a place — it
+  // never renders active.
+  {
+    label: __("POS"),
+    icon: LucideStore,
+    view: "POS Tickets",
+    countKey: "pos",
+    spacedTop: true,
+  },
+  {
+    label: __("IT"),
+    icon: LucideMonitor,
+    view: "IT Tickets",
+    countKey: "it",
+  },
+  {
+    label: __("Mine"),
+    icon: LucideCircleUser,
+    view: "My Open Tickets",
+    countKey: "mine",
+  },
+  {
+    label: __("Analytics"),
+    icon: LucideTrendingUp,
+    to: "Home",
+    hash: "#analytics",
+  },
   {
     label: __("Tickets"),
     icon: LucideTicket,
     to: "TicketsAgent",
+    spacedTop: true,
   },
   {
     label: __("Knowledge Base"),
