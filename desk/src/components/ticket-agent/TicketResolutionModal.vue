@@ -84,7 +84,10 @@ watch(show, async (open) => {
   if (!open) return;
   resolution.value = ticket.value?.doc?.pyek_resolution || "";
   await nextTick();
-  resolutionInput.value?.$el?.querySelector("textarea")?.focus();
+  // $el can be a comment node mid-dialog-transition — querySelector only
+  // exists on real elements, so probe for it rather than assuming (this
+  // watcher logged a TypeError on every open since PR 79).
+  resolutionInput.value?.$el?.querySelector?.("textarea")?.focus();
 });
 
 const resolutionInput = ref<any>(null);
