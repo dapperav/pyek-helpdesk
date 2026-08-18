@@ -20,8 +20,8 @@
       :image="senderImage"
     />
     <div
-      class="flex max-w-[78%] flex-col"
-      :class="out ? 'items-end' : 'items-start'"
+      class="flex flex-col"
+      :class="[out ? 'items-end' : 'items-start', widthClass]"
     >
       <span
         v-if="showName"
@@ -143,6 +143,12 @@ const props = defineProps({
   showDelivery: {
     type: Boolean,
     default: false,
+  },
+  // Phone default; desktop passes the iMessage-on-Mac cap (65% of the pane
+  // but never wider than 560px — Mark's pick, 2026-08-18).
+  widthClass: {
+    type: String,
+    default: "max-w-[78%]",
   },
 });
 const emit = defineEmits(["reply"]);

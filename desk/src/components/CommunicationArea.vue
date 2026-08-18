@@ -3,9 +3,12 @@
     <!-- Replying is the action that matters here and it was two small ghost
          buttons: first response is missed on roughly half of human tickets.
          Collapsed, this reads as a compose line addressed to the requester;
-         it steps aside entirely once either editor is open. -->
+         it steps aside entirely once either editor is open. Behind the
+         persistent reply bar (quickBar) it never renders at all — the bar IS
+         the compose line then, and this component only keeps the full
+         editors. -->
     <div
-      v-show="!showEmailBox && !showCommentBox"
+      v-show="!quickBar && !showEmailBox && !showCommentBox"
       class="border-t px-6 md:px-5 py-3 md:py-2.5"
     >
       <div class="flex items-center gap-2">
@@ -115,7 +118,7 @@ import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { TicketSymbol } from "@/types";
 import { onClickOutside } from "@vueuse/core";
-import { computed, inject, ref, watch } from "vue";
+import { computed, inject, nextTick, ref, watch } from "vue";
 
 const emit = defineEmits(["update"]);
 const content = defineModel("content");
@@ -254,6 +257,13 @@ const props = defineProps({
     type: String,
     default: "HD Ticket",
   },
+  // The persistent reply bar is the compose surface (desktop, 2026-08-18):
+  // hide the compose line and stand down the r/c shortcuts — the bar
+  // registers its own.
+  quickBar: {
+    type: Boolean,
+    default: false,
+  },
   ticketId: {
     type: String,
     default: null,
@@ -290,17 +300,36 @@ watch(
   }
 );
 
-useShortcut("r", () => {
-  toggleEmailBox();
-});
-useShortcut("c", () => {
-  toggleCommentBox();
-});
+// Behind the reply bar these bindings belong to the bar (r/c focus it);
+// registering here too would double-fire. The prop never changes after
+// mount, so conditional registration at setup is safe.
+if (!props.quickBar) {
+  useShortcut("r", () => {
+    toggleEmailBox();
+  });
+  useShortcut("c", () => {
+    toggleCommentBox();
+  });
+}
+
+// The reply bar's escape hatch (⤢ / Shift+R): open the full editor with the
+// bar's draft carried over. Insert after the open-watch has focused the
+// editor at "start", so the carried text lands ABOVE the signature that
+// getInitialContent seeded.
+function openEmailBox(carryHtml?: string) {
+  if (showCommentBox.value) showCommentBox.value = false;
+  showEmailBox.value = true;
+  if (!carryHtml) return;
+  nextTick(() => {
+    emailEditorRef.value?.editor?.commands?.insertContent(carryHtml);
+  });
+}
 
 defineExpose({
   replyToEmail,
   toggleEmailBox,
   toggleCommentBox,
+  openEmailBox,
   editor: emailEditorRef,
 });
 

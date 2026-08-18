@@ -4,7 +4,7 @@
     class="flex flex-col flex-1 overflow-y-auto"
     :mask-length="20"
     :style="
-      bubble
+      bubble && isMobileView
         ? { paddingBottom: 'calc(76px + env(safe-area-inset-bottom, 0px))' }
         : undefined
     "
@@ -28,15 +28,22 @@
         tabindex="0"
         :id="activity.key"
       >
-        <!-- Bubble mode (mobile only — the desktop panel never passes the
-             prop): emails render as message bubbles, system history as
+        <!-- Bubble mode (the phone screen, and since 2026-08-18 the desktop
+             Emails tab): emails render as message bubbles, system history as
              centered event lines, no avatar rail. Comments/calls/feedback
-             keep their boxes, just full-width. -->
-        <div v-if="bubble" class="w-full px-4">
+             keep their boxes, just full-width. The bottom padding is
+             phone-only — its composer bar is FIXED and would cover the last
+             bubble; the desktop bar sits in-flow. Bubble width: the phone
+             uses 78% of a narrow screen, desktop the iMessage-on-Mac cap
+             (65% of the pane, never wider than 560px). -->
+        <div v-if="bubble" class="w-full px-4 md:px-5">
           <MobileMessageBubble
             v-if="activity.type === 'email'"
             :activity="activity"
             :show-delivery="activity.key === lastOutgoingEmailKey"
+            :width-class="
+              isMobileView ? 'max-w-[78%]' : 'max-w-[min(65%,560px)]'
+            "
             @reply="(e) => emit('email:reply', e)"
           />
           <!-- The flex wrapper is load-bearing: CommentBox zeroes its own
@@ -180,6 +187,7 @@ import {
   EmailIcon,
   PhoneIcon,
 } from "@/components/icons";
+import { useScreenSize } from "@/composables/screen";
 import { useUserStore } from "@/stores/user";
 import { TicketActivity } from "@/types";
 import { isElementInViewport } from "@/utils";
@@ -214,8 +222,9 @@ const props = defineProps({
     type: String,
     default: "",
   },
-  // Message-bubble rendering (the mobile ticket screen). Desktop's
-  // TicketActivityPanel never passes this and is untouched.
+  // Message-bubble rendering: the mobile ticket screen passes it wholesale,
+  // the desktop panel passes it for the Emails tab only (its Activity tab
+  // stays the classic audit rail on purpose).
   bubble: {
     type: Boolean,
     default: false,
@@ -237,6 +246,7 @@ const lastOutgoingEmailKey = computed(() => {
 const route = useRoute();
 const router = useRouter();
 
+const { isMobileView } = useScreenSize();
 const { getUser } = useUserStore();
 const makeCall = inject<() => void>("makeCall");
 

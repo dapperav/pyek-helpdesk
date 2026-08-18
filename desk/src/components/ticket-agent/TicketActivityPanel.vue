@@ -73,6 +73,7 @@
         :activities="filterActivities(tab.name as TicketTab)"
         :title="tab.label"
         :ticket-status="ticket.doc.status"
+        :bubble="tab.name === 'email'"
         @email:reply="
           (e) => {
             communicationAreaRef?.replyToEmail(e);
@@ -91,9 +92,27 @@
       </div> -->
     </template>
   </Tabs>
-  <!-- Comm Area -->
+  <!-- The persistent texting bar (Mark's picks, 2026-08-18) — the primary
+       reply path. It steps aside whenever a full editor is open, exactly as
+       the old compose line did. -->
+  <DesktopReplyBar
+    v-show="!showEmailBox && !showCommentBox"
+    :key="'bar-' + ticket.doc?.name"
+    @update="
+      () => {
+        activities.reload();
+        ticketAgentActivitiesRef?.scrollToLatestActivity();
+      }
+    "
+    @close="onCloseClicked"
+    @expand="openFullEditor"
+  />
+  <!-- Comm Area: still owns the full EmailEditor/CommentBox sheets (the
+       bar's escape hatch) and the reply-arrow quote path; its own compose
+       line and r/c shortcuts stand down behind quick-bar. -->
   <CommunicationArea
     ref="communicationAreaRef"
+    quick-bar
     :ticketId="String(ticket.doc?.name)"
     :to-emails="[ticket.doc?.raised_by]"
     :cc-emails="[]"
@@ -128,10 +147,13 @@ import {
   TicketTab,
 } from "@/types";
 import TicketResolutionModal from "@/components/ticket-agent/TicketResolutionModal.vue";
+import DesktopReplyBar from "@/components/ticket-agent/DesktopReplyBar.vue";
+import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
 import { useAuthStore } from "@/stores/auth";
 import { Button, createResource, Tabs } from "frappe-ui";
 import { storeToRefs } from "pinia";
-import { computed, ComputedRef, inject, ref } from "vue";
+import { computed, ComputedRef, inject, nextTick, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import LucideCheck from "~icons/lucide/check";
 import LucideUserPlus from "~icons/lucide/user-plus";
 import { TicketAgentActivities } from "../ticket";
@@ -149,16 +171,20 @@ const telephonyStore = useTelephonyStore();
 const { isCallingEnabled } = storeToRefs(telephonyStore);
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
+  // Emails first (Mark, 2026-08-18): desktop lands on the bubble
+  // conversation, same as the phone did in PR 143. Safe for deep-links —
+  // useActiveTabManager resolves by NAME via the hash, so #comment-… still
+  // lands Comments.
   const _tabs: TabObject[] = [
-    {
-      name: "activity",
-      label: "Activity",
-      icon: ActivityIcon,
-    },
     {
       name: "email",
       label: "Emails",
       icon: EmailIcon,
+    },
+    {
+      name: "activity",
+      label: "Activity",
+      icon: ActivityIcon,
     },
     {
       name: "comment",
@@ -224,7 +250,9 @@ const assignSelf = createResource({
 function onCloseClicked() {
   // Route through the same dialog the status dropdown and Reply & close use,
   // so "what fixed it" is asked in exactly one place. Already answered once?
-  // Then close straight away rather than nagging.
+  // Then close straight away rather than nagging. The reply bar's armed ✓
+  // lands here too (Mark, 2026-08-18: desktop keeps the prompt the phone
+  // deliberately skips).
   if (!ticket.value.doc.pyek_resolution) {
     showResolutionDialog.value = true;
     return;
@@ -234,6 +262,37 @@ function onCloseClicked() {
     { onSuccess: () => activities.value.reload() }
   );
 }
+
+// The bar's ⤢ / Shift+R: open the full EmailEditor with the bar's text
+// carried over (already HTML). Insert AFTER the open so the editor's
+// signature initial-content is in place and focus("start") has run.
+function openFullEditor(carryHtml: string) {
+  communicationAreaRef.value?.openEmailBox(carryHtml);
+}
+
+const route = useRoute();
+onMounted(() => {
+  // A mention push deep-links to /tickets/<id>#comment-<name>. The tab
+  // manager only understands tab-name hashes, and with Emails now the
+  // default tab the comment isn't even rendered there — land Comments and
+  // flash the anchor, same fix the phone shipped in PR 151.
+  if (route.hash?.startsWith("#comment-")) {
+    const idx = tabs.value.findIndex((t) => t.name === "comment");
+    if (idx >= 0) {
+      nextTick(() => changeTabTo(idx));
+      const elementId = route.hash.slice(1);
+      setTimeout(() => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        (el as any).scrollIntoViewIfNeeded
+          ? (el as any).scrollIntoViewIfNeeded()
+          : el.scrollIntoView({ block: "center" });
+        el.classList.add("bg-surface-yellow-2");
+        setTimeout(() => el.classList.remove("bg-surface-yellow-2"), 2500);
+      }, 1200);
+    }
+  }
+});
 
 // Activity and Calls are deliberately absent: Activity is everything (a count
 // would just restate the page) and call logs load separately.
@@ -281,6 +340,11 @@ const _activities = computed(() => {
         name: email.name,
         deliveryStatus: email.delivery_status,
         isFirstEmail: idx === 0,
+        // Bubble-mode fields (same server extraction the phone reads —
+        // api.py's _bubble_text is client-agnostic).
+        bubbleLines: email.bubble_lines,
+        bubbleTruncated: email.bubble_truncated,
+        outgoing: email.sent_or_received === "Sent",
         // Present only when the backend judged this a short automated alert
         // whose HTML is pure scaffolding; null means render the original.
         compactLines: email.compact_lines,
