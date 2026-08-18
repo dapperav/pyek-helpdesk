@@ -81,3 +81,109 @@ def get_home_stats() -> dict:
             {(r.raised_by or "").lower() for r in rows if is_bot(r.raised_by)}
         ),
     }
+
+
+@frappe.whitelist()
+@agent_only
+def get_home_board() -> dict:
+    """The desktop triage board (Mark, 2026-08-18): one bucket per queue —
+    POS, IT, Mine — each of up to five open tickets ordered by the moment
+    something last ARRIVED on them (ticket created, or the newest customer
+    reply; for Mine, being handed the ticket counts as an arrival too).
+
+    Ordering is by inbound activity on purpose: agents triage by "what just
+    landed", not by ticket age — an old ticket whose requester replied a
+    minute ago belongs on top.
+    """
+    user = frappe.session.user
+
+    rows = frappe.get_all(
+        "HD Ticket",
+        filters={"status_category": ("in", ("Open", "Paused"))},
+        fields=[
+            "name",
+            "subject",
+            "pyek_summary",
+            "raised_by",
+            "contact",
+            "creation",
+            "first_responded_on",
+            "agent_group",
+            "email_account",
+            "_assign",
+        ],
+        limit_page_length=0,
+    )
+    names = [r.name for r in rows]
+
+    # Newest customer reply per ticket, one query for the whole board.
+    last_inbound: dict[str, object] = {}
+    if names:
+        for c in frappe.get_all(
+            "Communication",
+            filters={
+                "reference_doctype": "HD Ticket",
+                "reference_name": ("in", names),
+                "sent_or_received": "Received",
+            },
+            fields=["reference_name", "max(communication_date) as last_received"],
+            group_by="reference_name",
+            limit_page_length=0,
+        ):
+            last_inbound[c.reference_name] = c.last_received
+
+    # When each of MY tickets was handed to me (any assignment path writes a
+    # ToDo — the same fact PR 149's notification hook keys on).
+    assigned_at: dict[str, object] = {}
+    if names:
+        for t in frappe.get_all(
+            "ToDo",
+            filters={
+                "reference_type": "HD Ticket",
+                "reference_name": ("in", names),
+                "allocated_to": user,
+                "status": ("!=", "Cancelled"),
+            },
+            fields=["reference_name", "max(creation) as assigned_at"],
+            group_by="reference_name",
+            limit_page_length=0,
+        ):
+            assigned_at[t.reference_name] = t.assigned_at
+
+    def arrival(r, mine: bool):
+        stamps = [get_datetime(r.creation)]
+        if last_inbound.get(r.name):
+            stamps.append(get_datetime(last_inbound[r.name]))
+        if mine and assigned_at.get(r.name):
+            stamps.append(get_datetime(assigned_at[r.name]))
+        return max(stamps)
+
+    def serialize(r, mine: bool):
+        stamp = arrival(r, mine)
+        return {
+            "name": r.name,
+            "subject": r.subject,
+            "pyek_summary": r.pyek_summary,
+            "raised_by": r.raised_by,
+            "contact": r.contact,
+            "creation": r.creation,
+            "first_responded_on": r.first_responded_on,
+            "agent_group": r.agent_group,
+            "email_account": r.email_account,
+            "last_arrival": stamp,
+            # Distinguish "new assignment" cards in the Mine column.
+            "assigned_at": assigned_at.get(r.name) if mine else None,
+        }
+
+    def bucket(pred, mine=False, cap=5):
+        picked = [r for r in rows if pred(r)]
+        picked.sort(key=lambda r: arrival(r, mine), reverse=True)
+        return [serialize(r, mine) for r in picked[:cap]]
+
+    return {
+        "pos": bucket(lambda r: r.agent_group == "POS Support"),
+        "it": bucket(lambda r: r.email_account == "IT Support"),
+        "mine": bucket(lambda r: user in (r.get("_assign") or ""), mine=True),
+        # The Knowledge Base card's number on the More-views shelf.
+        "kb_articles": frappe.db.count("HD Article", {"status": "Published"}),
+    }
