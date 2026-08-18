@@ -189,6 +189,9 @@ def get_home_board() -> dict:
         "pos": bucket(lambda r: r.agent_group == "POS Support"),
         "it": bucket(lambda r: r.email_account == "IT Support"),
         "mine": bucket(lambda r: user in (r.get("_assign") or ""), mine=True),
-        # The Knowledge Base card's number on the More-views shelf.
-        "kb_articles": frappe.db.count("HD Article", {"status": "Published"}),
+        # The Knowledge Base card's number on the More-views shelf. ALL
+        # articles, not just Published: this site's SOP workflow keeps agent
+        # articles in Draft pending SME confirmation (all 26 were Draft on
+        # 2026-08-18), and agents read drafts daily.
+        "kb_articles": frappe.db.count("HD Article"),
     }
