@@ -13,6 +13,36 @@
       class="flex items-start gap-2 justify-end h-full py-1 pl-0.5"
       v-if="!isMobileView"
     >
+      <!-- Board ⇄ List (PYEK, desktop tickets — Mark 2026-08-18): board is
+           the default, the familiar table is one click back, remembered per
+           user. -->
+      <div
+        v-if="boardAvailable"
+        class="flex rounded-lg bg-surface-gray-2 p-0.5"
+        role="tablist"
+        :aria-label="__('View mode')"
+      >
+        <button
+          type="button"
+          role="tab"
+          class="pyek-vmode"
+          :class="{ on: viewMode === 'board' }"
+          :aria-pressed="viewMode === 'board'"
+          @click="viewMode = 'board'"
+        >
+          <LucideColumns3 class="size-3.5" />{{ __("Board") }}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="pyek-vmode"
+          :class="{ on: viewMode === 'list' }"
+          :aria-pressed="viewMode === 'list'"
+          @click="viewMode = 'list'"
+        >
+          <LucideList class="size-3.5" />{{ __("List") }}
+        </button>
+      </div>
       <Button
         :label="__('Save Changes')"
         v-if="isViewUpdated && canSaveView"
@@ -41,6 +71,19 @@
     class="flex items-center justify-center h-full w-full absolute top-0 z-100"
   >
     <LoadingIndicator :scale="8" />
+  </div>
+  <!-- The tickets BOARD (PYEK, desktop — Mark 2026-08-18): same fetched rows,
+       same chrome above and footer below; only the middle swaps. Lanes and
+       card language live in PyekTicketBoard. -->
+  <div
+    v-else-if="showBoard && list.data?.data.length > 0"
+    class="flex-1 overflow-y-auto pt-1"
+  >
+    <PyekTicketBoard
+      :rows="list.data.data"
+      :mine-view="isMineBoard"
+      @row-click="openOutlookRow"
+    />
   </div>
   <!-- Outlook-inbox rows (PYEK): custom row rendering, all list chrome above
        and the footer below stay intact. -->
@@ -231,13 +274,17 @@ import {
   ref,
   VNode,
   watch,
+  watchEffect,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import EmptyState from "./EmptyState.vue";
 import ListRows from "./ListRows.vue";
 import OutlookTicketRow from "./ticket/OutlookTicketRow.vue";
+import PyekTicketBoard from "./ticket/PyekTicketBoard.vue";
 import TicketActionSheet from "./ticket/TicketActionSheet.vue";
+import LucideColumns3 from "~icons/lucide/columns-3";
+import LucideList from "~icons/lucide/list";
 
 interface P {
   options: {
@@ -263,6 +310,9 @@ interface P {
     // PYEK: render the list as Outlook-inbox style rows instead of the column
     // table. Keeps all view/filter/sort/pagination chrome intact.
     outlookRows?: boolean;
+    // PYEK: offer the desktop tickets BOARD (three ownership lanes) with a
+    // Board ⇄ List toggle in the view controls. Desktop only.
+    board?: boolean;
   };
 }
 
@@ -457,6 +507,30 @@ async function applyBulkStatus(status: string) {
 
 const { isMobileView } = useScreenSize();
 
+// --- Board ⇄ List (PYEK, desktop tickets — Mark 2026-08-18) -----------------
+// Board is the default; the toggle is remembered per user. One key, one
+// mounted ListViewBuilder per screen (the useStorage sharing trap needs two
+// simultaneous consumers to bite).
+const viewMode = useStorage("pyek_tickets_view_mode", "board");
+const boardAvailable = computed(
+  () => !!options.value.board && !isMobileView.value
+);
+const showBoard = computed(
+  () => boardAvailable.value && viewMode.value === "board"
+);
+
+// Mine-style views (filters pin _assign to the viewer) get the two-lane
+// board — everything in them is already owned by you.
+const isMineBoard = computed(() => {
+  const name = route.query.view as string;
+  if (!name) return false;
+  const v = (views.data || []).find((x: any) => x.name === name);
+  if (!v) return false;
+  const filters =
+    typeof v.filters === "string" ? v.filters : JSON.stringify(v.filters || {});
+  return filters.includes("_assign");
+});
+
 const defaultEmptyState = {
   icon: "",
   title: __("No Data Found"),
@@ -501,6 +575,19 @@ const list = createResource({
     list.params = defaultParams;
     columns.value = data.columns;
   },
+});
+
+// The board wants the whole live picture, not the first page: widen the
+// fetch window once per view (the user's stored List page-length preference
+// stays untouched; the footer's Load more still works past 100). Lives below
+// the resource on purpose — watchEffect runs synchronously at setup.
+watchEffect(() => {
+  if (!showBoard.value) return;
+  const total = list.data?.total_count ?? 0;
+  if (defaultParams.page_length < 100 && total > defaultParams.page_length) {
+    defaultParams.page_length = 100;
+    list.reload();
+  }
 });
 
 const exposeFunctions = {
@@ -967,3 +1054,29 @@ onMounted(async () => {
 
 defineExpose(exposeFunctions);
 </script>
+
+<style scoped>
+/* Board ⇄ List segmented toggle (PYEK). */
+.pyek-vmode {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-gray-6);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.pyek-vmode:hover {
+  color: var(--ink-gray-8);
+}
+.pyek-vmode.on {
+  background: var(--surface-white, #fff);
+  color: var(--ink-gray-9);
+  box-shadow: 0 1px 3px rgba(27, 42, 74, 0.12);
+}
+</style>
