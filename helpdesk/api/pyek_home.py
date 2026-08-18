@@ -117,38 +117,43 @@ def get_home_board() -> dict:
     names = [r.name for r in rows]
 
     # Newest customer reply per ticket, one query for the whole board.
+    # Raw SQL (parameterized): frappe.get_all refuses SQL functions in
+    # fields ("SQL functions are not allowed as strings in SELECT") — found
+    # live, the dev proxy can't exercise new server code before a deploy.
     last_inbound: dict[str, object] = {}
     if names:
-        for c in frappe.get_all(
-            "Communication",
-            filters={
-                "reference_doctype": "HD Ticket",
-                "reference_name": ("in", names),
-                "sent_or_received": "Received",
-            },
-            fields=["reference_name", "max(communication_date) as last_received"],
-            group_by="reference_name",
-            limit_page_length=0,
-        ):
-            last_inbound[c.reference_name] = c.last_received
+        last_inbound = dict(
+            frappe.db.sql(
+                """
+                select reference_name, max(communication_date)
+                from `tabCommunication`
+                where reference_doctype = 'HD Ticket'
+                  and reference_name in %(names)s
+                  and sent_or_received = 'Received'
+                group by reference_name
+                """,
+                {"names": names},
+            )
+        )
 
     # When each of MY tickets was handed to me (any assignment path writes a
     # ToDo — the same fact PR 149's notification hook keys on).
     assigned_at: dict[str, object] = {}
     if names:
-        for t in frappe.get_all(
-            "ToDo",
-            filters={
-                "reference_type": "HD Ticket",
-                "reference_name": ("in", names),
-                "allocated_to": user,
-                "status": ("!=", "Cancelled"),
-            },
-            fields=["reference_name", "max(creation) as assigned_at"],
-            group_by="reference_name",
-            limit_page_length=0,
-        ):
-            assigned_at[t.reference_name] = t.assigned_at
+        assigned_at = dict(
+            frappe.db.sql(
+                """
+                select reference_name, max(creation)
+                from `tabToDo`
+                where reference_type = 'HD Ticket'
+                  and reference_name in %(names)s
+                  and allocated_to = %(user)s
+                  and status != 'Cancelled'
+                group by reference_name
+                """,
+                {"names": names, "user": user},
+            )
+        )
 
     def arrival(r, mine: bool):
         stamps = [get_datetime(r.creation)]
