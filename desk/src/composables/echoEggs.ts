@@ -21,10 +21,16 @@ import type { EchoPose } from "@/components/echo/echoAssets";
 // prod call is its first real test; see PR 155).
 // ---------------------------------------------------------------------------
 
-const POP_COOLDOWN_MS = 10 * 60_000;
+// ONE Echo sighting per ~30 minutes, shared by EVERYTHING — pops and peeks
+// draw from the same timer (Mark, 2026-08-19 round 2: "in the first 5
+// minutes I see echo too much for it to be a true easter egg"; round 1's
+// per-behavior timers let the greeting be followed by a peek within
+// seconds). User-invoked moments stay exempt.
+const SIGHT_GAP_MS = 30 * 60_000;
 const POP_LINGER_MS = 8_500;
 const PEEK_LINGER_MS = 10_000;
-const PEEK_REPEEK_MS = 30 * 60_000;
+const PEEK_REPEEK_MS = 90 * 60_000;
+const PEEK_FIRST_WAIT_MS = 5 * 60_000; // no peeks in a session's first minutes
 const STREAK_WINDOW_MS = 60 * 60_000;
 
 const LS_LAST_POP = "pyekEcho:lastPop";
@@ -45,9 +51,10 @@ function lastPopAt(): number {
   return Number(localStorage.getItem(LS_LAST_POP) || 0);
 }
 
-/** Shared cooldown gate — Home's ambient scheduler asks this too. */
+/** Shared sighting gate — Home's ambient scheduler and the peek scanner
+ *  ask this too. */
 export function echoCanPop(): boolean {
-  return Date.now() - lastPopAt() >= POP_COOLDOWN_MS;
+  return Date.now() - lastPopAt() >= SIGHT_GAP_MS;
 }
 
 export function echoMarkPop() {
@@ -222,6 +229,8 @@ export function echoWaveClick() {
 // activates the first eligible one, lets it linger 10s, then frees the slot.
 // A spot that stays true re-peeks at most every 30 minutes.
 
+const sessionStart = Date.now();
+
 type PeekSpot = {
   id: string;
   cond: () => boolean;
@@ -236,6 +245,7 @@ let peekScanTimer: number | undefined;
 
 function scanPeeks() {
   if (peekBusy) return;
+  if (!echoCanPop()) return; // peeks draw from the shared sighting budget
   for (const spot of peekSpots.values()) {
     if (Date.now() < spot.eligibleAt) continue;
     let hit = false;
@@ -249,6 +259,7 @@ function scanPeeks() {
     spot.active.value = true;
     spot.eligibleAt = Date.now() + PEEK_REPEEK_MS;
     peekEligible.set(spot.id, spot.eligibleAt);
+    echoMarkPop(); // a peek is a sighting — it spends the shared budget
     window.setTimeout(() => {
       spot.active.value = false;
       // small grace so two peeks never overlap visually
@@ -269,7 +280,12 @@ export function useEchoPeek(id: string, cond: () => boolean): Ref<boolean> {
     id,
     cond,
     active,
-    eligibleAt: peekEligible.get(id) ?? Date.now() + 12_000, // let the page settle first
+    // never in a session's first minutes — a fresh page full of peeks is
+    // exactly the "I see echo too much" problem
+    eligibleAt: Math.max(
+      peekEligible.get(id) ?? 0,
+      sessionStart + PEEK_FIRST_WAIT_MS
+    ),
   });
   onUnmounted(() => {
     peekSpots.delete(id);
