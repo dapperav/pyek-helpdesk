@@ -350,6 +350,8 @@ const _activities = computed(() => {
         // api.py's _bubble_text is client-agnostic).
         bubbleLines: email.bubble_lines,
         bubbleTruncated: email.bubble_truncated,
+        chain: email.chain,
+        hasChain: !!email.chain?.length,
         outgoing: email.sent_or_received === "Sent",
         // Present only when the backend judged this a short automated alert
         // whose HTML is pure scaffolding; null means render the original.

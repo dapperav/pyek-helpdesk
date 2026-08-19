@@ -433,18 +433,39 @@ _QUOTE_HEADER = re.compile(
     re.IGNORECASE,
 )
 
+# Mobile mail apps append these as the whole visible line. They are furniture
+# wherever they appear, in every rendering.
+_MOBILE_PROMO = re.compile(
+    r"^get outlook for (ios|android)$|^sent (from|via) my [\w .-]{1,30}$",
+    re.IGNORECASE,
+)
 
-def _visible_lines(html: str, strip_quotes: bool = False):
+# Outlook mobile's own furniture divs ("Get Outlook for iOS" and the blank
+# separator above it). Matched by id because the text inside spans across
+# elements and never survives as one line.
+_OUTLOOK_FURNITURE_ID = re.compile(r"^ms-outlook-mobile-(signature|body-separator-line)$")
+
+
+def _visible_lines(
+    html: str, strip_quotes: bool = False, stop_at_quote_header: bool | None = None
+):
     """The visible text lines of an email, block-structure aware.
 
     Uses the block structure rather than a naive tag strip so a table row
-    doesn't run into the next one.
+    doesn't run into the next one. `stop_at_quote_header` defaults to
+    following `strip_quotes`; the forward-chain pass turns it off because it
+    wants the lines AFTER a quote marker too (to mine them for embedded
+    emails) and applies the cut itself.
     """
+    if stop_at_quote_header is None:
+        stop_at_quote_header = strip_quotes
     if not html:
         return []
 
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "head", "title"]):
+        tag.decompose()
+    for tag in soup.find_all(id=_OUTLOOK_FURNITURE_ID):
         tag.decompose()
     if strip_quotes:
         for tag in soup.find_all("blockquote"):
@@ -459,14 +480,19 @@ def _visible_lines(html: str, strip_quotes: bool = False):
     lines = []
     for raw in soup.get_text().replace("\xa0", " ").split("\n"):
         line = " ".join(raw.split())
-        if not line or _COMPACT_NOISE.search(line):
+        if not line or _COMPACT_NOISE.search(line) or _MOBILE_PROMO.match(line):
             continue
-        if strip_quotes and _QUOTE_HEADER.match(line):
-            break
+        if _QUOTE_HEADER.match(line):
+            if stop_at_quote_header:
+                break
+            # The chain pass reads on past quote markers; keep the marker as
+            # its own line (never label-joined) so the caller can cut on it.
+            lines.append(line)
+            continue
         # These alerts lay their fields out as one table row per label and
         # another per value, so a bare strip leaves "Device Name:" stranded
         # above "Typhoon Texas Austin". Rejoin the pair.
-        if lines and lines[-1].endswith(":"):
+        if lines and lines[-1].endswith(":") and not _QUOTE_HEADER.match(lines[-1]):
             lines[-1] = f"{lines[-1]} {line}"
             continue
         # Alert mail repeats its own subject in the body; a repeat straight
@@ -475,8 +501,9 @@ def _visible_lines(html: str, strip_quotes: bool = False):
             continue
         lines.append(line)
 
-    # A label with nothing after it tells the reader less than nothing.
-    return [x for x in lines if not x.endswith(":")]
+    # A label with nothing after it tells the reader less than nothing —
+    # except a quote marker ("On … wrote:"), which the chain pass cuts on.
+    return [x for x in lines if not x.endswith(":") or _QUOTE_HEADER.match(x)]
 
 
 def _compact_lines(html: str):
@@ -495,20 +522,205 @@ def _compact_lines(html: str):
     return lines
 
 
-def _bubble_text(html: str):
-    """(lines, truncated) for the mobile bubble thread. Never gives up on a
+def _cap_lines(lines):
+    """(lines, truncated) under the bubble limits. Never gives up on a
     message the way _compact_lines does — it trims and flags instead."""
-    lines = _visible_lines(html, strip_quotes=True)
-    if not lines:
-        return None, False
     out, chars, truncated = [], 0, False
-    for line in lines:
+    for line in lines or []:
         if len(out) >= BUBBLE_MAX_LINES or chars > BUBBLE_MAX_CHARS:
             truncated = True
             break
         out.append(line)
         chars += len(line)
     return out, truncated
+
+
+# Outlook (web, desktop, mobile — the clients PYEK actually mails from) wraps
+# the From/Sent/To/Subject block of every reply/forward it appends in a div
+# with one of these literal ids, one per quoting level, flattened to
+# sequential blocks in the final HTML. The block is the only structural
+# marker the chain has — the quoted body that follows is plain sibling divs —
+# so the split works on the raw string and each chunk is re-parsed.
+# (Verified against ticket 0493's raw Communication content, 2026-08-19.)
+_FWD_MARKER = re.compile(
+    r"<div[^>]*\bid=[\"'](?:divRplyFwdMsg|OutlookMessageHeader)[\"']",
+    re.IGNORECASE,
+)
+_FWD_MARKER_ID = re.compile(r"^(divRplyFwdMsg|OutlookMessageHeader)$", re.IGNORECASE)
+
+_HDR_FROM = re.compile(r"^from\s*:\s*(\S.*)$", re.IGNORECASE)
+_HDR_DATE = re.compile(r"^(?:sent|date)\s*:\s*(\S.*)$", re.IGNORECASE)
+_HDR_OTHER = re.compile(r"^(?:to|cc|bcc|subject|importance|reply-to)\s*:", re.IGNORECASE)
+_HDR_EMAIL = re.compile(r"<\s*([\w.+-]+@[\w.-]+\.\w+)\s*>")
+_BARE_EMAIL = re.compile(r"^\s*([\w.+-]+@[\w.-]+\.\w+)\s*$")
+
+# The Outlook "Sent:" stamp comes in a handful of locale layouts. dateutil
+# (a frappe dependency) is the wide net; the strptime list keeps the parser
+# deterministic for the formats we actually see and lets offline tests run
+# without dateutil installed.
+_MAIL_DATE_FORMATS = (
+    "%A, %d %B %Y %H:%M:%S",  # Sunday, 16 August 2026 14:26:32
+    "%A, %B %d, %Y %I:%M %p",  # Sunday, August 16, 2026 2:26 PM
+    "%A, %B %d, %Y %I:%M:%S %p",
+    "%d %B %Y %H:%M:%S",
+    "%m/%d/%Y %I:%M %p",
+)
+
+
+def _parse_mail_date(text: str):
+    from datetime import datetime
+    from email.utils import parsedate_to_datetime
+
+    text = " ".join((text or "").split())
+    if not text:
+        return None
+    for fmt in _MAIL_DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    try:
+        return parsedate_to_datetime(text)
+    except Exception:
+        pass
+    try:
+        from dateutil import parser as date_parser
+
+        return date_parser.parse(text, fuzzy=True)
+    except Exception:
+        return None
+
+
+def _parse_fwd_header_lines(lines):
+    """sender_name/sender_email/date from the From:/Sent: lines of a quoted
+    header block. Missing pieces stay None — the renderer degrades, never
+    invents."""
+    info = {"sender_name": None, "sender_email": None, "date": None}
+    for line in lines:
+        m = _HDR_FROM.match(line)
+        if m and not (info["sender_name"] or info["sender_email"]):
+            value = m.group(1).strip()
+            am = _HDR_EMAIL.search(value) or _BARE_EMAIL.match(value)
+            if am:
+                info["sender_email"] = am.group(1).lower()
+                value = (value[: am.start()] + value[am.end() :]).strip()
+            info["sender_name"] = value.strip(" \"'<>") or None
+            continue
+        m = _HDR_DATE.match(line)
+        if m and not info["date"]:
+            info["date"] = _parse_mail_date(m.group(1))
+    return info
+
+
+def _split_forward_chain(html: str):
+    """(own_html, segments) — segments in document order (newest quoted
+    first), each {'sender_name','sender_email','date','html'}."""
+    if not html:
+        return html, []
+    markers = list(_FWD_MARKER.finditer(html))
+    if not markers:
+        return html, []
+    own_html = html[: markers[0].start()]
+    segments = []
+    for i, marker in enumerate(markers):
+        end = markers[i + 1].start() if i + 1 < len(markers) else len(html)
+        # Slicing mid-document can orphan close tags; html.parser tolerates
+        # that, and only text is read from the chunk.
+        chunk = BeautifulSoup(html[marker.start() : end], "html.parser")
+        header = chunk.find("div", id=_FWD_MARKER_ID)
+        info = {"sender_name": None, "sender_email": None, "date": None}
+        if header:
+            for br in header.find_all("br"):
+                br.replace_with("\n")
+            header_lines = [
+                " ".join(raw.split())
+                for raw in header.get_text().replace("\xa0", " ").split("\n")
+            ]
+            info = _parse_fwd_header_lines([x for x in header_lines if x])
+            header.decompose()
+        info["html"] = str(chunk)
+        segments.append(info)
+    return own_html, segments
+
+
+_LINE_SENTDATE = re.compile(r"^(sent|date)\s*:\s*\S", re.IGNORECASE)
+_LINE_SUBJECT = re.compile(r"^subject\s*:\s*\S", re.IGNORECASE)
+
+
+def _split_lines_chain(lines):
+    """(own_lines, segments) — text-level fallback for chains that carry no
+    HTML marker (plain-text forwards, and Outlook desktop's underscore-rule
+    top-posts). A cut needs the full From/Sent-or-Date/Subject cluster inside
+    a six-line window, so a body sentence starting "From:" never matches."""
+    breaks = []
+    for i, line in enumerate(lines):
+        if not _HDR_FROM.match(line):
+            continue
+        window = lines[i + 1 : i + 6]
+        if any(_LINE_SENTDATE.match(x) for x in window) and any(
+            _LINE_SUBJECT.match(x) for x in window
+        ):
+            breaks.append(i)
+    if not breaks:
+        return lines, []
+    own = lines[: breaks[0]]
+    segments = []
+    for j, start in enumerate(breaks):
+        end = breaks[j + 1] if j + 1 < len(breaks) else len(lines)
+        seg_lines = lines[start:end]
+        info = _parse_fwd_header_lines(seg_lines[:6])
+        k = 0
+        while k < len(seg_lines) and (
+            _HDR_FROM.match(seg_lines[k])
+            or _HDR_DATE.match(seg_lines[k])
+            or _HDR_OTHER.match(seg_lines[k])
+        ):
+            k += 1
+        info["lines"] = seg_lines[k:]
+        segments.append(info)
+    return own, segments
+
+
+def _cut_at_quote_header(lines):
+    for i, line in enumerate(lines):
+        if _QUOTE_HEADER.match(line):
+            return lines[:i]
+    return lines
+
+
+def _bubble_with_chain(html: str):
+    """(own_lines, truncated, segments) for the bubble thread.
+
+    own_lines is what the sender actually typed; segments are the emails
+    embedded in the forward/quote chain, document order (newest quoted
+    first), each {'sender_name','sender_email','date','lines'} — untrimmed,
+    undeduplicated: mark_compact_communications owns those passes because
+    they need the whole thread."""
+    own_html, html_segments = _split_forward_chain(html)
+
+    own_raw = _visible_lines(own_html, strip_quotes=True, stop_at_quote_header=False)
+    own_lines, line_segments = _split_lines_chain(own_raw)
+    own_lines = _cut_at_quote_header(own_lines)
+
+    segments = []
+    for seg in html_segments:
+        raw = _visible_lines(
+            seg.pop("html"), strip_quotes=True, stop_at_quote_header=False
+        )
+        body, nested = _split_lines_chain(raw)
+        seg["lines"] = _cut_at_quote_header(body)
+        segments.append(seg)
+        segments.extend(nested)
+    # Line-level clusters found in the own part sit ABOVE any HTML-marked
+    # chain in the document, so they are newer — keep document order.
+    segments = line_segments + segments
+    for seg in segments:
+        seg["lines"] = _cut_at_quote_header(seg["lines"])
+
+    truncated = False
+    if own_lines:
+        own_lines, truncated = _cap_lines(own_lines)
+    return own_lines, truncated, segments
 
 
 # Trailing contact-info furniture, only ever peeled from the END of a bubble
@@ -569,6 +781,14 @@ def _trim_signature(lines, comm):
     return lines
 
 
+def _chain_fingerprint(lines):
+    """The opening of a message, normalized — enough to recognize the same
+    email quoted back in a later reply without being fooled by whitespace or
+    case drift."""
+    text = " ".join(" ".join(lines or []).lower().split())
+    return text[:80] or None
+
+
 def mark_compact_communications(communications):
     """Flag machine mail and, where it is short, precompute its readable lines.
 
@@ -576,18 +796,75 @@ def mark_compact_communications(communications):
     stays a renderer. `compact_lines` is None whenever the original HTML
     should be shown, which is the default for anything uncertain.
     `bubble_lines` is the mobile thread's plain-text rendering and exists for
-    every email that has any visible text at all.
+    every email that has any visible text at all. `chain` is the emails
+    embedded in a forward/quote chain, oldest first, each one deduplicated
+    against the whole thread so a reply quoting the thread back never
+    re-materializes messages already on screen.
     """
+    per_comm_segments = []
     for c in communications:
         c["is_automated"] = _automated_sender(c.get("sender"))
         c["compact_lines"] = (
             _compact_lines(c.get("content")) if c["is_automated"] else None
         )
-        lines, truncated = _bubble_text(c.get("content"))
+        lines, truncated, segments = _bubble_with_chain(c.get("content"))
         # c["user"] was already resolved to the avatar dict by
         # get_communications before this pass runs; _trim_signature reads it.
         c["bubble_lines"] = _trim_signature(lines, c)
         c["bubble_truncated"] = truncated
+        per_comm_segments.append(segments)
+
+    # Everything already on screen, by content opening and by (sender, minute)
+    # — built from ALL real emails first so a forward of a message that also
+    # arrived directly never shows twice regardless of arrival order.
+    seen = set()
+    for c in communications:
+        fp = _chain_fingerprint(c.get("bubble_lines"))
+        if fp:
+            seen.add(fp)
+        sender = (c.get("sender") or "").strip().lower()
+        minute = str(c.get("communication_date") or "")[:16]
+        if sender and minute:
+            seen.add((sender, minute))
+
+    for c, segments in zip(communications, per_comm_segments):
+        chain = []
+        for seg in segments:
+            seg_comm = {
+                "sender": seg.get("sender_email") or "",
+                "user": {"full_name": seg.get("sender_name") or ""},
+            }
+            seg_lines, seg_truncated = _cap_lines(
+                _trim_signature(seg.get("lines"), seg_comm)
+            )
+            if not seg_lines:
+                continue
+            fp = _chain_fingerprint(seg_lines)
+            meta = (
+                (seg.get("sender_email") or "").strip().lower(),
+                str(seg.get("date") or "")[:16],
+            )
+            if fp in seen or (all(meta) and meta in seen):
+                continue
+            seen.add(fp)
+            if all(meta):
+                seen.add(meta)
+            chain.append(
+                {
+                    "sender_name": seg.get("sender_name"),
+                    "sender_email": seg.get("sender_email"),
+                    "date": str(seg["date"]) if seg.get("date") else None,
+                    "lines": seg_lines,
+                    "truncated": seg_truncated,
+                }
+            )
+        # Top-posted chains quote newest-first; the thread reads oldest-first.
+        # Trust parsed dates when every segment has one, else just flip.
+        if chain and all(x["date"] for x in chain):
+            chain.sort(key=lambda x: x["date"])
+        else:
+            chain.reverse()
+        c["chain"] = chain
 
 
 def _ticket_spread(content_hashes):
