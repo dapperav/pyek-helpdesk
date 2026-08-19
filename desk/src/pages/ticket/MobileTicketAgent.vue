@@ -562,6 +562,8 @@ const _activities = computed(() => {
         isAutomated: email.is_automated,
         bubbleLines: email.bubble_lines,
         bubbleTruncated: email.bubble_truncated,
+        chain: email.chain,
+        hasChain: !!email.chain?.length,
         outgoing: email.sent_or_received === "Sent",
       };
     }

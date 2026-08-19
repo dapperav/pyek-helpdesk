@@ -22,7 +22,7 @@
         </button>
       </div>
       <div
-        v-for="(activity, i) in activities"
+        v-for="(activity, i) in displayActivities"
         :key="activity.key"
         class="activity mt-2"
         tabindex="0"
@@ -62,6 +62,14 @@
             :activity="activity"
             v-else-if="activity.type === 'feedback'"
           />
+          <!-- Centered day marker, the iMessage way — bubble mode only
+               (displayActivities never emits these otherwise). -->
+          <div
+            v-else-if="activity.type === 'day'"
+            class="flex justify-center py-1 text-[11px] font-medium text-ink-gray-4"
+          >
+            {{ activity.content }}
+          </div>
           <div
             v-else
             class="flex justify-center py-0.5 text-xs text-ink-gray-4"
@@ -189,9 +197,10 @@ import {
 } from "@/components/icons";
 import { useScreenSize } from "@/composables/screen";
 import { useUserStore } from "@/stores/user";
+import { __ } from "@/translation";
 import { TicketActivity } from "@/types";
 import { isElementInViewport } from "@/utils";
-import { Avatar, FeatherIcon } from "frappe-ui";
+import { Avatar, dayjs, FeatherIcon } from "frappe-ui";
 import {
   PropType,
   computed,
@@ -242,6 +251,74 @@ const lastOutgoingEmailKey = computed(() => {
   }
   return null;
 });
+
+// Bubble mode splits a forward's quoted chain into real bubbles: each email
+// the backend extracted (email.chain, oldest first, already deduplicated
+// against the thread) renders as its own incoming bubble directly above the
+// forwarder's, marked "forwarded by <name>" in the footer. Day separators
+// keep the time jumps honest — forwarded mail is often days older than the
+// ticket. Mark's pick 2026-08-19 ("each email from the forward chain lands
+// as its own message bubble"), replacing the one-giant-bubble rendering.
+const displayActivities = computed(() => {
+  if (!props.bubble) return props.activities;
+  const flat: any[] = [];
+  for (const a of props.activities as any[]) {
+    if (a.type === "email" && a.chain?.length) {
+      const forwarder = (a.sender?.full_name || a.sender?.name || "").split(
+        " "
+      )[0];
+      a.chain.forEach((seg: any, i: number) => {
+        flat.push({
+          type: "email",
+          key: `${a.key}-fwd-${i}`,
+          sender: {
+            name: seg.sender_email || seg.sender_name || "",
+            full_name: seg.sender_name || seg.sender_email || "",
+          },
+          creation: seg.date || a.creation,
+          bubbleLines: seg.lines,
+          bubbleTruncated: seg.truncated,
+          attachments: [],
+          outgoing: false,
+          forwardedBy: forwarder,
+          // "Original" on an extracted bubble opens the email it was pulled
+          // from — the only place its full content actually lives.
+          chainParent: a,
+        });
+      });
+    }
+    flat.push(a);
+  }
+
+  // A separator before every calendar-day change across email bubbles; none
+  // at all when the whole thread is one day (the majority of tickets).
+  const emailDays = new Set(
+    flat
+      .filter((a) => a.type === "email")
+      .map((a) => dayjs(a.creation).format("YYYY-MM-DD"))
+  );
+  if (emailDays.size < 2) return flat;
+  const out: any[] = [];
+  let lastDay = "";
+  for (const a of flat) {
+    if (a.type === "email") {
+      const day = dayjs(a.creation).format("YYYY-MM-DD");
+      if (day !== lastDay) {
+        out.push({ type: "day", key: `day-${day}-${out.length}`, content: dayLabel(a.creation) });
+        lastDay = day;
+      }
+    }
+    out.push(a);
+  }
+  return out;
+});
+
+function dayLabel(date: string) {
+  const d = dayjs(date);
+  if (d.isSame(dayjs(), "day")) return __("Today");
+  if (d.isSame(dayjs().subtract(1, "day"), "day")) return __("Yesterday");
+  return d.format(d.year() === dayjs().year() ? "dddd, MMM D" : "MMM D, YYYY");
+}
 
 const route = useRoute();
 const router = useRouter();

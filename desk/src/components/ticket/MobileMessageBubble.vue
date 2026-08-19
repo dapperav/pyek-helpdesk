@@ -83,6 +83,12 @@
         :class="out ? 'me-1' : 'ms-1'"
       >
         <span>{{ when }}</span>
+        <!-- This bubble was mined out of someone's forward/quote chain
+             (TicketAgentActivities expands email.chain); the tag is the only
+             mark of how it arrived. -->
+        <span v-if="activity.forwardedBy"
+          >· ↪ {{ __("forwarded by") }} {{ activity.forwardedBy }}</span
+        >
         <span v-if="activity.bubbleTruncated">· {{ __("trimmed") }}</span>
         <span v-if="hiddenAttachmentCount"
           >· {{ hiddenAttachmentCount }} {{ __("in original") }}</span
@@ -113,8 +119,10 @@
         {{ __("Back to bubble") }}
       </button>
     </div>
+    <!-- A chain bubble's full content lives only inside the email it was
+         extracted from — its Original shows that parent email. -->
     <EmailArea
-      :activity="activity"
+      :activity="activity.chainParent || activity"
       :collapsed="false"
       :show-split-option="false"
       class="py-2 px-3"
@@ -184,6 +192,10 @@ const showName = computed(
 const text = computed(() => {
   const lines = props.activity.bubbleLines;
   if (lines?.length) return lines.join("\n");
+  // The whole email WAS the forward: its content renders as the extracted
+  // chain bubbles above this one. Falling through to htmlToText here would
+  // re-flatten that entire chain back into this bubble.
+  if (props.activity.hasChain) return __("(forwarded without comment)");
   // No server extraction (e.g. an image-only email): client-side strip so a
   // TEXT bubble is never silently blank — unless there's media to show.
   const stripped = htmlToText(props.activity.content || "").trim();
