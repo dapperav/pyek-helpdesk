@@ -34,6 +34,8 @@
         </div>
         <div class="ms-auto flex gap-3">
           <button class="chip" @click="openViewByLabel('Awaiting first reply')">
+            <!-- Echo peeks over the chip while someone's treading water -->
+            <EchoPeek :active="treadPeek" :width="46" :overlap="10" left="10px" />
             <span class="chip-l" :style="{ color: scene.chipWarn }">{{ __("Treading water") }}</span>
             <span class="chip-v" :style="scene.glowWarn ? { textShadow: scene.glowWarn } : {}">
               {{ homeStats.data?.awaiting_first_reply ?? 0 }}
@@ -54,10 +56,18 @@
 
       <!-- Echo, the easter egg: rises from behind the wave crest a few times
            a shift, says something encouraging, slips back under. Never
-           persistent, never over the chips. -->
-      <div class="echo-break" :class="{ show: echoShown }" aria-live="polite">
-        <div class="echo-bubble">{{ echoText }}</div>
-        <img class="echo-avatar" :src="'/files/echo-finley.png'" alt="Echo" />
+           persistent, never over the chips. Since the echo-eggs round
+           (2026-08-19) he arrives as a full pose sticker with the splash
+           entrance; scheduling shares the app-wide cooldown in
+           composables/echoEggs.ts. -->
+      <div class="echo-spot" aria-live="polite">
+        <EchoPop
+          :show="echoShown"
+          :pose="echoPose"
+          :text="echoText"
+          :size="60"
+          layout="row"
+        />
       </div>
 
       <div v-if="sceneKey !== 'night'" class="overflow-hidden">
@@ -262,7 +272,17 @@
 </template>
 
 <script setup lang="ts">
+import EchoPeek from "@/components/echo/EchoPeek.vue";
+import EchoPop from "@/components/echo/EchoPop.vue";
+import type { EchoPose } from "@/components/echo/echoAssets";
 import WaveChart from "@/components/home/WaveChart.vue";
+import {
+  echoCanPop,
+  echoClaimGreeting,
+  echoEvent,
+  echoMarkPop,
+  useEchoPeek,
+} from "@/composables/echoEggs";
 import { selfAssignTicket } from "@/composables/selfAssign";
 import { useSunsetScene } from "@/composables/sunsetScene";
 import { useView } from "@/composables/useView";
@@ -563,6 +583,10 @@ async function onDropClaim(_e: DragEvent) {
     await selfAssignTicket(String(t.name));
     splash("mine");
     toast.success(__("Ticket {0} is yours", t.name));
+    // drag-to-claim cameo — same guards as every event pop (10-min
+    // cooldown, urgent mute), rendered on the crest instead of the layer
+    const claimLine = echoEvent("claim", {}, { render: false });
+    if (claimLine) echoShow(claimLine);
     refreshAll();
   } catch {
     toast.error(__("Could not claim the ticket."));
@@ -575,51 +599,119 @@ async function onDropClaim(_e: DragEvent) {
 // 20–60s after the page opens so a fresh session gets one early delight.
 const echoShown = ref(false);
 const echoText = ref("");
+const echoPose = ref<EchoPose>("thumbs");
 let echoTimer: ReturnType<typeof setTimeout> | null = null;
 let echoHide: ReturnType<typeof setTimeout> | null = null;
 let echoIdx = 0;
 
-function echoLines(): string[] {
+type EchoLine = { text: string; pose: EchoPose };
+
+function echoLines(): EchoLine[] {
   const s = homeStats.data || {};
   const resolved = s.resolved_today ?? 0;
   const treading = s.awaiting_first_reply ?? 0;
-  const pools: Record<string, string[]> = {
+  const pools: Record<string, EchoLine[]> = {
     dawn: [
-      __("Morning — {0} came in overnight.", [String(s.open_human ?? 0)]),
-      __("Early bird gets the empty queue."),
+      {
+        text: __("Morning — {0} came in overnight.", [String(s.open_human ?? 0)]),
+        pose: "hello",
+      },
+      { text: __("Early bird gets the empty queue."), pose: "thumbs" },
     ],
     day: [
       resolved
-        ? __("Nice work — {0} resolved already today.", [String(resolved)])
-        : __("Fresh water. Let's make some waves."),
+        ? {
+            text: __("Nice work — {0} resolved already today.", [String(resolved)]),
+            pose: "cheer",
+          }
+        : { text: __("Fresh water. Let's make some waves."), pose: "thumbs" },
       treading
-        ? __("{0} treading water. A quick reply gets them ashore.", [String(treading)])
-        : __("Nobody's treading water. Smooth sailing."),
-      __("Halfway through the shift and the water is calm."),
+        ? {
+            text: __("{0} treading water. A quick reply gets them ashore.", [
+              String(treading),
+            ]),
+            pose: "thumbs",
+          }
+        : { text: __("Nobody's treading water. Smooth sailing."), pose: "float" },
+      { text: __("Halfway through the shift and the water is calm."), pose: "thumbs" },
     ],
     golden: [
       treading
-        ? __("Home stretch — {0} still treading water.", [String(treading)])
-        : __("Golden hour and a clear horizon."),
-      __("Golden hour. Finish strong."),
+        ? {
+            text: __("Home stretch — {0} still treading water.", [String(treading)]),
+            pose: "thumbs",
+          }
+        : { text: __("Golden hour and a clear horizon."), pose: "thumbs" },
+      { text: __("Golden hour. Finish strong."), pose: "cheer" },
     ],
-    night: [__("Quiet hours on. I'll keep watch."), __("Nothing stirring. Rest easy.")],
+    night: [
+      { text: __("Quiet hours on. I'll keep watch."), pose: "night" },
+      { text: __("Nothing stirring. Rest easy."), pose: "night" },
+    ],
   };
   return pools[sceneKey.value] || pools.day;
 }
-function echoPop() {
-  const lines = echoLines();
-  echoText.value = lines[echoIdx++ % lines.length];
+function echoShow(line: EchoLine) {
+  echoText.value = line.text;
+  echoPose.value = line.pose;
+  // pops are cooldown-spaced, so there's no entrance animation to restart —
+  // and an rAF dance would never fire in a hidden tab
   echoShown.value = true;
   if (echoHide) clearTimeout(echoHide);
   echoHide = setTimeout(() => (echoShown.value = false), 8500);
+}
+function echoPop() {
+  // ambient pops share the app-wide cooldown (echoEggs.ts) so Home's
+  // scheduler and the global event layer never stack
+  if (!echoCanPop()) {
+    scheduleEcho(5 * 60_000, 12 * 60_000);
+    return;
+  }
+  echoMarkPop();
+  echoShow(echoLines()[echoIdx++ % echoLines().length]);
   scheduleEcho(45 * 60_000, 90 * 60_000);
 }
 function scheduleEcho(minMs: number, maxMs: number) {
   if (echoTimer) clearTimeout(echoTimer);
   echoTimer = setTimeout(echoPop, minMs + Math.random() * (maxMs - minMs));
 }
-onMounted(() => scheduleEcho(20_000, 60_000));
+function echoGreet() {
+  const s = homeStats.data || {};
+  const overnight = s.open_human ?? 0;
+  echoMarkPop();
+  // this app's __() substitutes a single placeholder only — compose the
+  // greeting half by hand
+  echoShow({
+    pose: "hello",
+    text: overnight
+      ? greeting.value + " — " + __("{0} came in overnight.", [String(overnight)])
+      : greeting.value + ". " + __("Flat water so far."),
+  });
+  scheduleEcho(45 * 60_000, 90 * 60_000);
+}
+onMounted(() => {
+  // first Home load of the day → greeting pop once the stats are real;
+  // otherwise the usual early ambient pop
+  if (echoClaimGreeting()) {
+    const stop = watch(
+      () => homeStats.data,
+      (d) => {
+        if (!d) return;
+        stop();
+        setTimeout(echoGreet, 2_500);
+      },
+      { immediate: true }
+    );
+  } else {
+    scheduleEcho(20_000, 60_000);
+  }
+});
+
+// Echo peeks over the Treading-water chip while someone's in the water
+const treadPeek = useEchoPeek(
+  "home-tread",
+  () => (homeStats.data?.awaiting_first_reply ?? 0) > 0
+);
 
 // ---- Wave charts: six weeks of swell, computed from real ticket dates ------
 const weekStarts = computed(() => {
@@ -839,6 +931,7 @@ async function fireSos() {
 
 /* --- glass chips --- */
 .chip {
+  position: relative; /* EchoPeek anchors to the Treading-water chip */
   -webkit-backdrop-filter: blur(14px) saturate(1.7);
   backdrop-filter: blur(14px) saturate(1.7);
   background: rgba(255, 255, 255, 0.13);
@@ -875,65 +968,16 @@ async function fireSos() {
   vertical-align: 1px;
 }
 
-/* --- Echo, hidden beneath the wave until he pops --- */
-.echo-break {
+/* --- Echo, hidden beneath the wave until he pops (EchoPop renders the
+       sticker + bubble + splash; this just reserves his crest spot) --- */
+.echo-spot {
   position: absolute;
   right: 4%;
   bottom: -4px;
   z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  width: 260px;
+  height: 190px;
   pointer-events: none;
-  opacity: 0;
-  transform: translateY(115%);
-  transition: transform 0.7s cubic-bezier(0.34, 1.3, 0.5, 1), opacity 0.5s ease;
-}
-.echo-break.show {
-  transform: translateY(0);
-  opacity: 1;
-}
-.echo-break .echo-bubble {
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.4s ease 0.45s, transform 0.4s ease 0.45s;
-}
-.echo-break.show .echo-bubble {
-  opacity: 1;
-  transform: none;
-}
-.echo-avatar {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  object-fit: cover;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  background: #fff;
-  margin-bottom: 2px;
-}
-.echo-bubble {
-  background: rgba(255, 255, 255, 0.92);
-  color: #1b2a4a;
-  font-size: 11.5px;
-  font-weight: 600;
-  border-radius: 12px 12px 3px 12px;
-  padding: 6px 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  max-width: 240px;
-  margin-bottom: 18px;
-}
-.scene-night .echo-bubble {
-  background: rgba(20, 34, 58, 0.92);
-  color: #e8f4fa;
-}
-@media (prefers-reduced-motion: reduce) {
-  .echo-break {
-    transition: opacity 0.3s ease;
-  }
-  .echo-break.show {
-    transform: translateY(0);
-  }
 }
 
 /* --- wave edge (height pinned: at 200% of a wide pane the proportional

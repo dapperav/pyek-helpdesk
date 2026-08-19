@@ -11,7 +11,10 @@
             : 'w-full px-2 hover:bg-surface-gray-3'
         "
       >
-        <PyekWaveMark class="size-8 shrink-0" />
+        <!-- hidden trigger: five quick clicks on the wave mark summon Echo
+             anywhere (composables/echoEggs.ts — the menu flapping open and
+             closed on the way is part of the discovery) -->
+        <PyekWaveMark class="size-8 shrink-0" @click="echoWaveClick" />
         <div
           class="flex flex-1 flex-col text-left duration-300 ease-in-out overflow-hidden"
           :class="
@@ -49,6 +52,7 @@
 
 <script setup lang="ts">
 import PyekWaveMark from "@/components/PyekWaveMark.vue";
+import { echoWaveClick } from "@/composables/echoEggs";
 import { useAuthStore } from "@/stores/auth";
 import { useConfigStore } from "@/stores/config";
 import { useSidebarStore } from "@/stores/sidebar";
