@@ -47,6 +47,15 @@
                 <span
                   class="relative grid size-4 shrink-0 place-items-center text-ink-gray-7"
                 >
+                  <!-- Echo peeks over the bell while an unread @mention
+                       sits in there (echo-eggs round, 2026-08-19) -->
+                  <EchoPeek
+                    v-if="item.key === 'notifications'"
+                    :active="bellPeek"
+                    :width="26"
+                    :overlap="6"
+                    left="-5px"
+                  />
                   <component :is="item.icon" class="size-4" />
                   <span
                     v-if="item.key === 'notifications' && item.badge"
@@ -119,8 +128,10 @@
 </template>
 
 <script setup lang="ts">
+import EchoPeek from "@/components/echo/EchoPeek.vue";
 import PyekUniversalSearch from "@/components/PyekUniversalSearch.vue";
 import UserMenu from "@/components/UserMenu.vue";
+import { useEchoPeek } from "@/composables/echoEggs";
 import { openUniversalSearch } from "@/composables/universalSearch";
 import { useDevice } from "@/composables";
 import { currentView, useView } from "@/composables/useView";
@@ -162,6 +173,18 @@ const route = useRoute();
 const router = useRouter();
 const device = useDevice();
 const notificationStore = useNotificationStore();
+
+// Echo peeks over the bell while an unread @mention waits (desktop rail
+// only — the mobile drawer has its own vocabulary)
+const bellPeek = useEchoPeek(
+  "bell-mention",
+  () =>
+    !props.mobile &&
+    !isCustomerPortal.value &&
+    (notificationStore.data || []).some(
+      (d: any) => !d.read && d.notification_type === "Mention"
+    )
+);
 const sidebarStore = useSidebarStore();
 const { isCallingEnabled } = storeToRefs(useTelephonyStore());
 const { pinnedViews, publicViews, viewActions, handleView } = useView();

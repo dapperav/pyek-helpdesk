@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import CommunicationArea from "@/components/CommunicationArea.vue";
+import { echoRecordClose } from "@/composables/echoEggs";
 import {
   ActivityIcon,
   AttachmentIcon,
@@ -259,7 +260,12 @@ function onCloseClicked() {
   }
   ticket.value.setValue.submit(
     { status: "Closed" },
-    { onSuccess: () => activities.value.reload() }
+    {
+      onSuccess: () => {
+        echoRecordClose();
+        activities.value.reload();
+      },
+    }
   );
 }
 

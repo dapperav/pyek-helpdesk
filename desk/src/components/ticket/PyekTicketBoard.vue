@@ -16,7 +16,16 @@
         :key="lane.key"
         class="min-w-0 rounded-[14px] border border-[#e3e9f2] bg-[#f3f7fc] p-2.5"
       >
-        <header class="flex items-center gap-2 px-1.5 pt-1">
+        <header class="relative flex items-center gap-2 px-1.5 pt-1">
+          <!-- Echo peeks over the Open lane when its oldest unowned ticket
+               has been sitting past the age line -->
+          <EchoPeek
+            v-if="lane.key === 'open' && !mineView"
+            :active="agePeek"
+            :width="50"
+            :overlap="10"
+            left="14px"
+          />
           <span class="text-[13px] font-bold text-[#1b2a4a]">{{
             lane.name
           }}</span>
@@ -34,10 +43,25 @@
           {{ lane.sub }}
         </p>
 
+        <!-- wrapper exists so EchoPeek can hang OVER the card's top edge —
+             the article's own overflow-hidden would decapitate him -->
+        <div v-for="row in lane.rows" :key="row.name" class="relative mb-2">
+          <EchoPeek
+            v-if="slaPeekTarget === row.name"
+            :active="slaPeek"
+            :width="56"
+            :overlap="12"
+            left="18px"
+          />
+          <EchoPeek
+            v-else-if="quietPeekTarget === row.name"
+            :active="quietPeek"
+            :width="56"
+            :overlap="12"
+            left="18px"
+          />
         <article
-          v-for="row in lane.rows"
-          :key="row.name"
-          class="pyek-bcard relative mb-2 flex min-w-0 cursor-pointer flex-col gap-1.5 overflow-hidden rounded-[10px] border border-[#e3e9f2] bg-white py-2.5 pl-4 pr-3 transition-shadow hover:shadow-[0_2px_10px_rgba(27,42,74,0.10)]"
+          class="pyek-bcard relative flex min-w-0 cursor-pointer flex-col gap-1.5 overflow-hidden rounded-[10px] border border-[#e3e9f2] bg-white py-2.5 pl-4 pr-3 transition-shadow hover:shadow-[0_2px_10px_rgba(27,42,74,0.10)]"
           @click="$emit('rowClick', row)"
         >
           <span
@@ -142,11 +166,21 @@
             </span>
           </div>
         </article>
+        </div>
 
         <div
           v-if="!lane.rows.length"
           class="rounded-[10px] border-[1.5px] border-dashed border-[#d4deea] px-3 py-4 text-center text-[12.5px] text-[#8b94a5]"
         >
+          <!-- when a lane DRAINS while you watch, Echo floats up to say it
+               himself (echo-eggs round); a lane that was already empty keeps
+               the quiet text -->
+          <img
+            v-if="drainedLane === lane.key"
+            :src="ECHO_POSES.float"
+            class="drained-echo mx-auto mb-1.5 w-16"
+            alt=""
+          />
           {{ __("All clear — nothing in the water.") }}
         </div>
       </section>
@@ -167,10 +201,14 @@
 </template>
 
 <script setup lang="ts">
+import EchoPeek from "@/components/echo/EchoPeek.vue";
+import { ECHO_POSES } from "@/components/echo/echoAssets";
+import { useEchoPeek } from "@/composables/echoEggs";
 import {
   edgeColor,
   isNotificationSender,
   parseAssign,
+  parseFrappeDate,
   quietDays,
   slaClock,
 } from "@/composables/ticketCardSignals";
@@ -178,7 +216,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useUserStore } from "@/stores/user";
 import { __ } from "@/translation";
 import { dayjs } from "frappe-ui";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 
 const props = defineProps<{
   rows: any[];
@@ -244,6 +282,54 @@ const lanes = computed(() => {
 
 const offBoardCount = computed(
   () => props.rows.length - props.rows.filter(isLive).length
+);
+
+// --- Echo easter eggs on the board (spec approved 2026-08-19) ---------------
+// Drained lane: only a TRANSITION to zero earns the float — a lane that was
+// already empty when you arrived keeps the quiet dashed text.
+const drainedLane = ref<string | null>(null);
+let drainTimer: ReturnType<typeof setTimeout> | null = null;
+const prevLaneCounts: Record<string, number> = {};
+watch(lanes, (ls) => {
+  for (const l of ls) {
+    const prev = prevLaneCounts[l.key];
+    if (prev !== undefined && prev > 0 && l.rows.length === 0) {
+      drainedLane.value = l.key;
+      if (drainTimer) clearTimeout(drainTimer);
+      drainTimer = setTimeout(() => (drainedLane.value = null), 9_000);
+    }
+    prevLaneCounts[l.key] = l.rows.length;
+  }
+});
+
+// Peeks — silent "needs eyes" markers. One at a time app-wide; the manager
+// in echoEggs.ts re-peeks a spot at most every 30 minutes.
+const slaPeekTarget = computed<string | null>(() => {
+  for (const l of lanes.value)
+    for (const r of l.rows) if (slaClock(r)?.kind === "hot") return r.name;
+  return null;
+});
+const quietPeekTarget = computed<string | null>(() => {
+  const assg = lanes.value.find((l) => l.key === "assg");
+  const worst = (assg?.rows || [])
+    .filter((r: any) => quietDays(r.modified) >= 3)
+    .sort((a: any, b: any) => quietDays(b.modified) - quietDays(a.modified))[0];
+  return worst ? worst.name : null;
+});
+const openLaneAging = computed(() => {
+  const open = lanes.value.find((l) => l.key === "open");
+  // creation may not ride on every list view's rows — then this egg just
+  // never fires, which is fine
+  return (open?.rows || []).some(
+    (r: any) =>
+      r.creation && Date.now() - parseFrappeDate(r.creation) > 3 * 86_400_000
+  );
+});
+const slaPeek = useEchoPeek("board-sla", () => !!slaPeekTarget.value);
+const quietPeek = useEchoPeek("board-quiet", () => !!quietPeekTarget.value);
+const agePeek = useEchoPeek(
+  "board-age",
+  () => !props.mineView && openLaneAging.value
 );
 
 // --- card bits (same vocabulary as the mobile Clean Card) ------------------
@@ -390,5 +476,30 @@ const ownerExtra = (row: any) => Math.max(0, parseAssign(row._assign).length - 1
   font-size: 11.5px;
   font-weight: 600;
   color: #5b6577;
+}
+</style>
+
+<style scoped>
+/* Echo floating up into a freshly-drained lane — one gentle rise, then
+   still (calm-seas rule). */
+.drained-echo {
+  animation: drained-rise 0.8s cubic-bezier(0.25, 0.9, 0.35, 1) both;
+  filter: drop-shadow(0 3px 8px rgba(4, 26, 46, 0.18));
+}
+@keyframes drained-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drained-echo {
+    animation: none;
+    opacity: 1;
+  }
 }
 </style>

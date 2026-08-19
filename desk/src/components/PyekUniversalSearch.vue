@@ -90,8 +90,11 @@
             </button>
           </template>
 
-          <div v-if="showEmpty" class="px-4 py-8 text-center text-sm text-ink-gray-5">
-            {{ __("Nothing matched — tried subjects, senders, thread text, and numbers, across every status.") }}
+          <div v-if="showEmpty" class="px-4 py-6 text-center text-sm text-ink-gray-5">
+            <!-- Echo owns the miss (echo-eggs round, 2026-08-19) -->
+            <img :src="ECHO_POSES.search" class="mx-auto mb-2 w-14" alt="" />
+            <div>{{ __("Nothing surfaced for that. Fewer words might do it —") }}</div>
+            <div>{{ __("or try a name or a ticket number.") }}</div>
           </div>
           <div v-else-if="!hasResults && !jumpId" class="px-4 py-8 text-center text-sm text-ink-gray-5">
             {{ __("Type a name, a keyword, or a ticket number.") }}
@@ -113,6 +116,7 @@ import {
   universalSearchSeed,
 } from "@/composables/universalSearch";
 import { useShortcut } from "@/composables/shortcuts";
+import { ECHO_POSES } from "@/components/echo/echoAssets";
 import { __ } from "@/translation";
 import { call, dayjs, Dialog, LoadingIndicator } from "frappe-ui";
 import { computed, nextTick, ref, watch } from "vue";

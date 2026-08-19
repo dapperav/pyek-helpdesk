@@ -58,6 +58,7 @@
 
 <script setup lang="ts">
 import { useDevice } from "@/composables";
+import { echoRecordClose } from "@/composables/echoEggs";
 import { TicketSymbol } from "@/types";
 import { Button, Dialog, FormControl } from "frappe-ui";
 import { computed, inject, nextTick, ref, watch } from "vue";
@@ -98,6 +99,7 @@ function submit(fields: Record<string, string>) {
     onSuccess() {
       saving.value = false;
       show.value = false;
+      if (fields.status === "Closed") echoRecordClose();
       emit("closed");
     },
     onError() {

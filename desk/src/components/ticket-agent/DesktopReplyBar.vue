@@ -195,7 +195,9 @@ import {
   buildAiReplyDraft,
   hasAiReplyDraft,
 } from "@/composables/aiReplyDraft";
+import { echoRecordSlaSave } from "@/composables/echoEggs";
 import { useTyping } from "@/composables/realtime";
+import { parseFrappeDate } from "@/composables/ticketCardSignals";
 import { useShortcut } from "@/composables/shortcuts";
 import { getUserEmailInfo } from "@/composables/useUserEmailInfo";
 import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
@@ -460,6 +462,16 @@ const out = {
 };
 let pendingReplyMentions: { label: string; email: string }[] = [];
 let pendingReplyMessage = "";
+// Echo's SLA-save egg: minutes left on the first-response clock at the
+// moment the send goes out (null when there's no live clock to beat).
+let pendingSlaMins: number | null = null;
+
+function slaMinsLeft(): number | null {
+  const d = doc.value;
+  if (!d?.response_by || d.first_responded_on) return null;
+  const mins = (parseFrappeDate(d.response_by) - Date.now()) / 60_000;
+  return mins > 0 ? mins : null;
+}
 
 const sendMail = createResource({
   url: "run_doc_method",
@@ -496,6 +508,8 @@ const sendMail = createResource({
     mentionedAgents.value = [];
     quickText.value = "";
     quickAttachments.value = [];
+    if (pendingSlaMins != null) echoRecordSlaSave(pendingSlaMins);
+    pendingSlaMins = null;
     nextTick(autogrow);
     afterReplySent();
   },
@@ -516,6 +530,7 @@ function sendQuick() {
   }
   pendingReplyMentions = activeMentions(text);
   pendingReplyMessage = text ? textToHtml(text) : "";
+  pendingSlaMins = slaMinsLeft();
   out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
   out.to.value = doc.value?.raised_by || "";
   out.attachments.value = quickAttachments.value.map((x) => x.name);

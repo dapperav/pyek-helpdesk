@@ -93,6 +93,7 @@
 
 <script setup lang="ts">
 import { MultipleAvatar } from "@/components";
+import { echoRecordClose } from "@/composables/echoEggs";
 import LayoutHeader from "@/components/LayoutHeader.vue";
 import TicketMergeModal from "@/components/ticket/TicketMergeModal.vue";
 import { setupCustomizations } from "@/composables/formCustomisation";
@@ -190,6 +191,7 @@ const statusDropdown = computed(() => {
         { status: o.label_agent },
         {
           onSuccess() {
+            if (o.label_agent === "Closed") echoRecordClose();
             activities.value.reload();
           },
         }
