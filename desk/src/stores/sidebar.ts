@@ -9,10 +9,13 @@ export const useSidebarStore = defineStore("sidebar", () => {
   // purpose — everyone lands on the rail once, and their own toggle sticks
   // from there.
   const isExpanded = useStorage("sidebar_rail_expanded", false);
-  // Match frappe-ui Sidebar's width/collapsedWidth props (15rem/3rem),
-  // since the notifications panel anchors against this value.
+  // Match frappe-ui Sidebar's width/collapsedWidth props (15rem/4.5rem),
+  // since the notifications panel anchors against this value. The rail grew
+  // from 3rem to 4.5rem on 2026-08-20 to fit a caption under every icon
+  // (Mark: "icons alone are guesswork"); AppSidebar passes the same value as
+  // :collapsed-width, so the two must move together.
   const width = computed(() => {
-    return isExpanded.value ? "15rem" : "3rem";
+    return isExpanded.value ? "15rem" : "4.5rem";
   });
 
   function toggle(state?: boolean) {

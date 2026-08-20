@@ -2,12 +2,38 @@
   <Sidebar
     v-model:collapsed="collapsed"
     :disable-collapse="mobile"
+    collapsed-width="4.5rem"
     class="border-e border-outline-gray-1"
   >
+    <!-- CAPTIONED RAIL — the desktop default (Mark, 2026-08-20: "icons alone
+         are guesswork"). 4.5rem, a word under every icon, items grouped under
+         hairline rules. The 15rem panel below is unchanged stock SidebarItem,
+         still reachable from the same toggle. The mobile drawer pins the
+         sidebar open (disable-collapse), so it always takes the panel branch. -->
+    <div v-if="isCollapsed" class="flex h-full flex-col p-1.5">
+      <div class="flex justify-center">
+        <UserMenu :options="profileSettings" :is-collapsed="true" />
+      </div>
+      <ScrollArea class="-mx-1.5 mt-2 min-h-0 flex-1" viewport-class="px-1.5">
+        <PyekRail :groups="railGroups" :bell-peek="bellPeek" />
+      </ScrollArea>
+      <div class="mt-auto flex flex-col gap-0.5">
+        <slot name="footer" :is-collapsed="true" />
+        <!-- Captioned twin of SidebarCollapseToggle: on a rail whose point is
+             that nothing is a guess, the toggle says what it does too. -->
+        <PyekRailItem
+          v-if="!mobile"
+          :caption="__('Expand')"
+          :icon="LucidePanelRightOpen"
+          @click="sidebarStore.toggleExpanded(true)"
+        />
+      </div>
+    </div>
     <!-- On the mobile drawer, clear the iOS status-bar inset so the brand
          doesn't render behind the clock (the navy sidebar bg fills the notch
          strip). Desktop is unaffected. -->
     <div
+      v-else
       class="flex h-full flex-col p-2"
       :style="mobile ? { paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' } : {}"
     >
@@ -19,11 +45,14 @@
             v-if="section.label"
             divider
             class="my-1 select-none"
-            :class="section.collapsible && !isCollapsed && 'cursor-pointer'"
+            :class="section.collapsible && 'cursor-pointer'"
             @click="section.collapsible && toggleSection(section.label)"
           >
             <span class="flex items-center gap-1.5 text-sm font-medium">
+              <!-- Only the views group folds; the nav groups (Find / Queues /
+                   Go) are structure, not a container to open and close. -->
               <span
+                v-if="section.collapsible"
                 class="lucide-chevron-right size-4 shrink-0 text-ink-gray-9 transition-transform duration-300 ease-in-out"
                 :class="{ 'rotate-90': isSectionOpen(section.label) }"
               />
@@ -31,7 +60,7 @@
             </span>
           </SidebarLabel>
           <nav
-            v-if="!section.label || isSectionOpen(section.label)"
+            v-if="!section.collapsible || isSectionOpen(section.label)"
             class="flex flex-col gap-0.5"
           >
             <SidebarItem
@@ -40,7 +69,6 @@
               :id="item.id"
               :label="__(item.label)"
               :active="item.isActive"
-              :class="item.spacedTop && 'mt-4'"
               @click="item.onClick && item.onClick()"
             >
               <template #prefix>
@@ -129,6 +157,8 @@
 
 <script setup lang="ts">
 import EchoPeek from "@/components/echo/EchoPeek.vue";
+import PyekRail from "@/components/layouts/PyekRail.vue";
+import PyekRailItem from "@/components/layouts/PyekRailItem.vue";
 import PyekUniversalSearch from "@/components/PyekUniversalSearch.vue";
 import UserMenu from "@/components/UserMenu.vue";
 import { useEchoPeek } from "@/composables/echoEggs";
@@ -158,6 +188,7 @@ import { computed, reactive, ref, watch } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import LucideBell from "~icons/lucide/bell";
+import LucidePanelRightOpen from "~icons/lucide/panel-right-open";
 import LucideSearch from "~icons/lucide/search";
 import {
   agentPortalSidebarOptions,
@@ -256,12 +287,14 @@ const navItems = computed(() => {
     : agentPortalSidebarOptions;
   return options
     .filter((item) => isCallingEnabled.value || item.label !== __("Call Logs"))
-    .map((option: any, index: number) => {
+    .map((option: any) => {
       // Queue jump (POS/IT/Mine): opens the saved view, wears its live count.
       if (option.view) {
         const v = publicViewByLabel(option.view);
         return {
           label: option.label,
+          caption: option.caption || option.label,
+          group: option.group,
           icon: option.icon,
           isActive: !!v && activeItem.value === v.name,
           onClick: () => {
@@ -275,7 +308,6 @@ const navItems = computed(() => {
               }
             );
           },
-          spacedTop: !!option.spacedTop,
           key: "view:" + option.view,
           count: queueCounts.counts[option.countKey] || 0,
           badge: 0,
@@ -285,22 +317,22 @@ const navItems = computed(() => {
       if (option.hash) {
         return {
           label: option.label,
+          caption: option.caption || option.label,
+          group: option.group,
           icon: option.icon,
           isActive: false,
           onClick: () => router.push({ name: option.to, hash: option.hash }),
-          spacedTop: !!option.spacedTop,
           key: "hash:" + option.hash,
           badge: 0,
         };
       }
       return {
         label: option.label,
+        caption: option.caption || option.label,
+        group: option.group,
         icon: option.icon,
         isActive: activeItem.value === option.to,
         onClick: () => selectItem(option.to, { name: option.to }),
-        // Separate the nav group from the search/notification tools above it.
-        spacedTop:
-          !!option.spacedTop || (index === 0 && !isCustomerPortal.value),
         key: option.label,
         badge:
           option.to === "AgentKnowledgeBase" ? kbConfirmCount.data || 0 : 0,
@@ -310,6 +342,8 @@ const navItems = computed(() => {
 
 const searchItem = computed(() => ({
   label: __("Search"),
+  caption: __("Search"),
+  group: "find",
   icon: LucideSearch,
   onClick: () => openUniversalSearch(),
   shortcut: true,
@@ -322,6 +356,8 @@ const notificationItem = computed(() =>
   props.mobile
     ? {
         label: __("Notifications"),
+        caption: __("Alerts"),
+        group: "find",
         icon: LucideBell,
         isActive: activeItem.value === "Notifications",
         onClick: () => selectItem("Notifications", { name: "Notifications" }),
@@ -331,6 +367,8 @@ const notificationItem = computed(() =>
       }
     : {
         label: __("Notifications"),
+        caption: __("Alerts"),
+        group: "find",
         icon: LucideBell,
         onClick: () => notificationStore.toggle(),
         badge: notificationStore.unread,
@@ -339,32 +377,63 @@ const notificationItem = computed(() =>
       }
 );
 
-const mainItems = computed(() => {
-  if (isCustomerPortal.value) return navItems.value;
-  const top = props.mobile
-    ? [notificationItem.value]
-    : [searchItem.value, notificationItem.value];
-  return [...top, ...navItems.value];
-});
-
-const sections = computed(() => {
-  const result = [{ label: "", items: mainItems.value, collapsible: false }];
+// Grouped navigation (Mark, 2026-08-20): find = the two tools, queues = the
+// three hero views with their live counts, go = places. One definition feeds
+// both the captioned rail and the 15rem panel, so the two can't drift; the
+// rail shows the short label under a hairline rule, the panel shows
+// `panelLabel` as a section header. The customer portal has two items and no
+// need for a map — it stays one unlabelled group.
+const groups = computed(() => {
+  if (isCustomerPortal.value)
+    return [{ key: "main", label: "", panelLabel: "", items: navItems.value }];
+  const of = (group: string) =>
+    navItems.value.filter((item: any) => item.group === group);
+  const result: any[] = [
+    {
+      key: "find",
+      label: __("Find"),
+      panelLabel: __("Find"),
+      items: props.mobile
+        ? [notificationItem.value]
+        : [searchItem.value, notificationItem.value],
+    },
+    { key: "queues", label: __("Queues"), panelLabel: __("Queues"), items: of("queues") },
+    { key: "go", label: __("Go"), panelLabel: __("Go"), items: of("go") },
+  ];
   // Public Views left the sidebar (Mark, 2026-08-18): the Home board's pools
   // ARE the public views now. Private views stay — they have no Home
   // representation and are personal by definition.
   if (pinnedViews.value?.length) {
     result.push({
-      label: __("Private Views"),
+      key: "views",
+      label: __("Views"),
+      panelLabel: __("Private Views"),
       items: parseViews(pinnedViews.value),
       collapsible: true,
     });
   }
-  return result;
+  return result.filter((g) => g.items.length);
 });
+
+// The rail wants short captions; every item already carries one.
+const railGroups = computed(() =>
+  groups.value.map((g: any) => ({ key: g.key, label: g.label, items: g.items }))
+);
+
+const sections = computed(() =>
+  groups.value.map((g: any) => ({
+    label: g.panelLabel,
+    items: g.items,
+    collapsible: !!g.collapsible,
+  }))
+);
 
 function parseViews(views: any[]) {
   return views.map((view) => ({
     label: view.label,
+    // A private view's name is free text and rarely fits 4.5rem — the rail
+    // truncates the caption and the tooltip carries the full name.
+    caption: view.label,
     icon: getIcon(view.icon),
     isActive: activeItem.value === view.name,
     onClick: () =>
@@ -391,7 +460,8 @@ watch(
    [data-slot="sidebar"] (the PYEK BRANDING block) — nothing to restyle here.
 
    Live queue count riding a rail icon: cyan pill, red stays the bell's. */
-.pyek-railcount {
+.pyek-railcount,
+.pyek-railcount-gray {
   position: absolute;
   right: -10px;
   top: -8px;
@@ -407,5 +477,10 @@ watch(
   display: grid;
   place-items: center;
   font-variant-numeric: tabular-nums;
+}
+/* The Knowledge Base confirm queue is a nudge, not a queue depth — it rides
+   the rail in slate so the cyan pills stay the live ticket counts. */
+.pyek-railcount-gray {
+  background: rgba(255, 255, 255, 0.22);
 }
 </style>

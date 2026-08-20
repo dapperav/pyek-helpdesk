@@ -1,6 +1,7 @@
 <template>
   <!-- Compact ocean mark for the icon rail (Mark, 2026-08-18: the full
-       envelope logo didn't fit the 3rem rail). Two wave strokes in the brand
+       envelope logo didn't fit the rail, 3rem then and 4.5rem since the
+       captions landed 2026-08-20). Two wave strokes in the brand
        cyans on a slightly-lifted navy tile — same vocabulary as the Home
        hero's wave edge. The full PyekMark stays on the mobile brand bar. -->
   <svg
