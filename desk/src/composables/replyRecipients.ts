@@ -86,6 +86,24 @@ export function buildReplyAllSet(opts: {
   return { to, cc };
 }
 
+// Every address the helpdesk itself sends or receives as — the set reply-all
+// must never target (it would CC the shared inbox on itself and echo the
+// reply back onto the ticket). The agent's PERSONAL outgoing list alone is
+// not enough: agents without User Email rows get an empty list there, which
+// let pos.pyek@ ride into Cc (found live on 0493, 2026-08-20).
+// `available_emails` is every outgoing-enabled Email Account, user-independent.
+export function helpdeskSupportEmails(info: any): string[] {
+  const rows = [
+    ...(info?.outgoing_emails ?? []),
+    ...(info?.available_emails ?? []),
+  ];
+  return [
+    ...new Set(
+      rows.map((e: any) => (e.email_id || "").toLowerCase()).filter(Boolean)
+    ),
+  ];
+}
+
 // Convenience for the reply bars: build the set straight from the raw
 // Communication rows the ticket pages already hold (`recipients` is frappe's
 // comma-separated To field).

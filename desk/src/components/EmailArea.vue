@@ -179,6 +179,7 @@
 
 <script setup lang="ts">
 import { AttachmentItem } from "@/components";
+import { helpdeskSupportEmails } from "@/composables/replyRecipients";
 import { useScreenSize } from "@/composables/screen";
 import { getUserEmailInfo } from "@/composables/useUserEmailInfo";
 import { useAuthStore } from "@/stores/auth";
@@ -316,10 +317,11 @@ const reply = () => {
 // otherwise carries the shared inbox the customer emailed into CC, which copies
 // the helpdesk on itself. Strip them (case-insensitive; handles "Name <email>").
 const userEmailInfo = getUserEmailInfo();
+// helpdeskSupportEmails, not just the personal outgoing list: agents without
+// User Email rows get [] there, which let the shared inbox survive Reply All
+// (found live on 0493, 2026-08-20).
 const supportEmails = computed(() =>
-  (userEmailInfo.data?.outgoing_emails ?? [])
-    .map((e: { email_id?: string }) => (e.email_id || "").toLowerCase())
-    .filter(Boolean)
+  helpdeskSupportEmails(userEmailInfo.data)
 );
 const stripSupport = (list: string[]) => {
   if (!supportEmails.value.length) return list;

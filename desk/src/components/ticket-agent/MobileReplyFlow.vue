@@ -484,6 +484,7 @@ import {
 } from "@/composables/aiReplyDraft";
 import { useTyping } from "@/composables/realtime";
 import {
+  helpdeskSupportEmails,
   recipientSummary,
   replyAllFromCommunications,
 } from "@/composables/replyRecipients";
@@ -598,11 +599,7 @@ const quickTo = ref<string[]>([]);
 const quickCc = ref<string[]>([]);
 let recipientsSyncing = false;
 
-const supportEmails = computed(() =>
-  (userResource.data?.outgoing_emails ?? [])
-    .map((e: any) => (e.email_id || "").toLowerCase())
-    .filter(Boolean)
-);
+const supportEmails = computed(() => helpdeskSupportEmails(userResource.data));
 const replyAllDefault = computed(() =>
   replyAllFromCommunications(
     props.communications as any[],
