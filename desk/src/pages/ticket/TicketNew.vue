@@ -108,6 +108,13 @@
 
       <!-- for agent portal -->
       <div v-if="!isCustomerPortal">
+        <!-- PYEK: internal tickets have no receiving inbox to route them into a
+             queue, so the team is chosen here. Email tickets get theirs from
+             the inbox; this is the one creation path where it must be manual. -->
+        <div class="mb-5 flex flex-col gap-2 sm:max-w-xs">
+          <span class="block text-sm text-ink-gray-7">{{ __("Queue") }}</span>
+          <FormControl v-model="team" type="select" :options="teamOptions" />
+        </div>
         <TicketTextEditor
           ref="editor"
           v-model:attachments="attachments"
@@ -184,6 +191,14 @@ const subject = ref("");
 const description = ref("");
 const attachments = ref([]);
 const templateFields = reactive({});
+
+// Same two queues MoveTeamButton toggles between. IT is the default: the
+// people raising internal tickets are the IT agents themselves.
+const team = ref("IT Support");
+const teamOptions = [
+  { label: __("IT Support"), value: "IT Support" },
+  { label: __("POS Support"), value: "POS Support" },
+];
 
 const template = createResource({
   url: "helpdesk.helpdesk.doctype.hd_ticket_template.api.get_one",
@@ -274,6 +289,7 @@ const ticket = createResource({
       subject: subject.value,
       template: props.templateId,
       ...templateFields,
+      ...(isCustomerPortal.value ? {} : { agent_group: team.value }),
     },
     attachments: attachments.value,
   }),

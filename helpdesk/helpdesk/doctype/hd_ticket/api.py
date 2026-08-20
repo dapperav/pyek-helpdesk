@@ -37,7 +37,9 @@ from helpdesk.utils import (
 # flake8: noqa
 def new(doc: dict, attachments: list[dict] = []):
     doc["doctype"] = "HD Ticket"
-    doc["via_customer_portal"] = bool(frappe.session.user)
+    # Agents raising internal tickets came through this same endpoint, so
+    # "portal" must mean "not an agent" — session.user is truthy for everyone.
+    doc["via_customer_portal"] = not is_agent()
     doc["attachments"] = attachments
     doc["raised_by"] = frappe.session.user
     d = frappe.get_doc(doc).insert()

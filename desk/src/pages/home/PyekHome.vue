@@ -420,7 +420,7 @@ const counts = computed(() => {
   const r = rows.value.filter(notResolved);
   return {
     pos: r.filter((t) => t.agent_group === "POS Support").length,
-    it: r.filter((t) => t.email_account === "IT Support").length,
+    it: r.filter((t) => t.agent_group === "IT Support").length,
     mine: r.filter(assignedToMe).length,
   };
 });
@@ -767,7 +767,7 @@ const waveCharts = computed(() => [
     title: __("Open by team"),
     series: [
       { name: "POS", colorIndex: 0, values: openAtWeekEnd((t) => t.agent_group === "POS Support") },
-      { name: "IT", colorIndex: 1, values: openAtWeekEnd((t) => t.email_account === "IT Support") },
+      { name: "IT", colorIndex: 1, values: openAtWeekEnd((t) => t.agent_group === "IT Support") },
     ],
   },
   {
@@ -839,7 +839,7 @@ const waveCharts = computed(() => [
           return humanRows.value.filter((t) => {
             const m = dayjs(t.creation);
             return (
-              t.email_account === "IT Support" &&
+              t.agent_group === "IT Support" &&
               m.isAfter(from.subtract(1, "millisecond")) &&
               m.isBefore(to)
             );

@@ -187,7 +187,7 @@ def get_home_board() -> dict:
 
     return {
         "pos": bucket(lambda r: r.agent_group == "POS Support"),
-        "it": bucket(lambda r: r.email_account == "IT Support"),
+        "it": bucket(lambda r: r.agent_group == "IT Support"),
         "mine": bucket(lambda r: user in (r.get("_assign") or ""), mine=True),
         # The Knowledge Base card's number on the More-views shelf. ALL
         # articles, not just Published: this site's SOP workflow keeps agent

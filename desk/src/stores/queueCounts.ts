@@ -7,8 +7,9 @@ import { useAuthStore } from "@/stores/auth";
 // 2026-08-18). Three frappe.client.get_count round trips — a proven core
 // endpoint, deliberately no new server code (a new endpoint's first real test
 // would be its first prod call). Filters mirror PyekHome's pool math exactly:
-// POS by agent_group, IT by email_account, Mine by _assign, all limited to
-// live work (status_category Open/Paused).
+// POS and IT by agent_group (the team field — the one thing every ticket in a
+// queue has, email or internal), Mine by _assign, all limited to live work
+// (status_category Open/Paused).
 export const useQueueCountsStore = defineStore("pyekQueueCounts", () => {
   const auth = useAuthStore();
   const counts = reactive<{ pos: number; it: number; mine: number }>({
@@ -34,7 +35,7 @@ export const useQueueCountsStore = defineStore("pyekQueueCounts", () => {
   async function refresh() {
     const [pos, it, mine] = await Promise.all([
       fetchCount({ agent_group: "POS Support", status_category: LIVE }),
-      fetchCount({ email_account: "IT Support", status_category: LIVE }),
+      fetchCount({ agent_group: "IT Support", status_category: LIVE }),
       fetchCount({
         _assign: ["like", `%${auth.user}%`],
         status_category: LIVE,
