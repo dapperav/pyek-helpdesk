@@ -476,18 +476,47 @@ watch(
   { immediate: true }
 );
 
+// PYEK: this list used to refresh on exactly one thing — the "helpdesk:new-ticket"
+// socket event. One missed event meant permanent staleness: nothing else ever
+// refetched, so tickets kept landing in the database while an open list showed
+// none of them. Measured on ticket 0493 (2026-08-19): created 13 SECONDS after
+// its email arrived, and it did not appear in Mark's open list until four hours
+// later, when something finally forced a refetch. socket.ts made that easy to
+// hit — reconnection was capped at five attempts, ~15s of backoff, after which
+// the socket was dead for the life of the page (fixed there too).
+//
+// So the event is now the fast path, not the only path. Same safety net the Home
+// board and the rail counts already carry: refresh when the window comes back,
+// a heartbeat while it stays open, and a catch-up on reconnect — the events that
+// fired during a gap are gone, so we refetch instead of waiting for the next one.
+const LIST_HEARTBEAT_MS = 60_000;
+let listHeartbeat: ReturnType<typeof setInterval> | null = null;
+
+function refreshList() {
+  // A hidden tab's reload would be wasted — onListVisible catches it up the
+  // moment it comes back, which is the only time anyone can see it anyway.
+  if (document.hidden) return;
+  listViewRef.value?.reload();
+}
+
+function onListVisible() {
+  if (!document.hidden) refreshList();
+}
+
 onMounted(() => {
-  if (!isCustomerPortal.value) {
-    $socket.on("helpdesk:new-ticket", () => {
-      listViewRef.value?.reload();
-    });
-  }
+  if (isCustomerPortal.value) return;
+  $socket.on("helpdesk:new-ticket", refreshList);
+  $socket.io.on("reconnect", refreshList);
+  document.addEventListener("visibilitychange", onListVisible);
+  listHeartbeat = setInterval(refreshList, LIST_HEARTBEAT_MS);
 });
 
 onUnmounted(() => {
-  if (!isCustomerPortal.value) {
-    $socket.off("helpdesk:new-ticket");
-  }
+  if (isCustomerPortal.value) return;
+  $socket.off("helpdesk:new-ticket", refreshList);
+  $socket.io.off("reconnect", refreshList);
+  document.removeEventListener("visibilitychange", onListVisible);
+  if (listHeartbeat) clearInterval(listHeartbeat);
 });
 
 usePageMeta(() => {

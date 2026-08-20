@@ -87,7 +87,13 @@ ACK_FALLBACK = "fallback"
 # How long to wait for enrichment before giving up and sending the plain
 # acknowledgement instead. The enricher polls every 60s; this leaves room for a
 # retry or a briefly-down worker without leaving the requester in silence.
-ACK_ENRICHMENT_GRACE_SECONDS = 5 * 60
+# Cut from 5 minutes to 90s on 2026-08-20: five minutes plus a wait for the next
+# scheduler tick put the requester's confirmation ~8 minutes behind their email
+# (measured on ticket 0493), and every hop is meant to be under two. 90s is
+# still ample — enrichment on 0493 finished 45 seconds after insert — and the
+# sweep now also runs every 60s off the enricher's poke (helpdesk.api.mail_tick),
+# so a ticket enriched at t+50s is still acknowledged WITH its summary.
+ACK_ENRICHMENT_GRACE_SECONDS = 90
 # Bound the sweep so one slow cycle can't fan out into a huge mail batch.
 ACK_SWEEP_BATCH = 50
 
