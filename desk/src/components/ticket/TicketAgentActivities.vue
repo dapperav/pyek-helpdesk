@@ -264,9 +264,16 @@ const displayActivities = computed(() => {
   const flat: any[] = [];
   for (const a of props.activities as any[]) {
     if (a.type === "email" && a.chain?.length) {
-      const forwarder = (a.sender?.full_name || a.sender?.name || "").split(
-        " "
-      )[0];
+      // "forwarded by Bre" — first name when a display name exists; external
+      // requesters often resolve to their bare address ("bre.wold@…"), whose
+      // local part yields the same first name.
+      const raw = a.sender?.full_name || a.sender?.name || "";
+      const base = raw.includes("@")
+        ? raw.split("@")[0].split(/[._]/)[0]
+        : raw.split(" ")[0];
+      const forwarder = base
+        ? base.charAt(0).toUpperCase() + base.slice(1)
+        : "";
       a.chain.forEach((seg: any, i: number) => {
         flat.push({
           type: "email",
