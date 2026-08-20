@@ -316,12 +316,15 @@ if (!props.quickBar) {
 // bar's draft carried over. Insert after the open-watch has focused the
 // editor at "start", so the carried text lands ABOVE the signature that
 // getInitialContent seeded.
-function openEmailBox(carryHtml?: string) {
+function openEmailBox(carryHtml?: string, to?: string[], cc?: string[]) {
   if (showCommentBox.value) showCommentBox.value = false;
   showEmailBox.value = true;
-  if (!carryHtml) return;
+  if (!carryHtml && !to?.length) return;
   nextTick(() => {
-    emailEditorRef.value?.editor?.commands?.insertContent(carryHtml);
+    // The bar's reply-all set (edits included) rides into the editor.
+    if (to?.length) emailEditorRef.value?.setRecipients?.(to, cc || []);
+    if (carryHtml)
+      emailEditorRef.value?.editor?.commands?.insertContent(carryHtml);
   });
 }
 

@@ -113,7 +113,55 @@
             {{ __("Note") }}
           </button>
         </div>
-        <span class="truncate text-xs text-ink-gray-5">{{ modeLabel }}</span>
+        <!-- Reply mode: the "to …" line is a button that opens the recipient
+             editor — reply-all is the default, pruning/adding is one tap. -->
+        <button
+          v-if="mode === 'reply'"
+          class="flex min-w-0 items-center gap-1 text-xs text-ink-gray-5"
+          @mousedown.prevent
+          @click="recipientsBarOpen = !recipientsBarOpen"
+        >
+          <span class="truncate">{{ modeLabel }}</span>
+          <LucidePencil class="size-3 shrink-0" />
+        </button>
+        <span v-else class="truncate text-xs text-ink-gray-5">{{
+          modeLabel
+        }}</span>
+      </div>
+      <!-- Recipient editor: kept open by `recipientsBarOpen` (it holds the
+           bar expanded through the blur its own inputs cause). -->
+      <div
+        v-if="expanded && recipientsBarOpen && mode === 'reply'"
+        class="mb-1.5 flex flex-col gap-1 rounded-xl border border-outline-gray-2 bg-surface-base px-3 py-2 shadow-md"
+      >
+        <div class="flex items-center gap-2">
+          <span class="w-6 shrink-0 text-xs text-ink-gray-4">{{
+            __("To")
+          }}</span>
+          <EmailMultiSelect
+            v-model="quickTo"
+            class="flex-1"
+            scope="contact"
+            variant="ghost"
+            allow-custom-email
+            :validate="validateEmailWithZod"
+            :custom-email-label="__('Add to recipients')"
+          />
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-6 shrink-0 text-xs text-ink-gray-4">{{
+            __("Cc")
+          }}</span>
+          <EmailMultiSelect
+            v-model="quickCc"
+            class="flex-1"
+            scope="contact"
+            variant="ghost"
+            allow-custom-email
+            :validate="validateEmailWithZod"
+            :custom-email-label="__('Add to recipients')"
+          />
+        </div>
       </div>
       <div class="flex items-end gap-1.5 pb-1.5">
         <!-- Close: two taps on purpose — the first arms it ("Close?"), the
@@ -435,6 +483,10 @@ import {
   hasAiReplyDraft,
 } from "@/composables/aiReplyDraft";
 import { useTyping } from "@/composables/realtime";
+import {
+  recipientSummary,
+  replyAllFromCommunications,
+} from "@/composables/replyRecipients";
 import { parseAssign, selfAssignTicket } from "@/composables/selfAssign";
 import { getUserEmailInfo } from "@/composables/useUserEmailInfo";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
@@ -483,10 +535,21 @@ import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideImagePlus from "~icons/lucide/image-plus";
 import LucideMaximize2 from "~icons/lucide/maximize-2";
 import LucidePaperclip from "~icons/lucide/paperclip";
+import LucidePencil from "~icons/lucide/pencil";
 import LucideSparkles from "~icons/lucide/sparkles";
 import LucideX from "~icons/lucide/x";
 
 const emit = defineEmits(["update"]);
+
+const props = defineProps({
+  // Raw Communication rows from the ticket's activities — the bar derives
+  // its reply-all default from the newest one (Mark, 2026-08-20: "when I
+  // reply it actually reply all instead").
+  communications: {
+    type: Array,
+    default: () => [],
+  },
+});
 
 const ticket = inject(TicketSymbol)!;
 const doc = computed(() => ticket.value?.doc);
@@ -508,7 +571,10 @@ const focused = ref(false);
 const quickAttachments = ref<any[]>([]);
 const expanded = computed(
   () =>
-    focused.value || !!quickText.value.trim() || !!quickAttachments.value.length
+    focused.value ||
+    recipientsBarOpen.value ||
+    !!quickText.value.trim() ||
+    !!quickAttachments.value.length
 );
 
 async function removeQuickAttachment(a: any) {
@@ -522,14 +588,61 @@ const quickText = useStorage(`pyekQuickDraft:${tid}`, "");
 const quickInput = ref<HTMLTextAreaElement | null>(null);
 const sending = ref(false);
 
+// ── Recipients (reply-all by default, editable in place) ────────────────
+// Defaults track the thread's newest email until the agent edits the set;
+// after that the edits are theirs for this screen's lifetime — a growing
+// thread must not silently re-add someone who was deliberately removed.
+const recipientsBarOpen = ref(false);
+const recipientsEdited = ref(false);
+const quickTo = ref<string[]>([]);
+const quickCc = ref<string[]>([]);
+let recipientsSyncing = false;
+
+const supportEmails = computed(() =>
+  (userResource.data?.outgoing_emails ?? [])
+    .map((e: any) => (e.email_id || "").toLowerCase())
+    .filter(Boolean)
+);
+const replyAllDefault = computed(() =>
+  replyAllFromCommunications(
+    props.communications as any[],
+    String((window as any).agent || ""),
+    supportEmails.value,
+    doc.value?.raised_by || ""
+  )
+);
+watch(
+  replyAllDefault,
+  (v) => {
+    if (recipientsEdited.value) return;
+    recipientsSyncing = true;
+    quickTo.value = [...v.to];
+    quickCc.value = [...v.cc];
+    nextTick(() => (recipientsSyncing = false));
+  },
+  { immediate: true }
+);
+watch(
+  [quickTo, quickCc],
+  () => {
+    if (!recipientsSyncing) recipientsEdited.value = true;
+  },
+  { deep: true }
+);
+
 const requesterLabel = computed(
   () => doc.value?.contact || doc.value?.raised_by || ""
+);
+const recipientsLabel = computed(
+  () =>
+    recipientSummary({ to: quickTo.value, cc: quickCc.value }) ||
+    requesterLabel.value
 );
 const modeLabel = computed(() =>
   mode.value === "note"
     ? __("visible to the team only")
-    : requesterLabel.value
-    ? `${__("to")} ${requesterLabel.value}`
+    : recipientsLabel.value
+    ? `${__("to")} ${recipientsLabel.value}`
     : ""
 );
 const quickPlaceholder = computed(() =>
@@ -794,13 +907,25 @@ function openCompose(payload: ComposePayload = {}) {
     newEmail.value = signatureHtml.value || "<p></p>";
   }
   if (payload.content) {
-    // Reply-to-a-specific-email (the thread's reply arrows): quote it and
-    // honor its recipient set, exactly like the desktop path did.
+    // Reply-to-a-specific-email (the thread's reply arrows): quote it.
     quotedHtml.value = payload.content;
     quoteExpanded.value = false;
-    if (payload.to) toEmailsM.value = asList(payload.to);
+  }
+  if (payload.to) {
+    // An explicit recipient set (reply arrows, or the quick bar's edited
+    // reply-all set) always wins.
+    toEmailsM.value = asList(payload.to);
     ccEmailsM.value = asList(payload.cc);
     bccEmailsM.value = asList(payload.bcc);
+  } else if (
+    toEmailsM.value.join(",") === (doc.value?.raised_by || "") &&
+    !ccEmailsM.value.length &&
+    !bccEmailsM.value.length
+  ) {
+    // Composer still on its requester-only default: seed the current
+    // reply-all set instead.
+    toEmailsM.value = [...quickTo.value];
+    ccEmailsM.value = [...quickCc.value];
   }
   quickInput.value?.blur();
   composeOpen.value = true;
@@ -910,14 +1035,15 @@ function sendQuick() {
   pendingReplyMentions = activeMentions(text);
   pendingReplyMessage = text ? textToHtml(text) : "";
   out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
-  out.to.value = doc.value?.raised_by || "";
-  out.cc.value = "";
+  out.to.value = quickTo.value.join(",") || doc.value?.raised_by || "";
+  out.cc.value = quickCc.value.join(",");
   out.bcc.value = "";
   out.attachments.value = quickAttachments.value.map((x) => x.name);
   if (!out.to.value) {
     toast.warning(__("This ticket has no requester email to reply to."));
     return;
   }
+  recipientsBarOpen.value = false;
   sending.value = true;
   sendMail.submit();
 }

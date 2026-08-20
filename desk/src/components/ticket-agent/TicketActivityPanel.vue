@@ -98,6 +98,7 @@
   <DesktopReplyBar
     v-show="!showEmailBox && !showCommentBox"
     :key="'bar-' + ticket.doc?.name"
+    :communications="activities?.data?.communications"
     @update="
       () => {
         activities.reload();
@@ -272,8 +273,11 @@ function onCloseClicked() {
 // The bar's ⤢ / Shift+R: open the full EmailEditor with the bar's text
 // carried over (already HTML). Insert AFTER the open so the editor's
 // signature initial-content is in place and focus("start") has run.
-function openFullEditor(carryHtml: string) {
-  communicationAreaRef.value?.openEmailBox(carryHtml);
+function openFullEditor(
+  payload: { html?: string; to?: string[]; cc?: string[] } | string
+) {
+  const p = typeof payload === "string" ? { html: payload } : payload || {};
+  communicationAreaRef.value?.openEmailBox(p.html, p.to, p.cc);
 }
 
 const route = useRoute();
