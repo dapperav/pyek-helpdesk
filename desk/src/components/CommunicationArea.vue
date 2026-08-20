@@ -163,6 +163,11 @@ function splitIfString(str: string | string[]) {
 function replyToEmail(data: object) {
   showEmailBox.value = true;
 
+  if (data.mode === "forward") {
+    emailEditorRef.value.addToForward(data);
+    return;
+  }
+
   emailEditorRef.value.addToReply(
     data.content,
     splitIfString(data.to),

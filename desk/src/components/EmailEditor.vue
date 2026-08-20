@@ -218,9 +218,12 @@ import { buildEditorExtensions, fullToolbar } from "@/components/editor/config";
 import EmailMultiSelect from "@/components/EmailMultiSelect.vue";
 import { AttachmentIcon } from "@/components/icons";
 import { useTyping } from "@/composables/realtime";
+import { __ } from "@/translation";
 import { getUserEmailInfo } from "@/composables/useUserEmailInfo";
 import { useAuthStore } from "@/stores/auth";
 import {
+  dateFormat,
+  dateTooltipFormat,
   getFontFamily,
   htmlToText,
   isContentEmpty,
@@ -315,6 +318,13 @@ const quotedContent = useStorage<null | string>(
   "quotedEmailBoxContent" + props.ticketId,
   null
 );
+// Non-null while composing a forward: the outgoing subject ("Fwd: ..."). Stored
+// alongside the quoted content so a reload doesn't silently turn the forward
+// into a reply.
+const forwardSubject = useStorage<null | string>(
+  "forwardSubjectEmailBox" + props.ticketId,
+  null
+);
 const quotedContentRef = ref<HTMLElement | null>(null);
 const isQuoteExpanded = ref(false);
 
@@ -381,6 +391,9 @@ const isUploading = ref(false);
 
 async function removeAttachment(attachment) {
   attachments.value = attachments.value.filter((a) => a !== attachment);
+  // Files carried over from a forwarded email belong to the original
+  // communication — removing the chip must not delete them from the ticket.
+  if (attachment._forwarded) return;
   await removeAttachmentFromServer(attachment.name);
 }
 
@@ -404,6 +417,8 @@ const sendMail = createResource({
       to: toEmailsClone.value.join(","),
       cc: ccEmailsClone.value?.join(","),
       bcc: bccEmailsClone.value?.join(","),
+      subject: forwardSubject.value || undefined,
+      is_forward: forwardSubject.value ? 1 : 0,
       message:
         newEmail.value +
         (quotedContentRef.value
@@ -459,6 +474,11 @@ function addToReply(
   ccEmails: string[],
   bccEmails: string[]
 ) {
+  // Switching from a half-composed forward back to a reply: drop the forward
+  // subject and the attachments that were carried over from the forwarded email.
+  forwardSubject.value = null;
+  attachments.value = attachments.value.filter((a) => !a._forwarded);
+
   toEmailsClone.value = toEmails;
   ccEmailsClone.value = ccEmails;
   bccEmailsClone.value = bccEmails;
@@ -485,10 +505,71 @@ function addToReply(
   focusEditorAtStart();
 }
 
+function escapeHtml(text: string) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function addToForward(data: {
+  content: string;
+  subject: string;
+  attachments: object[];
+  sender: { full_name?: string; name: string };
+  creation: string;
+  to: string;
+  cc?: string;
+}) {
+  // Leaving a previous forward: attachments carried over from that email
+  // must not leak into this one.
+  attachments.value = attachments.value.filter((a) => !a._forwarded);
+
+  toEmailsClone.value = [];
+  ccEmailsClone.value = [];
+  bccEmailsClone.value = [];
+  showCC.value = false;
+  showBCC.value = false;
+
+  forwardSubject.value = /^(fwd|fw):/i.test(data.subject || "")
+    ? data.subject
+    : `Fwd: ${data.subject}`;
+
+  const headerRows = [
+    `<b>${__("From")}:</b> ${escapeHtml(data.sender.full_name || "")} &lt;${escapeHtml(data.sender.name)}&gt;`,
+    `<b>${__("Date")}:</b> ${escapeHtml(dateFormat(data.creation, dateTooltipFormat))}`,
+    `<b>${__("Subject")}:</b> ${escapeHtml(data.subject)}`,
+    `<b>${__("To")}:</b> ${escapeHtml(data.to || "")}`,
+  ];
+  if (data.cc) {
+    headerRows.push(`<b>${__("Cc")}:</b> ${escapeHtml(data.cc)}`);
+  }
+  const forwardedBlock = `<p>---------- ${__(
+    "Forwarded message"
+  )} ----------<br>${headerRows.join("<br>")}</p>${data.content || ""}`;
+
+  attachments.value = [
+    ...attachments.value,
+    ...(data.attachments || []).map((a) => ({ ...a, _forwarded: true })),
+  ];
+
+  quotedContent.value = null;
+  isQuoteExpanded.value = false;
+  nextTick(() => {
+    quotedContent.value = forwardedBlock;
+  });
+
+  nextTick(() => {
+    newEmail.value = getInitialContent();
+  });
+  focusEditorAtStart();
+}
+
 function resetState() {
   newEmail.value = emailSignature.value ? emailSignature.value : null;
   attachments.value = [];
   quotedContent.value = null;
+  forwardSubject.value = null;
   isQuoteExpanded.value = false;
   focusEditorAtStart();
 }
@@ -497,6 +578,7 @@ function handleDiscard() {
   attachments.value = [];
   newEmail.value = getInitialContent();
   quotedContent.value = null;
+  forwardSubject.value = null;
   ccEmailsClone.value = [];
   bccEmailsClone.value = [];
   showCC.value = false;
@@ -628,6 +710,7 @@ onBeforeUnmount(() => {
 
 defineExpose({
   addToReply,
+  addToForward,
   editor,
   submitMail,
 });

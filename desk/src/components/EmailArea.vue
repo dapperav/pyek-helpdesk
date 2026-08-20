@@ -61,6 +61,11 @@
               <ReplyAllIcon class="text-ink-gray-7" />
             </template>
           </Button>
+          <Button :tooltip="__('Forward')" variant="ghost" @click="forward">
+            <template #icon>
+              <LucideForward class="text-ink-gray-7" />
+            </template>
+          </Button>
           <Dropdown
             v-if="showSplitOption"
             :placement="'right'"
@@ -123,6 +128,7 @@ import { dateFormat, dateTooltipFormat, timeAgo } from "@/utils";
 import { Dropdown } from "frappe-ui";
 import { storeToRefs } from "pinia";
 import { computed, inject, ref } from "vue";
+import LucideForward from "~icons/lucide/forward";
 import LucideSplit from "~icons/lucide/split";
 import { ReplyAllIcon, ReplyIcon } from "./icons";
 import TicketSplitModal from "./ticket/TicketSplitModal.vue";
@@ -206,6 +212,19 @@ const reply = () => {
   emit("reply", {
     content: content,
     to: user === sender.name ? to : sender.name,
+  });
+};
+
+const forward = () => {
+  emit("reply", {
+    mode: "forward",
+    content: content,
+    subject: subject,
+    attachments: attachments,
+    sender: sender,
+    creation: creation,
+    to: to,
+    cc: cc,
   });
 };
 

@@ -1,5 +1,6 @@
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
+import { existsSync } from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -105,6 +106,21 @@ export default defineConfig(async ({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "src"),
         "tailwind.config.js": path.resolve(__dirname, "tailwind.config.js"),
+        // On a bench, socket.ts imports the real common_site_config.json four
+        // levels up. Off-bench (a dev machine), that file doesn't exist and
+        // the build fails to resolve it — alias it to a stub carrying the
+        // default socketio_port. Production is unaffected either way: the
+        // imported value is only used when location.port is set.
+        ...(existsSync(
+          path.resolve(__dirname, "../../../../sites/common_site_config.json")
+        )
+          ? {}
+          : {
+              "../../../../sites/common_site_config.json": path.resolve(
+                __dirname,
+                "dev/common_site_config.stub.json"
+              ),
+            }),
         // ...localFrappeUIAliases,
       },
       // frappe-ui is served from source (excluded from optimizeDeps) and the

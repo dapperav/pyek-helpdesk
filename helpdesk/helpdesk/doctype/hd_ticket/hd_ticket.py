@@ -641,6 +641,8 @@ class HDTicket(Document):
         cc: str | None = None,
         bcc: str | None = None,
         attachments: list[str] = [],
+        subject: str | None = None,
+        is_forward: bool = False,
     ):
         if not is_agent():
             frappe.throw(
@@ -648,7 +650,7 @@ class HDTicket(Document):
             )
         skip_email_workflow = self.skip_email_workflow()
         medium = "" if skip_email_workflow else "Email"
-        subject = f"Re: {self.subject}"
+        subject = subject or f"Re: {self.subject}"
         from_email_id = from_email.get("email_id") if from_email else None
         email_account_name = from_email.get("email_account") if from_email else None
         sender = from_email_id or frappe.session.user
@@ -684,11 +686,17 @@ class HDTicket(Document):
         )
 
         last_communication = self.get_last_communication()
-        if last_communication and last_communication.message_id:
+        # A forward starts a fresh thread for its recipient: no In-Reply-To, and it
+        # must not count as a customer-facing response (see on_communication_update).
+        if not is_forward and last_communication and last_communication.message_id:
             communication.in_reply_to = last_communication.name
 
-        communication.insert(ignore_permissions=True)
-        capture_event("agent_replied")
+        frappe.flags.pyek_sending_forward = is_forward
+        try:
+            communication.insert(ignore_permissions=True)
+        finally:
+            frappe.flags.pyek_sending_forward = False
+        capture_event("agent_forwarded" if is_forward else "agent_replied")
 
         _attachments = []
 
@@ -712,7 +720,7 @@ class HDTicket(Document):
 
         reply_to_email = sender_email.email_id
         rendered_template: str | None = None
-        if self.via_customer_portal:
+        if self.via_customer_portal and not is_forward:
             email_content = frappe.db.get_single_value(
                 "HD Settings", "reply_via_agent_email_content"
             )
@@ -751,7 +759,11 @@ class HDTicket(Document):
                 sender=reply_to_email,
                 subject=subject,
                 with_container=False,
-                in_reply_to=last_communication.name if last_communication else None,
+                in_reply_to=(
+                    last_communication.name
+                    if last_communication and not is_forward
+                    else None
+                ),
             )
         except Exception as e:
             frappe.throw(str(e))
@@ -1022,6 +1034,10 @@ class HDTicket(Document):
         if c.sent_or_received == "Sent":
             # Ignore system notifications
             if c.communication_type and c.communication_type == "Automated Message":
+                return
+            # A forward goes to a third party, not the requester — it is not a
+            # response and must not stamp response times or auto-update status.
+            if frappe.flags.pyek_sending_forward:
                 return
             # Set first response date if not set already
             self.first_responded_on = (
