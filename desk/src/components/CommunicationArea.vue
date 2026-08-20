@@ -29,6 +29,16 @@
             <CommentIcon class="h-4" />
           </template>
         </Button>
+        <Button
+          v-if="latestEmail"
+          variant="ghost"
+          label="Forward"
+          @click="forwardLatestEmail()"
+        >
+          <template #prefix>
+            <LucideForward class="h-4" />
+          </template>
+        </Button>
         <TypingIndicator :ticketId="ticketId" />
       </div>
     </div>
@@ -115,6 +125,7 @@ import { useShortcut } from "@/composables/shortcuts";
 import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
 import { onClickOutside } from "@vueuse/core";
 import { ref, watch } from "vue";
+import LucideForward from "~icons/lucide/forward";
 
 const emit = defineEmits(["update"]);
 const content = defineModel("content");
@@ -197,7 +208,17 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  // The thread's newest email, provided by the parent that owns the activity
+  // list. Enables the bottom-bar Forward button; null hides it (no emails yet).
+  latestEmail: {
+    type: Object,
+    default: null,
+  },
 });
+
+function forwardLatestEmail() {
+  replyToEmail({ mode: "forward", ...props.latestEmail });
+}
 
 watch(
   () => showEmailBox.value,

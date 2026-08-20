@@ -118,6 +118,7 @@
             :to-emails="[ticket.doc.raised_by]"
             :cc-emails="[]"
             :bcc-emails="[]"
+            :latest-email="latestEmail"
             :key="ticket.doc?.name"
             @update="
               () => {
@@ -633,6 +634,13 @@ function filterActivities(eventType: TicketTab) {
   }
   return _activities.value.filter((activity) => activity.type === eventType);
 }
+
+// Newest email in the thread — _activities is sorted ascending by creation.
+// Feeds the bottom bar's Forward button.
+const latestEmail = computed(() => {
+  const emails = _activities.value.filter((a) => a.type === "email");
+  return emails.length ? emails[emails.length - 1] : null;
+});
 
 onMounted(() => {
   document.title = props.ticketId;
