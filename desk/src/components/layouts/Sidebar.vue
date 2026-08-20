@@ -22,17 +22,20 @@
         />
       </div>
       <!-- Help no longer waits for onboarding steps (the banner driving them
-           is retired) — always available to agents. -->
+           is retired) — always available to agents. On the captioned rail it
+           wears its word like everything else there; the 15rem panel keeps
+           the stock row. -->
+      <PyekRailItem
+        v-if="!isCustomerPortal && isCollapsed"
+        :caption="__('Help')"
+        :icon="HelpIcon"
+        @click="toggleHelp"
+      />
       <SidebarItem
-        v-if="!isCustomerPortal"
+        v-else-if="!isCustomerPortal"
         :label="__('Help')"
         :icon="HelpIcon"
-        :on-click="
-          () => {
-            showHelpModal = minimize ? true : !showHelpModal;
-            minimize = !showHelpModal;
-          }
-        "
+        :on-click="toggleHelp"
       />
     </template>
   </AppSidebar>
@@ -92,6 +95,7 @@ import { HelpIcon } from "frappe-ui/icons";
 import { computed, h, markRaw, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import AppSidebar from "./AppSidebar.vue";
+import PyekRailItem from "./PyekRailItem.vue";
 
 import { useShortcut } from "@/composables/shortcuts";
 import { __ } from "@/translation";
@@ -114,6 +118,13 @@ import {
 } from "../Settings/settingsModal";
 
 const { isMobileView } = useScreenSize();
+
+// Help: reopen when it was minimized, otherwise toggle. Lifted out of the
+// template so the captioned rail entry and the panel row share one handler.
+function toggleHelp() {
+  showHelpModal.value = minimize.value ? true : !showHelpModal.value;
+  minimize.value = !showHelpModal.value;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
