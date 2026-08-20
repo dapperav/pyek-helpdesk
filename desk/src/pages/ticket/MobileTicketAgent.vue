@@ -151,6 +151,7 @@
           <MobileReplyFlow
             ref="replyFlowRef"
             :key="ticket.doc?.name"
+            :communications="activities.data?.communications"
             @update="
               () => {
                 reloadTicket(props.ticketId);

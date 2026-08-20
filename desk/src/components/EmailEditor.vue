@@ -656,8 +656,17 @@ onBeforeUnmount(() => {
   cleanup();
 });
 
+// The reply bar's escape hatch seeds its edited recipient set without
+// touching the body (addToReply resets the body to the signature, which
+// would clobber a carried draft).
+function setRecipients(toEmails: string[], ccEmails: string[]) {
+  toEmailsClone.value = [...toEmails];
+  ccEmailsClone.value = [...ccEmails];
+}
+
 defineExpose({
   addToReply,
+  setRecipients,
   editor,
   submitMail,
 });

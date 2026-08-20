@@ -107,10 +107,55 @@
           {{ __("Note") }}
         </button>
       </div>
-      <span class="truncate text-xs text-ink-gray-5">{{ modeLabel }}</span>
+      <!-- Reply mode: the "to …" line is a button that opens the recipient
+           editor — reply-all is the default, pruning/adding is one click. -->
+      <button
+        v-if="mode === 'reply'"
+        class="flex min-w-0 items-center gap-1 text-xs text-ink-gray-5 underline-offset-2 hover:underline"
+        @mousedown.prevent
+        @click="recipientsOpen = !recipientsOpen"
+      >
+        <span class="truncate">{{ modeLabel }}</span>
+        <LucidePencil class="size-3 shrink-0" />
+      </button>
+      <span v-else class="truncate text-xs text-ink-gray-5">{{
+        modeLabel
+      }}</span>
       <span class="ms-auto hidden text-xs text-ink-gray-4 lg:inline">
         {{ __("Esc collapses") }}
       </span>
+    </div>
+
+    <!-- Recipient editor: kept open by `recipientsOpen` (it holds the bar
+         expanded through the blur its own inputs cause). -->
+    <div
+      v-if="expanded && recipientsOpen && mode === 'reply'"
+      class="mb-1.5 flex max-w-[640px] flex-col gap-1 rounded-xl border border-outline-gray-2 bg-surface-base px-3 py-2 shadow-md"
+    >
+      <div class="flex items-center gap-2">
+        <span class="w-6 shrink-0 text-xs text-ink-gray-4">{{ __("To") }}</span>
+        <EmailMultiSelect
+          v-model="quickTo"
+          class="flex-1"
+          scope="contact"
+          variant="ghost"
+          allow-custom-email
+          :validate="validateEmailWithZod"
+          :custom-email-label="__('Add to recipients')"
+        />
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-6 shrink-0 text-xs text-ink-gray-4">{{ __("Cc") }}</span>
+        <EmailMultiSelect
+          v-model="quickCc"
+          class="flex-1"
+          scope="contact"
+          variant="ghost"
+          allow-custom-email
+          :validate="validateEmailWithZod"
+          :custom-email-label="__('Add to recipients')"
+        />
+      </div>
     </div>
 
     <div class="flex items-end gap-1.5 pb-2">
@@ -190,11 +235,16 @@
 
 <script setup lang="ts">
 import { AttachmentItem, TypingIndicator } from "@/components";
+import EmailMultiSelect from "@/components/EmailMultiSelect.vue";
 import {
   aiDraftPreview,
   buildAiReplyDraft,
   hasAiReplyDraft,
 } from "@/composables/aiReplyDraft";
+import {
+  recipientSummary,
+  replyAllFromCommunications,
+} from "@/composables/replyRecipients";
 import { echoRecordSlaSave } from "@/composables/echoEggs";
 import { useTyping } from "@/composables/realtime";
 import { parseFrappeDate } from "@/composables/ticketCardSignals";
@@ -205,7 +255,7 @@ import { useAgentStore } from "@/stores/agent";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import { TicketSymbol } from "@/types";
-import { removeAttachmentFromServer } from "@/utils";
+import { removeAttachmentFromServer, validateEmailWithZod } from "@/utils";
 import { useStorage } from "@vueuse/core";
 import {
   Avatar,
@@ -220,9 +270,20 @@ import LucideArrowUp from "~icons/lucide/arrow-up";
 import LucideCircleCheck from "~icons/lucide/circle-check";
 import LucideImagePlus from "~icons/lucide/image-plus";
 import LucideMaximize2 from "~icons/lucide/maximize-2";
+import LucidePencil from "~icons/lucide/pencil";
 import LucideSparkles from "~icons/lucide/sparkles";
 
 const emit = defineEmits(["update", "close", "expand"]);
+
+const props = defineProps({
+  // Raw Communication rows from the ticket's activities — the bar derives
+  // its reply-all default from the newest one (Mark, 2026-08-20: "when I
+  // reply it actually reply all instead").
+  communications: {
+    type: Array,
+    default: () => [],
+  },
+});
 
 const ticket = inject(TicketSymbol)!;
 const doc = computed(() => ticket.value?.doc);
@@ -247,7 +308,10 @@ const quickInput = ref<HTMLTextAreaElement | null>(null);
 const sending = ref(false);
 const expanded = computed(
   () =>
-    focused.value || !!quickText.value.trim() || !!quickAttachments.value.length
+    focused.value ||
+    recipientsOpen.value ||
+    !!quickText.value.trim() ||
+    !!quickAttachments.value.length
 );
 
 async function removeQuickAttachment(a: any) {
@@ -255,14 +319,61 @@ async function removeQuickAttachment(a: any) {
   await removeAttachmentFromServer(a.name);
 }
 
+// ── Recipients (reply-all by default, editable in place) ────────────────
+// Defaults track the thread's newest email until the agent edits the set;
+// after that the edits are theirs for this screen's lifetime — a growing
+// thread must not silently re-add someone who was deliberately removed.
+const recipientsOpen = ref(false);
+const recipientsEdited = ref(false);
+const quickTo = ref<string[]>([]);
+const quickCc = ref<string[]>([]);
+let recipientsSyncing = false;
+
+const supportEmails = computed(() =>
+  (userResource.data?.outgoing_emails ?? [])
+    .map((e: any) => (e.email_id || "").toLowerCase())
+    .filter(Boolean)
+);
+const replyAllDefault = computed(() =>
+  replyAllFromCommunications(
+    props.communications as any[],
+    String((window as any).agent || ""),
+    supportEmails.value,
+    doc.value?.raised_by || ""
+  )
+);
+watch(
+  replyAllDefault,
+  (v) => {
+    if (recipientsEdited.value) return;
+    recipientsSyncing = true;
+    quickTo.value = [...v.to];
+    quickCc.value = [...v.cc];
+    nextTick(() => (recipientsSyncing = false));
+  },
+  { immediate: true }
+);
+watch(
+  [quickTo, quickCc],
+  () => {
+    if (!recipientsSyncing) recipientsEdited.value = true;
+  },
+  { deep: true }
+);
+
 const requesterLabel = computed(
   () => doc.value?.contact || doc.value?.raised_by || ""
+);
+const recipientsLabel = computed(
+  () =>
+    recipientSummary({ to: quickTo.value, cc: quickCc.value }) ||
+    requesterLabel.value
 );
 const modeLabel = computed(() =>
   mode.value === "note"
     ? __("visible to the team only")
-    : requesterLabel.value
-    ? `${__("to")} ${requesterLabel.value}`
+    : recipientsLabel.value
+    ? `${__("to")} ${recipientsLabel.value}`
     : ""
 );
 const quickPlaceholder = computed(() =>
@@ -433,8 +544,14 @@ function useAiDraft() {
 function expandToEditor() {
   const carry = quickText.value.trim();
   quickText.value = "";
+  recipientsOpen.value = false;
   nextTick(autogrow);
-  emit("expand", carry ? textToHtml(carry) : "");
+  // The bar's recipient set (edits included) rides into the full editor.
+  emit("expand", {
+    html: carry ? textToHtml(carry) : "",
+    to: [...quickTo.value],
+    cc: [...quickCc.value],
+  });
 }
 
 // ── Sending (same proven endpoints as the phone bar) ─────────────────────
@@ -458,6 +575,7 @@ const signatureHtml = computed(() =>
 const out = {
   message: ref(""),
   to: ref(""),
+  cc: ref(""),
   attachments: ref<string[]>([]),
 };
 let pendingReplyMentions: { label: string; email: string }[] = [];
@@ -482,7 +600,7 @@ const sendMail = createResource({
     args: {
       attachments: out.attachments.value,
       to: out.to.value,
-      cc: "",
+      cc: out.cc.value,
       bcc: "",
       message: out.message.value,
     },
@@ -532,12 +650,14 @@ function sendQuick() {
   pendingReplyMessage = text ? textToHtml(text) : "";
   pendingSlaMins = slaMinsLeft();
   out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
-  out.to.value = doc.value?.raised_by || "";
+  out.to.value = quickTo.value.join(",") || doc.value?.raised_by || "";
+  out.cc.value = quickCc.value.join(",");
   out.attachments.value = quickAttachments.value.map((x) => x.name);
   if (!out.to.value) {
     toast.warning(__("This ticket has no requester email to reply to."));
     return;
   }
+  recipientsOpen.value = false;
   sending.value = true;
   sendMail.submit();
 }
