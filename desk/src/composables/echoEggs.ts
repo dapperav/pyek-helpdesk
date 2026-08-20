@@ -47,13 +47,29 @@ export const globalPop = reactive<{ show: boolean; pose: EchoPose; text: string 
 });
 let globalHide: number | undefined;
 
+// Echo on duty: while an SOS window is active every easter egg goes silent —
+// he can't celebrate a streak while the ship is taking water. Set by
+// composables/echoSos.ts.
+export const sosOnDuty = ref(false);
+
+/** Low-level global pop with NO guards — for the moments that outrank the
+ *  budget (SOS all-clear). Everything else goes through echoEvent. */
+export function echoShowGlobal(pose: EchoPose, text: string) {
+  clearTimeout(globalHide);
+  globalPop.pose = pose;
+  globalPop.text = text;
+  globalPop.show = true;
+  globalHide = window.setTimeout(() => (globalPop.show = false), POP_LINGER_MS);
+}
+
 function lastPopAt(): number {
   return Number(localStorage.getItem(LS_LAST_POP) || 0);
 }
 
 /** Shared sighting gate — Home's ambient scheduler and the peek scanner
- *  ask this too. */
+ *  ask this too. Always false while an SOS has Echo on duty. */
 export function echoCanPop(): boolean {
+  if (sosOnDuty.value) return false;
   return Date.now() - lastPopAt() >= SIGHT_GAP_MS;
 }
 
@@ -139,6 +155,7 @@ export function echoEvent(
   ctx: Record<string, any> = {},
   opts: { render?: boolean } = {}
 ): { pose: EchoPose; text: string } | null {
+  if (sosOnDuty.value) return null; // on duty — no eggs, not even summoned
   const isCelebration = CELEBRATIONS.includes(kind);
   const force = kind === "found"; // user summoned him — always answer
   if (!force) {
@@ -149,14 +166,10 @@ export function echoEvent(
   if (!line) return null;
   echoMarkPop();
   if (opts.render === false) return line;
-  clearTimeout(globalHide);
   // no rAF dance: pops are cooldown-spaced minutes apart, so the previous
   // entrance animation is long gone — and rAF never fires in hidden tabs,
   // which would leave the pop permanently un-shown
-  globalPop.pose = line.pose;
-  globalPop.text = line.text;
-  globalPop.show = true;
-  globalHide = window.setTimeout(() => (globalPop.show = false), POP_LINGER_MS);
+  echoShowGlobal(line.pose, line.text);
   return line;
 }
 

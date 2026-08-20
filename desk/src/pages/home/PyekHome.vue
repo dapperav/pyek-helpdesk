@@ -34,8 +34,15 @@
         </div>
         <div class="ms-auto flex gap-3">
           <button class="chip" @click="openViewByLabel('Awaiting first reply')">
-            <!-- Echo peeks over the chip while someone's treading water -->
-            <EchoPeek :active="treadPeek" :width="46" :overlap="10" left="10px" />
+            <!-- Echo peeks over the chip while someone's treading water;
+                 during an SOS window he holds the peek as a standing
+                 reminder (bounded by the 30-min window cap) -->
+            <EchoPeek
+              :active="treadPeek || sosOnDuty"
+              :width="46"
+              :overlap="10"
+              left="10px"
+            />
             <span class="chip-l" :style="{ color: scene.chipWarn }">{{ __("Treading water") }}</span>
             <span class="chip-v" :style="scene.glowWarn ? { textShadow: scene.glowWarn } : {}">
               {{ homeStats.data?.awaiting_first_reply ?? 0 }}
@@ -244,6 +251,9 @@
 
     <div v-if="showSosConfirm" class="sos-confirm" @click.self="showSosConfirm = false">
       <div class="sos-card">
+        <!-- serious-pose Echo presents the alarm (echo-sos round): you're
+             not clicking an abstract button, you're telling Echo to sound it -->
+        <img :src="ECHO_POSES.serious" class="mx-auto -mt-1 w-16" alt="" />
         <h3 class="mb-1 mt-2 text-[17px] font-bold text-ink-gray-9">
           {{ __("All hands?") }}
         </h3>
@@ -274,13 +284,14 @@
 <script setup lang="ts">
 import EchoPeek from "@/components/echo/EchoPeek.vue";
 import EchoPop from "@/components/echo/EchoPop.vue";
-import type { EchoPose } from "@/components/echo/echoAssets";
+import { ECHO_POSES, type EchoPose } from "@/components/echo/echoAssets";
 import WaveChart from "@/components/home/WaveChart.vue";
 import {
   echoCanPop,
   echoClaimGreeting,
   echoEvent,
   echoMarkPop,
+  sosOnDuty,
   useEchoPeek,
 } from "@/composables/echoEggs";
 import { selfAssignTicket } from "@/composables/selfAssign";
@@ -865,6 +876,9 @@ async function fireSos() {
     );
     showSosConfirm.value = false;
     sosState.reload();
+    // the sender's confirmation comes from Echo himself — straight voice,
+    // outranks the sighting budget (this is duty, not an egg)
+    echoShow({ pose: "serious", text: __("SOS is out. I'll keep watch.") });
   } catch (e: any) {
     const msg = e?.messages?.join(", ") || e?.message || __("SOS failed");
     toast.error(msg);
