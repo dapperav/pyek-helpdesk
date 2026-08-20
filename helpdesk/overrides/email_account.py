@@ -8,6 +8,7 @@ from frappe.core.doctype.communication.communication import Communication
 from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.email.doctype.email_queue.email_queue import EmailQueue
 from frappe.email.receive import InboundMail
+from frappe.exceptions import TimestampMismatchError
 
 from helpdesk.helpdesk.utils.agent_email import (
     _own_addresses,
@@ -215,6 +216,45 @@ class CustomInboundMail(InboundMail):
 
 
 class CustomEmailAccount(EmailAccount):
+    def _connect_incoming(self, email_sync_rule):
+        """``get_incoming_server``, retried once past an OAuth token race.
+
+        Both PYEK mailboxes (IT Support, POS Support) authenticate through the
+        same Connected App, and Frappe keys the OAuth Token Cache by
+        ``<connected_app>-<user>``. Under app-only auth the user half is empty,
+        so the two accounts share ONE row — ``9dftnhqinc-`` on this site. When
+        both pull in the same tick and the hourly token is due for refresh, they
+        both try to write that row and the loser dies with
+        TimestampMismatchError. ``get_inbound_mails`` then logs "Error while
+        connecting to email account X" and returns [], so that mailbox fetches
+        NOTHING for the entire cycle — six of these in the 48h to 2026-08-20,
+        each one costing a full pull interval on top of the normal wait. Pulling
+        every 60s instead of every 8-12 minutes makes the race more frequent,
+        not less, which is why this ships alongside that change.
+
+        The loser never needed to refresh: the winner has just written a valid
+        token. So throw away the stale in-memory copy and read it back.
+
+        A fuller fix is one Connected App per mailbox, which would give each its
+        own cache row and remove the race entirely; that touches production auth
+        config, so it is deliberately not bundled in here.
+        """
+        try:
+            return self.get_incoming_server(
+                in_receive=True, email_sync_rule=email_sync_rule
+            )
+        except TimestampMismatchError:
+            frappe.db.rollback()
+            for name in frappe.get_all(
+                "Token Cache",
+                filters={"connected_app": self.connected_app},
+                pluck="name",
+            ):
+                frappe.clear_document_cache("Token Cache", name)
+            return self.get_incoming_server(
+                in_receive=True, email_sync_rule=email_sync_rule
+            )
+
     def get_inbound_mails(self) -> list[InboundMail]:
         """retrive and return inbound mails."""
         mails = []
@@ -273,9 +313,7 @@ class CustomEmailAccount(EmailAccount):
                 )
             else:
                 email_sync_rule = self.build_email_sync_rule()
-                email_server = self.get_incoming_server(
-                    in_receive=True, email_sync_rule=email_sync_rule
-                )
+                email_server = self._connect_incoming(email_sync_rule)
                 if self.use_imap:
                     # process all given imap folder
                     for folder in self.imap_folder:
