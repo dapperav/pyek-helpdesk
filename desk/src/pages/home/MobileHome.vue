@@ -312,7 +312,7 @@ const counts = computed(() => {
   const r = rows.value.filter(notResolved);
   return {
     pos: r.filter((t) => t.agent_group === "POS Support").length,
-    it: r.filter((t) => t.email_account === "IT Support").length,
+    it: r.filter((t) => t.agent_group === "IT Support").length,
     mine: r.filter(assignedToMe).length,
   };
 });
@@ -374,7 +374,7 @@ function initials(email: string): string {
 
 function queueTag(t: any): { label: string; cls: string } | null {
   if (t.agent_group === "POS Support") return { label: "POS", cls: "qtag-pos" };
-  if (t.email_account === "IT Support") return { label: "IT", cls: "qtag-it" };
+  if (t.agent_group === "IT Support") return { label: "IT", cls: "qtag-it" };
   return null;
 }
 
