@@ -397,6 +397,12 @@ _COMPACT_NOISE = re.compile(
     r"view (this|it) in (your )?browser|all rights reserved|privacy policy|"
     r"if you need further assistance|contact \w+ support|"
     r"^\s*(sent from|this is an automated)|"
+    # Q-SYS Reflect alert furniture (ticket 0439, Mark 2026-08-20): the
+    # dashboard button (whose anchor text carries a raw newline, so it lands
+    # as two lines), the timezone pair, and the constant org label — the
+    # alert line itself ("<device> is Missing") is what's left.
+    r"^view$|^(view )?in enterprise manager$|^time zone$|"
+    r"^[a-z_]+/[a-z_]+ \(utc[+-]\d{2}:\d{2}\)$|^pyek group$|"
     # Postal footer: "685 Third Ave. New York, NY 10017"
     r"\b[A-Z]{2}\s+\d{5}(-\d{4})?\b",
     re.IGNORECASE,
@@ -734,6 +740,9 @@ def _bubble_with_chain(html: str):
 #                                  which is why the URL rule allows a tail
 _SIGNATURE_FURNITURE = re.compile(
     r"^(www\.|https?://)\S+(\s.*)?$"  # URL line, possibly merged with an address
+    # Bare domain footer ("qsc.com/reflect"). The TLD whitelist is what keeps
+    # dotted identifiers like "TTA_2025.05.13" from matching.
+    r"|^[\w-]+(\.[\w-]+)*\.(com|net|org|io|co)(/\S*)?$"
     r"|^[\w.+-]+@[\w.-]+\.\w+$"  # bare email address
     # Phone with optional letter prefix ("D", "O") or vanity tail ("PYEK");
     # at least six digits so "10 000 units" style content never matches.
@@ -801,6 +810,15 @@ def mark_compact_communications(communications):
     against the whole thread so a reply quoting the thread back never
     re-materializes messages already on screen.
     """
+    def _drop_subject_repeat(lines, subject):
+        # Alert templates open with their own subject as a heading ("Alerts
+        # Notification"); a human email never loses content to this because
+        # the rule is automated-mail only and exact-match only.
+        subject = " ".join((subject or "").lower().split())
+        while lines and subject and " ".join(lines[0].lower().split()) == subject:
+            lines = lines[1:]
+        return lines
+
     per_comm_segments = []
     for c in communications:
         c["is_automated"] = _automated_sender(c.get("sender"))
@@ -812,6 +830,18 @@ def mark_compact_communications(communications):
         # get_communications before this pass runs; _trim_signature reads it.
         c["bubble_lines"] = _trim_signature(lines, c)
         c["bubble_truncated"] = truncated
+        if c["is_automated"]:
+            subject = c.get("subject")
+            c["bubble_lines"] = _drop_subject_repeat(c["bubble_lines"], subject)
+            if c["compact_lines"]:
+                # Machine mail only, so the tail peel (domain/phone/email
+                # furniture) is safe on the compact chip too.
+                c["compact_lines"] = (
+                    _drop_subject_repeat(
+                        _trim_signature(c["compact_lines"], c), subject
+                    )
+                    or None
+                )
         per_comm_segments.append(segments)
 
     # Everything already on screen, by content opening and by (sender, minute)
