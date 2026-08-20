@@ -18,19 +18,27 @@
         :text="globalPop.text"
       />
     </div>
+    <!-- Echo on duty: the SOS receiver (timed-but-recurring; state machine
+         in composables/echoSos.ts, fed by send_sos's realtime event) -->
+    <EchoSOS v-if="!isCustomerPortal" />
   </div>
 </template>
 <script setup>
 import { onMounted } from "vue";
 import { Notifications, CommandPalette } from "@/components";
 import EchoPop from "@/components/echo/EchoPop.vue";
+import EchoSOS from "@/components/echo/EchoSOS.vue";
 import { globalPop, startEchoEggs } from "@/composables/echoEggs";
+import { startEchoSos } from "@/composables/echoSos";
 import { isCustomerPortal } from "@/utils";
 import AppHeader from "./AppHeader.vue";
 import Sidebar from "./Sidebar.vue";
 
 onMounted(() => {
-  if (!isCustomerPortal.value) startEchoEggs();
+  if (!isCustomerPortal.value) {
+    startEchoEggs();
+    startEchoSos();
+  }
 });
 </script>
 <style scoped>

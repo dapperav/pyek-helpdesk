@@ -104,6 +104,20 @@ def send_sos() -> dict:
     frappe.cache().set_value(
         _CACHE_KEY, frappe.utils.now(), expires_in_sec=SOS_COOLDOWN_SECONDS
     )
+    # Echo-on-duty (Mark, 2026-08-19): agents sitting IN the app get the
+    # alert too — serious-pose Echo surfaces bottom-right on every open desk
+    # via this realtime event (the push can't reach someone with pushes
+    # muted or the tab already focused). The frontend filters out the sender
+    # and non-agents.
+    frappe.publish_realtime(
+        "pyek_sos",
+        {
+            "sender": sender,
+            "sender_name": sender_name,
+            "waiting": waiting,
+            "url": url,
+        },
+    )
     # The record for the log: who pulled the ring, when, and how wide it went.
     # Error Log is where every PMIT push event already lives, so it goes there
     # too, greppable under one title prefix.
