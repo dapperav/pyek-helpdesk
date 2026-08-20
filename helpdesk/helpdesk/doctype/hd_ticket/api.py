@@ -751,11 +751,29 @@ _SIGNATURE_FURNITURE = re.compile(
     re.IGNORECASE,
 )
 
+# Sign-off line that sits ABOVE the name in a signature ("Have a safe day,"
+# on ticket 0493, Joey Baumer). Whole-line match, comma required: a comma'd
+# closing standing alone is a sign-off; the same words inside a sentence
+# ("thanks for the help,") never match because the line has more in it.
+_SIGNATURE_CLOSING = re.compile(
+    r"^(?:"
+    r"(?:many\s+)?thanks(?:\s+(?:again|so\s+much|a\s+lot))?"
+    r"|thank\s+you(?:\s+(?:again|so\s+much))?"
+    r"|thx"
+    r"|(?:best|kind|warm|warmest)\s+(?:regards|wishes)"
+    r"|regards|best|cheers|sincerely(?:\s+yours)?|respectfully|cordially"
+    r"|take\s+care|all\s+the\s+best|talk\s+soon|v/r"
+    r"|have\s+a\s+(?:safe|great|good|nice|wonderful|blessed)"
+    r"\s+(?:day|one|week|weekend|evening|night|morning|afternoon)"
+    r"),$",
+    re.IGNORECASE,
+)
+
 
 def _trim_signature(lines, comm):
     """Drop a trailing signature block from bubble lines.
 
-    Two passes, both bubble-only (the original email keeps its signature —
+    Three passes, all bubble-only (the original email keeps its signature —
     that's the point of "sends like an email, reads like a text"):
     1. If the sender's own name appears as a line in the tail, cut there —
        that's where a signature block starts. Candidates: the resolved
@@ -763,6 +781,10 @@ def _trim_signature(lines, comm):
        underscores as spaces ("john.pham@…" -> "john pham"), which covers
        senders with no User record.
     2. Then peel trailing furniture lines (phones, emails, URLs).
+    3. Then peel one trailing sign-off line ("Have a safe day,"), which the
+       first two passes leave behind because it sits above the name. Only
+       the tail is examined — immediately above a cut that already happened
+       or at the message end — so a closing quoted mid-content survives.
     Never empties the bubble: a cut that would leave nothing is skipped.
     """
     if not lines:
@@ -786,6 +808,8 @@ def _trim_signature(lines, comm):
                 lines = lines[:i]
                 break
     while len(lines) > 1 and _SIGNATURE_FURNITURE.match(lines[-1].strip()):
+        lines = lines[:-1]
+    if len(lines) > 1 and _SIGNATURE_CLOSING.match(lines[-1].strip()):
         lines = lines[:-1]
     return lines
 
