@@ -52,3 +52,18 @@ class HDView(Document):
     def on_trash(self):
         if self.is_standard and not frappe.conf.developer_mode:
             frappe.throw(_("Standard Views cannot be deleted."))
+        self.clear_view_preferences()
+
+    def clear_view_preferences(self):
+        """Drop every agent's personal arrangement for this view.
+
+        Preferences reference the view by name, so leaving them behind would
+        orphan a row per agent and let a recycled view name inherit someone
+        else's old sort.
+        """
+        for name in frappe.get_all(
+            "HD View Preference", filters={"view": self.name}, pluck="name"
+        ):
+            frappe.delete_doc(
+                "HD View Preference", name, ignore_permissions=True, force=True
+            )

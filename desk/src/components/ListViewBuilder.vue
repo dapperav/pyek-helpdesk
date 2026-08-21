@@ -33,6 +33,20 @@
           <FeatherIcon name="check-square" class="h-4 w-4" />
         </template>
       </Button>
+      <!-- PYEK: escape hatch for the remembered arrangement. Once sort and
+           filters stick, a filter set yesterday quietly narrows the queue today
+           and reads as missing tickets; this puts the shared view back. Shown
+           only when the agent actually has something remembered. -->
+      <Tooltip
+        v-if="hasViewPreference"
+        :text="__('Clear your saved sort and filters for this view')"
+      >
+        <Button :label="__('Reset View')" @click="resetViewPreference">
+          <template #prefix>
+            <FeatherIcon name="rotate-ccw" class="h-4 w-4" />
+          </template>
+        </Button>
+      </Tooltip>
       <Reload @click="handleReload" :loading="list.loading" />
       <Filter />
       <SortBy :hide-label="isMobileView" />
@@ -53,6 +67,16 @@
             <FeatherIcon name="check-square" class="h-4 w-4" />
           </template>
         </Button>
+        <Tooltip
+          v-if="hasViewPreference"
+          :text="__('Clear your saved sort and filters for this view')"
+        >
+          <Button @click="resetViewPreference">
+            <template #icon>
+              <FeatherIcon name="rotate-ccw" class="h-4 w-4" />
+            </template>
+          </Button>
+        </Tooltip>
         <Reload @click="handleReload" :loading="list.loading" />
         <SortBy :hide-label="isMobileView" />
       </div>
@@ -242,7 +266,7 @@ import { globalStore } from "@/stores/globalStore";
 import { capture } from "@/telemetry";
 import { View, ViewType } from "@/types";
 import { formatTimeShort, getIcon } from "@/utils";
-import { useStorage } from "@vueuse/core";
+import { useDebounceFn, useStorage } from "@vueuse/core";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { __ } from "@/translation";
 import {
@@ -258,6 +282,7 @@ import {
   ListSelectBanner,
   ListView,
   LoadingIndicator,
+  Tooltip,
   dayjs,
   toast,
 } from "frappe-ui";
@@ -545,6 +570,124 @@ const emptyState = computed(() => {
 
 const isViewUpdated = ref(false);
 
+// PYEK: personal list arrangement, layered over a shared view.
+//
+// A saved view is one definition shared by everyone — the AP queues are public
+// and several agents work out of the same ones. So an agent's sort could only
+// ever be thrown away on navigation (click into a ticket, come back, re-sort) or,
+// for a manager, saved into the view and reordered for the whole team. Neither is
+// what an agent means by "keep my queue sorted this way".
+//
+// HD View Preference is the layer in between: keyed by user + view, applied on
+// top of the view definition on every mount, and invisible to everyone else. The
+// view record is never touched.
+const usesViewPreference = computed(
+  () =>
+    !!route.query.view &&
+    !options.value.isCustomerPortal &&
+    !options.value.hideViewControls
+);
+
+const viewPreferences = createResource({
+  url: "helpdesk.api.view_preference.get_view_preferences",
+  params: { dt: options.value.doctype },
+  auto: false,
+});
+
+const hasViewPreference = computed(
+  () =>
+    usesViewPreference.value &&
+    !!viewPreferences.data?.[route.query.view as string]
+);
+
+// Fetched before the first list request rather than in parallel: loading the
+// view's own order first would render the list, then visibly re-sort it.
+let viewPreferencesPromise: Promise<any> | null = null;
+function ensureViewPreferences() {
+  if (!usesViewPreference.value || viewPreferences.data) return Promise.resolve();
+  if (!viewPreferencesPromise) {
+    viewPreferencesPromise = viewPreferences.fetch().catch((e) => {
+      // Losing a preference is a worse-looking list, not a broken one; fall
+      // through to the view's own definition.
+      console.error("Failed to load view preferences", e);
+      viewPreferencesPromise = null;
+    });
+  }
+  return viewPreferencesPromise;
+}
+
+// Called from handleViewChanges once defaultParams holds the view's definition,
+// and before the ?filters= URL override, which still wins so deep links from
+// notifications land on the ticket set they name.
+function applyViewPreference(viewName: string) {
+  if (!usesViewPreference.value) return;
+  const preference = viewPreferences.data?.[viewName];
+  if (!preference) return;
+
+  if (preference.order_by) defaultParams.order_by = preference.order_by;
+  if (preference.filters != null)
+    defaultParams.filters = normalizeFilters(preference.filters);
+  if (preference.columns != null) defaultParams.columns = preference.columns;
+  if (preference.rows != null) defaultParams.rows = preference.rows;
+  if (preference.page_length) {
+    pageLengthCount.value = preference.page_length;
+    defaultParams.page_length = preference.page_length;
+    defaultParams.page_length_count = preference.page_length;
+  }
+}
+
+// Debounced: flipping a sort direction or dragging a column edge fires
+// repeatedly, and only the arrangement the agent settles on needs to be stored.
+const persistViewPreference = useDebounceFn(() => {
+  const viewName = route.query.view as string;
+  if (!usesViewPreference.value || !viewName) return;
+
+  const preference = {
+    order_by: defaultParams.order_by,
+    filters: defaultParams.filters,
+    columns: defaultParams.columns,
+    rows: defaultParams.rows,
+    // page_length_count is the chosen page size; page_length grows with every
+    // "load more" and storing that would restore a thousand-row first request.
+    page_length: defaultParams.page_length_count,
+  };
+
+  // Mirror it locally so the Reset control appears without waiting for a refetch.
+  if (viewPreferences.data) viewPreferences.data[viewName] = preference;
+
+  call("helpdesk.api.view_preference.save_view_preference", {
+    dt: options.value.doctype,
+    view: viewName,
+    preference,
+  }).catch((e) => {
+    // Don't interrupt the agent: the list already shows what they asked for, it
+    // just won't survive the next reload.
+    console.error("Failed to save view preference", e);
+  });
+}, 600);
+
+function resetViewPreference() {
+  const viewName = route.query.view as string;
+  if (!viewName) return;
+  call("helpdesk.api.view_preference.clear_view_preference", {
+    dt: options.value.doctype,
+    view: viewName,
+  })
+    .then(() => {
+      if (viewPreferences.data) delete viewPreferences.data[viewName];
+      isViewUpdated.value = false;
+      // A view definition carries no page size, so handleViewChanges can't undo
+      // a remembered one; put it back to the list's own default explicitly.
+      const pageLength = options.value.default_page_length;
+      pageLengthCount.value = pageLength;
+      defaultParams.page_length = pageLength;
+      defaultParams.page_length_count = pageLength;
+      handleViewChanges();
+      toast.success(__("View reset to its shared default"));
+    })
+    .catch(() => toast.error(__("Could not reset this view")));
+}
+
 const list = createResource({
   url: "helpdesk.api.doc.get_list_data",
   params: defaultParams,
@@ -802,7 +945,10 @@ function applyFilters(filters) {
   list.submit({ ...defaultParams });
 
   // automatically update filters for default view
-  if (!defaultParams.is_default) return;
+  if (!defaultParams.is_default) {
+    persistViewPreference();
+    return;
+  }
   handleViewUpdate();
   isViewUpdated.value = false;
 }
@@ -811,7 +957,10 @@ function applySort(order_by: string) {
   isViewUpdated.value = true;
   defaultParams.order_by = order_by;
   list.submit({ ...defaultParams, order_by });
-  if (!defaultParams.is_default) return;
+  if (!defaultParams.is_default) {
+    persistViewPreference();
+    return;
+  }
   handleViewUpdate();
   isViewUpdated.value = false;
 }
@@ -826,6 +975,7 @@ function updateColumns(obj) {
   columns.value = defaultParams.columns = isDefault ? "" : _columns;
   defaultParams.rows = isDefault ? "" : rows;
   list.reload({ ...defaultParams });
+  persistViewPreference();
 }
 
 function reload(reset: boolean = false) {
@@ -858,6 +1008,7 @@ function handlePageLength(count: number, loadMore: boolean = false) {
     defaultParams.page_length_count = count;
   }
   list.reload();
+  persistViewPreference();
 }
 
 function handleViewUpdate() {
@@ -943,6 +1094,9 @@ function handleViewChanges() {
   defaultParams.view.view_type = currentView.type || "list";
   defaultParams.view.group_by_field = currentView.group_by_field || null;
 
+  // How this agent last left this queue, on top of the shared definition.
+  applyViewPreference(currentView.name);
+
   if (route.query.filters) {
     try {
       const parsedFilters = normalizeFilters(
@@ -979,8 +1133,9 @@ function findCurrentView() {
 
 watch(
   () => route.query.view,
-  (val: string) => {
+  async (val: string) => {
     defaultParams.view.name = val;
+    await ensureViewPreferences();
     handleViewChanges();
     if (!val) {
       headerView.value.label = __("List");
@@ -1010,13 +1165,17 @@ function handleColumnResize({ key, width, save } = {}) {
   if (!save) return;
   isViewUpdated.value = true;
   defaultParams.columns = columns.value;
-  if (!defaultParams.is_default) return;
+  if (!defaultParams.is_default) {
+    persistViewPreference();
+    return;
+  }
   handleViewUpdate();
   isViewUpdated.value = false;
 }
 
 onMounted(async () => {
   handleScrollPosition();
+  await ensureViewPreferences();
 
   if (views.data?.length > 0 && views.filters?.dt === options.value.doctype) {
     handleViewChanges();
