@@ -676,6 +676,12 @@ function resetViewPreference() {
     .then(() => {
       if (viewPreferences.data) delete viewPreferences.data[viewName];
       isViewUpdated.value = false;
+      // A view definition carries no page size, so handleViewChanges can't undo
+      // a remembered one; put it back to the list's own default explicitly.
+      const pageLength = options.value.default_page_length;
+      pageLengthCount.value = pageLength;
+      defaultParams.page_length = pageLength;
+      defaultParams.page_length_count = pageLength;
       handleViewChanges();
       toast.success(__("View reset to its shared default"));
     })
