@@ -40,6 +40,69 @@ export function useHasApInvoicesField() {
  * the ticket, so they use their own stored read.
  */
 
+/**
+ * Normalise a file reference to a comparable path: no origin, no query string.
+ *
+ * `ap_invoices` stores "/private/files/x.png" while the email body may carry
+ * "https://ap.pyekmail.com/private/files/x.png?foo" for the same file.
+ */
+export function normalizeFileUrl(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  try {
+    const path = raw.startsWith("http") ? new URL(raw).pathname : raw.split("?")[0];
+    try {
+      return decodeURIComponent(path);
+    } catch {
+      // A stray % that isn't an escape sequence — compare the raw path instead.
+      return path;
+    }
+  } catch {
+    return raw.split("?")[0];
+  }
+}
+
+function isPdfLine(line: any): boolean {
+  return String(line?.file_name || line?.file_url || "")
+    .toLowerCase()
+    .endsWith(".pdf");
+}
+
+/**
+ * The file URLs that the thread's own HTML renders as <img> — i.e. the email's
+ * furniture rather than its documents.
+ *
+ * An Outlook signature logo arrives as an ordinary file attachment; the only thing
+ * that distinguishes it from a photographed receipt is that the message body embeds
+ * it (a `cid:` reference Frappe rewrites to the file URL). That distinction has to
+ * be structural, because nothing in the AI's answer separates them: handed the email
+ * subject and body as context, it labels the logo with the invoice's own values. On
+ * ticket 1205 `image001.png` came back doc_type "Invoice", amount 422.59,
+ * readable true — and was then chosen as the primary invoice, so `ap_invoice_file`
+ * pointed at a logo instead of the Ferguson PDF (same on 1206 and 0192).
+ */
+export function inlineAttachmentUrls(communications: any[]): Set<string> {
+  const urls = new Set<string>();
+  for (const c of communications || []) {
+    const html = String(c?.content || "");
+    if (!html) continue;
+    for (const m of html.matchAll(/<img[^>]+src\s*=\s*["']([^"']+)["']/gi)) {
+      const src = m[1];
+      if (!src || src.startsWith("data:")) continue;
+      const norm = normalizeFileUrl(src);
+      if (norm) urls.add(norm);
+    }
+  }
+  return urls;
+}
+
+/** Reactive wrapper over inlineAttachmentUrls for the ticket's activities resource. */
+export function useInlineAttachmentUrls(activities: () => any) {
+  return computed(() =>
+    inlineAttachmentUrls(activities()?.data?.communications || [])
+  );
+}
+
 export interface ApInvoice {
   fileUrl: string;
   fileName: string;
@@ -103,10 +166,21 @@ export function intacctName(parts: {
  * Filtering happens at DISPLAY time, not in the enricher, so the stored data stays
  * complete and this rule can be retuned without re-running (and re-paying for) the AI.
  */
-function isLikelyDocument(line: any, isPointer: boolean): boolean {
+function isLikelyDocument(
+  line: any,
+  isPointer: boolean,
+  inlineUrls: Set<string>
+): boolean {
+  // Checked BEFORE the pointer rule, and deliberately so. The old rule trusted the
+  // pointer absolutely — "the scalars demonstrably came from it" — but the enricher
+  // picks the first attachment the AI called an Invoice, and a signature image sorts
+  // first, so on a real subset of tickets the pointer IS the logo. An embedded image
+  // is never the document Nedra keys into Intacct.
+  if (!isPdfLine(line) && inlineUrls.has(normalizeFileUrl(line.file_url))) {
+    return false;
+  }
   if (isPointer) return true;
-  const name = String(line.file_name || line.file_url || "").toLowerCase();
-  if (name.endsWith(".pdf")) return true;
+  if (isPdfLine(line)) return true;
   const hasAmount =
     line.amount !== null && line.amount !== undefined && line.amount !== "";
   return (
@@ -160,7 +234,9 @@ function parseLines(raw: unknown): any[] {
 export function useApInvoices(
   ticket: () => Record<string, any> | null | undefined,
   extra: () => Record<string, any> | null | undefined,
-  threadFallback?: () => { url: string; name: string } | null
+  threadFallback?: () => { url: string; name: string } | null,
+  /** Files the thread renders inline — signature logos, not documents. */
+  inlineUrls?: () => Set<string> | null | undefined
 ) {
   return computed<ApInvoice[]>(() => {
     const t = ticket() || {};
@@ -175,10 +251,11 @@ export function useApInvoices(
     };
 
     const pointer = x.ap_invoice_file || "";
+    const inline = inlineUrls?.() || new Set<string>();
     // Filter BEFORE resolving the primary — the index has to refer to the same array
     // we map over, or a dropped line silently shifts which file counts as primary.
     const lines = parseLines(x.ap_invoices ?? t.ap_invoices).filter(
-      (l) => l && l.file_url && isLikelyDocument(l, l.file_url === pointer)
+      (l) => l && l.file_url && isLikelyDocument(l, l.file_url === pointer, inline)
     );
     if (lines.length) {
       // The backfill asserts no primary (it can't safely re-guess), so fall back to
@@ -187,6 +264,15 @@ export function useApInvoices(
       if (primaryIdx < 0 && pointer)
         primaryIdx = lines.findIndex((l) => l?.file_url === pointer);
       if (primaryIdx < 0) primaryIdx = 0;
+
+      // The stored `primary` can name a non-PDF the AI mislabelled. Where a real PDF
+      // is present it is the document being keyed into Intacct, so it wins — this is
+      // what stops a photographed-looking PNG opening in front of the actual invoice
+      // on tickets whose stored primary is already wrong.
+      if (!isPdfLine(lines[primaryIdx])) {
+        const pdfIdx = lines.findIndex(isPdfLine);
+        if (pdfIdx >= 0) primaryIdx = pdfIdx;
+      }
 
       // With exactly one invoice, the ticket's fields ARE that invoice, so the live
       // values win outright and a sidebar correction renames the file at once (PR #56).
@@ -231,13 +317,23 @@ export function useApInvoices(
     }
 
     // --- single-invoice fallbacks ---
-    const single = x.ap_invoice_file || threadFallback?.()?.url || "";
+    // Skip a pointer that is itself an inline image: on those tickets the enricher
+    // never recorded per-attachment lines, so without this the card's only entry is
+    // the signature logo.
+    const pointerIsInline =
+      !!pointer &&
+      !isPdfLine({ file_url: pointer }) &&
+      inline.has(normalizeFileUrl(pointer));
+    const single =
+      (pointerIsInline ? "" : x.ap_invoice_file) || threadFallback?.()?.url || "";
     if (!single) return [];
     return [
       {
         fileUrl: single,
         fileName:
-          String(x.ap_invoice_file || "").split("/").pop() ||
+          (pointerIsInline
+            ? ""
+            : String(x.ap_invoice_file || "").split("/").pop()) ||
           threadFallback?.()?.name ||
           "",
         downloadName: intacctName(live),

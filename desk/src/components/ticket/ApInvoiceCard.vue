@@ -438,7 +438,11 @@ import {
 import { computed, inject, nextTick, ref, watch } from "vue";
 import { getMeta } from "@/stores/meta";
 import { useIsAp } from "@/composables/useIsAp";
-import { useApInvoices, useHasApInvoicesField } from "@/composables/useApInvoices";
+import {
+  useApInvoices,
+  useHasApInvoicesField,
+  useInlineAttachmentUrls,
+} from "@/composables/useApInvoices";
 import ApField from "./ApField.vue";
 import ApNotes from "./ApNotes.vue";
 import UserAvatar from "../UserAvatar.vue";
@@ -629,16 +633,28 @@ const filename = computed(() => {
 // legacy fallback can still be a joined "name1 ; name2" — take the primary.
 const downloadName = computed(() => filename.value.split(" ; ")[0].trim());
 
-// Exact attachment the fields were read from (for the download link).
-const invoiceUrl = computed(() => extra.data?.ap_invoice_file || "");
 
 // --- multi-invoice download ---
 // Every invoice on the ticket, each with its own Intacct name. One element for the
 // ordinary single-invoice ticket, in which case the plain link above is used instead.
+const inlineUrls = useInlineAttachmentUrls(() => activities?.value);
+
 const invoices = useApInvoices(
   () => props.ticket,
-  () => extra.data
+  () => extra.data,
+  undefined,
+  () => inlineUrls.value
 );
+
+// The single-invoice download link. Resolved from the invoice list rather than read
+// straight off ap_invoice_file: on the tickets where the enricher made a signature
+// image the primary, that field points at the logo, so the link offered Nedra a PNG
+// under the invoice's Intacct name (1205, 1206, 0192). The list has already dropped
+// inline images and preferred a real PDF, so the primary here is the document.
+const invoiceUrl = computed(() => {
+  const primary = invoices.value.find((i) => i.primary) || invoices.value[0];
+  return primary?.fileUrl || "";
+});
 const moneyLabel = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 

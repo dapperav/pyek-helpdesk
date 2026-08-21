@@ -95,7 +95,12 @@ import { __ } from "@/translation";
 import { Button, call, createResource, Dropdown } from "frappe-ui";
 import { computed, inject, ref, watch } from "vue";
 import { useIsAp } from "@/composables/useIsAp";
-import { useApInvoices, useHasApInvoicesField } from "@/composables/useApInvoices";
+import {
+  normalizeFileUrl,
+  useApInvoices,
+  useHasApInvoicesField,
+  useInlineAttachmentUrls,
+} from "@/composables/useApInvoices";
 import LucideFileText from "~icons/lucide/file-text";
 import LucideFileX from "~icons/lucide/file-x";
 import LucideExternalLink from "~icons/lucide/external-link";
@@ -125,6 +130,9 @@ const extra = createResource({
   auto: computed(() => isAP.value && !!ticket.value.name),
 });
 
+// Files the thread embeds in its own body — signature logos and the like.
+const inlineUrls = useInlineAttachmentUrls(() => activities?.value);
+
 const fallbackInvoice = computed<{ url: string; name: string } | null>(() => {
   const comms = activities?.value?.data?.communications || [];
   const files: any[] = [];
@@ -132,7 +140,14 @@ const fallbackInvoice = computed<{ url: string; name: string } | null>(() => {
   const pdfs = files.filter((f) =>
     String(f.file_name || f.file_url || "").toLowerCase().endsWith(".pdf")
   );
-  const pool = pdfs.length ? pdfs : files;
+  // No PDF on the thread is exactly when this used to surface a logo: the pool fell
+  // back to every file, largest first, and a signature image outweighs a 1 KB one.
+  // Same normaliser as the inline set: these URLs carry a ?fid= query (the real
+  // 1205 body links image00180f934.png?fid=a32e55d), so a raw compare never matches.
+  const others = files.filter(
+    (f) => !inlineUrls.value.has(normalizeFileUrl(f.file_url))
+  );
+  const pool = pdfs.length ? pdfs : others;
   if (!pool.length) return null;
   pool.sort((a, b) => (b.file_size || 0) - (a.file_size || 0));
   return { url: pool[0].file_url, name: pool[0].file_name };
@@ -142,7 +157,8 @@ const fallbackInvoice = computed<{ url: string; name: string } | null>(() => {
 const invoices = useApInvoices(
   () => ticket.value,
   () => extra.data,
-  () => fallbackInvoice.value
+  () => fallbackInvoice.value,
+  () => inlineUrls.value
 );
 // Reset to the primary whenever the ticket or its invoice set changes, so switching
 // tickets can't leave the pane pointing at an index that no longer exists.
