@@ -10,15 +10,26 @@
         <LucideFileText class="size-4 shrink-0" />
         <span class="truncate">{{ invoiceName || __("Invoice") }}</span>
       </span>
-      <a
-        v-if="invoiceUrl"
-        :href="invoiceUrl"
-        target="_blank"
-        class="shrink-0 text-ink-gray-5 hover:text-ink-gray-8"
-        :aria-label="__('Open invoice in a new tab')"
-      >
-        <LucideExternalLink class="size-4" />
-      </a>
+      <div class="flex shrink-0 items-center gap-2">
+        <!-- PYEK: zoom is a per-agent choice, not a fixed default. See the
+             ZOOM_PREF_KEY comment in the script for why. -->
+        <Dropdown v-if="invoiceUrl" :options="zoomOptions" placement="bottom-end">
+          <Button variant="ghost" :label="zoomLabel(zoom)">
+            <template #prefix>
+              <LucideSearch class="size-3.5" />
+            </template>
+          </Button>
+        </Dropdown>
+        <a
+          v-if="invoiceUrl"
+          :href="invoiceUrl"
+          target="_blank"
+          class="shrink-0 text-ink-gray-5 hover:text-ink-gray-8"
+          :aria-label="__('Open invoice in a new tab')"
+        >
+          <LucideExternalLink class="size-4" />
+        </a>
+      </div>
     </div>
 
     <!-- Invoice switcher — only when the email carried more than one. The enricher
@@ -57,8 +68,12 @@
       </button>
     </div>
     <div class="min-h-0 flex-1 bg-surface-gray-2">
+      <!-- Keyed on zoom: a hash-only src change does not reload an iframe, so
+           the element is recreated instead. Held back until the stored zoom has
+           loaded, so a large PDF is never fetched twice at two zoom levels. -->
       <iframe
-        v-if="invoiceUrl"
+        v-if="invoiceUrl && zoomReady"
+        :key="zoom"
         :src="viewerUrl"
         class="h-full w-full"
         :title="__('Invoice preview')"
@@ -77,7 +92,7 @@
 <script setup lang="ts">
 import { ActivitiesSymbol, TicketSymbol } from "@/types";
 import { __ } from "@/translation";
-import { createResource } from "frappe-ui";
+import { Button, call, createResource, Dropdown } from "frappe-ui";
 import { computed, inject, ref, watch } from "vue";
 import { useIsAp } from "@/composables/useIsAp";
 import { useApInvoices, useHasApInvoicesField } from "@/composables/useApInvoices";
@@ -85,6 +100,7 @@ import LucideFileText from "~icons/lucide/file-text";
 import LucideFileX from "~icons/lucide/file-x";
 import LucideExternalLink from "~icons/lucide/external-link";
 import LucideTriangleAlert from "~icons/lucide/triangle-alert";
+import LucideSearch from "~icons/lucide/search";
 
 const ticketRef = inject(TicketSymbol)!;
 const activities = inject(ActivitiesSymbol, undefined);
@@ -147,10 +163,80 @@ const invoiceName = computed(() => current.value?.fileName || "");
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
-// Open the PDF fit-to-width with the thumbnail/nav pane collapsed so it fills the
-// pane and Nedra never has to zoom. (view/navpanes/pagemode are best-effort hints the
-// browser's PDF viewer may or may not honor; fit-width is the important one.)
-const viewerUrl = computed(() =>
-  invoiceUrl.value ? `${invoiceUrl.value}#view=FitH&navpanes=0&pagemode=none` : ""
+// PYEK: how zoomed the invoice opens, remembered per agent.
+//
+// This pane used to hard-code #view=FitH — fit-to-page-width — so that the invoice
+// filled the pane and Nedra never had to zoom. The catch is that fit-width is
+// relative to the pane: in a tall narrow column a letter-size invoice is scaled up
+// to around 170%, which is what Corey was reopening the tab into every time.
+//
+// Rather than swap one forced default for another and hand Nedra the opposite
+// complaint, the zoom is a per-agent setting. "Fit width" is still one of the
+// choices — it just isn't imposed on everyone — and the default for an agent who
+// has never touched it is 90%, which is what Corey asked for.
+const ZOOM_PREF_KEY = "ap_invoice_zoom";
+const DEFAULT_ZOOM = "90";
+const ZOOM_CHOICES = ["fit", "50", "75", "90", "100", "125", "150", "200"];
+
+const zoom = ref(DEFAULT_ZOOM);
+// Gates the iframe so the PDF isn't loaded once at the default and again at the
+// stored zoom. Set on success *and* failure — a preference we can't read must not
+// leave the pane permanently blank.
+const zoomReady = ref(false);
+let zoomRequested = false;
+
+const zoomLabel = (value: string) =>
+  value === "fit" ? __("Fit width") : `${value}%`;
+
+const zoomPreferences = createResource({
+  url: "helpdesk.api.user_preference.get_user_preferences",
+  auto: false,
+  onSuccess: (data: Record<string, string>) => {
+    const stored = data?.[ZOOM_PREF_KEY];
+    if (stored && ZOOM_CHOICES.includes(stored)) zoom.value = stored;
+    zoomReady.value = true;
+  },
+  onError: () => {
+    zoomReady.value = true;
+  },
+});
+
+// The script runs on every ticket, but only AP tickets render this pane — so wait
+// for isAP rather than firing the request for IT tickets that will never show it.
+watch(
+  isAP,
+  (val) => {
+    if (!val || zoomRequested) return;
+    zoomRequested = true;
+    zoomPreferences.fetch();
+  },
+  { immediate: true }
 );
+
+const zoomOptions = computed(() =>
+  ZOOM_CHOICES.map((value) => ({
+    label: zoomLabel(value),
+    onClick: () => setZoom(value),
+  }))
+);
+
+function setZoom(value: string) {
+  if (value === zoom.value) return;
+  zoom.value = value;
+  call("helpdesk.api.user_preference.set_user_preference", {
+    key: ZOOM_PREF_KEY,
+    value,
+  }).catch((e) => {
+    // The pane is already at the new zoom; only the memory of it is lost.
+    console.error("Failed to save invoice zoom", e);
+  });
+}
+
+// navpanes/pagemode are best-effort hints the browser's PDF viewer may or may not
+// honor; the zoom/view parameter is the one that matters.
+const viewerUrl = computed(() => {
+  if (!invoiceUrl.value) return "";
+  const mode = zoom.value === "fit" ? "view=FitH" : `zoom=${zoom.value}`;
+  return `${invoiceUrl.value}#${mode}&navpanes=0&pagemode=none`;
+});
 </script>
