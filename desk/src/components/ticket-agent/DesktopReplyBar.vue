@@ -11,7 +11,6 @@
   <div
     class="relative border-t bg-surface-base px-6 md:px-5 pt-1.5"
     @dragover="inlineDragOver"
-    @dragleave="inlineDragLeave"
     @drop="inlineDrop"
   >
     <!-- The drop target is the whole bar, not just the input: a screenshot
@@ -361,13 +360,18 @@ const sending = ref(false);
 // Screenshots pasted / dropped / picked into the bar. They go INTO the body
 // (CID-embedded by the framework), so they're tracked apart from the plain
 // attachments — see composables/inlineReplyImages.ts.
-const inline = useInlineReplyImages(tid, (f) => quickAttachments.value.push(f));
+const inline = useInlineReplyImages(
+  tid,
+  (f) => quickAttachments.value.push(f),
+  // The page-wide drop fallback stands down whenever a full editor owns the
+  // screen — that editor has its own, better drop handling.
+  () => !showEmailBox.value && !showCommentBox.value
+);
 const inlineImages = inline.images;
 const inlineBusy = inline.busy;
 const inlineDragging = inline.dragging;
 const {
   onDragOver: inlineDragOver,
-  onDragLeave: inlineDragLeave,
   onDrop: inlineDrop,
   remove: removeInlineImage,
 } = inline;

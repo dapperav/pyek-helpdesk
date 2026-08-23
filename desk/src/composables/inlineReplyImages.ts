@@ -28,7 +28,7 @@
 import { __ } from "@/translation";
 import { removeAttachmentFromServer, uploadFunction } from "@/utils";
 import { toast } from "frappe-ui";
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const IMAGE_MIME = /^image\//i;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i;
@@ -77,10 +77,14 @@ function probeWidth(url: string): Promise<number | null> {
  * @param ticketId  Ticket the uploads attach to.
  * @param onOther   Non-image files fall through to the bar's normal attachment
  *                  list (a PDF is still a PDF).
+ * @param isActive  Whether the bar is the visible reply surface. The
+ *                  page-wide drop fallback stands down when a full editor has
+ *                  taken over, so a stray drop can't land in a hidden bar.
  */
 export function useInlineReplyImages(
   ticketId: string,
-  onOther: (file: any) => void
+  onOther: (file: any) => void,
+  isActive: () => boolean = () => true
 ) {
   const images = ref<InlineImage[]>([]);
   const uploading = ref(0);
@@ -193,26 +197,72 @@ export function useInlineReplyImages(
   }
 
   function onDragOver(event: DragEvent) {
-    if (!event.dataTransfer?.types?.includes("Files")) return;
+    if (!carriesFiles(event)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    dragging.value = true;
-  }
-
-  function onDragLeave(event: DragEvent) {
-    // Ignore the leave events fired while crossing the bar's own children.
-    const next = event.relatedTarget as Node | null;
-    if (next && (event.currentTarget as Node)?.contains(next)) return;
-    dragging.value = false;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    markDragging();
   }
 
   function onDrop(event: DragEvent) {
+    if (dragTimer) clearTimeout(dragTimer);
     dragging.value = false;
     const files = collectFiles(event.dataTransfer);
     if (!files.length) return;
     event.preventDefault();
     void addFiles(files);
   }
+
+  // ── Page-wide fallback ───────────────────────────────────────────────
+  // The bar is a small target at the bottom of a tall thread, and a drop that
+  // misses it hands the file to the browser, which navigates away from the
+  // ticket and takes the half-typed reply with it. Nothing else on the ticket
+  // page claims a file drag (checked on prod, 2026-08-23), so `window` is the
+  // last stop: anything a real drop zone wanted has already called
+  // preventDefault by the time the event bubbles this far, and whatever is
+  // left belongs to the reply.
+  let dragTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * `dragover` repeats every ~50-100ms for as long as a drag is live, so an
+   * idle timer is a far more reliable "the drag ended" signal than dragleave,
+   * which fires on every child boundary crossed.
+   */
+  function markDragging() {
+    dragging.value = true;
+    if (dragTimer) clearTimeout(dragTimer);
+    dragTimer = setTimeout(() => (dragging.value = false), 250);
+  }
+
+  function carriesFiles(event: DragEvent) {
+    return !!event.dataTransfer?.types?.includes("Files");
+  }
+
+  function windowDragOver(event: DragEvent) {
+    if (event.defaultPrevented || !isActive() || !carriesFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    markDragging();
+  }
+
+  function windowDrop(event: DragEvent) {
+    if (dragTimer) clearTimeout(dragTimer);
+    dragging.value = false;
+    if (event.defaultPrevented || !isActive()) return;
+    const files = collectFiles(event.dataTransfer);
+    if (!files.length) return;
+    event.preventDefault();
+    void addFiles(files);
+  }
+
+  onMounted(() => {
+    window.addEventListener("dragover", windowDragOver);
+    window.addEventListener("drop", windowDrop);
+  });
+  onBeforeUnmount(() => {
+    if (dragTimer) clearTimeout(dragTimer);
+    window.removeEventListener("dragover", windowDragOver);
+    window.removeEventListener("drop", windowDrop);
+  });
 
   return {
     images,
@@ -226,7 +276,6 @@ export function useInlineReplyImages(
     html,
     onPaste,
     onDragOver,
-    onDragLeave,
     onDrop,
   };
 }
