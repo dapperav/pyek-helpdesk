@@ -50,8 +50,7 @@
       class="relative border-t bg-surface-base px-2.5 pt-1.5"
       :style="quickBarStyle"
       @dragover="inlineDragOver"
-      @dragleave="inlineDragLeave"
-      @drop="inlineDrop"
+        @drop="inlineDrop"
     >
       <!-- Only ever seen on an iPad with a trackpad; harmless on a phone. -->
       <div
@@ -623,13 +622,17 @@ const quickAttachments = ref<any[]>([]);
 // Screenshots pasted / dropped / picked into the bar. They go INTO the body
 // (CID-embedded by the framework), so they're tracked apart from the plain
 // attachments — see composables/inlineReplyImages.ts.
-const inline = useInlineReplyImages(tid, (f) => quickAttachments.value.push(f));
+const inline = useInlineReplyImages(
+  tid,
+  (f) => quickAttachments.value.push(f),
+  // Stands down while the full-screen composer is up — it has its own.
+  () => !composeOpen.value
+);
 const inlineImages = inline.images;
 const inlineBusy = inline.busy;
 const inlineDragging = inline.dragging;
 const {
   onDragOver: inlineDragOver,
-  onDragLeave: inlineDragLeave,
   onDrop: inlineDrop,
   remove: removeInlineImage,
 } = inline;
