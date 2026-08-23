@@ -46,7 +46,20 @@
       }}</span>
     </button>
 
-    <div class="border-t bg-surface-base px-2.5 pt-1.5" :style="quickBarStyle">
+    <div
+      class="relative border-t bg-surface-base px-2.5 pt-1.5"
+      :style="quickBarStyle"
+      @dragover="inlineDragOver"
+      @dragleave="inlineDragLeave"
+      @drop="inlineDrop"
+    >
+      <!-- Only ever seen on an iPad with a trackpad; harmless on a phone. -->
+      <div
+        v-if="inlineDragging"
+        class="pointer-events-none absolute inset-x-2 inset-y-1 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-outline-gray-3 bg-surface-base/90 text-sm font-medium text-ink-gray-7"
+      >
+        {{ __("Drop it here to put it in the reply") }}
+      </div>
       <!-- @mention picker (Mark, 2026-08-17: "when typing @ it shows people I
            can at… and I want them to get a push"). Appears while the token
            under the caret is @something with agent matches. mousedown.prevent
@@ -68,6 +81,31 @@
             a.user
           }}</span>
         </button>
+      </div>
+      <!-- Inline images: thumbnails, because these land in the message body
+           rather than clipped to it (see composables/inlineReplyImages.ts). -->
+      <div
+        v-if="inlineImages.length || inlineBusy"
+        class="mb-1.5 flex flex-wrap items-center gap-2"
+      >
+        <div v-for="img in inlineImages" :key="img.name" class="relative">
+          <img
+            :src="img.file_url"
+            :alt="img.file_name"
+            class="size-14 rounded-lg border border-outline-gray-2 object-cover"
+          />
+          <button
+            class="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-surface-gray-7 text-white shadow"
+            :aria-label="__('Remove image')"
+            @mousedown.prevent
+            @click="removeInlineImage(img)"
+          >
+            <FeatherIcon class="h-2.5 w-2.5" name="x" />
+          </button>
+        </div>
+        <span v-if="inlineBusy" class="text-xs text-ink-gray-4">
+          {{ __("Uploading…") }}
+        </span>
       </div>
       <!-- Photo/screenshot chips: uploaded already, sent with the message. -->
       <div v-if="quickAttachments.length" class="mb-1.5 flex flex-wrap gap-1.5">
@@ -193,7 +231,7 @@
           v-if="expanded"
           class="shrink-0"
           :upload-args="{ doctype: 'HD Ticket', docname: tid, private: true }"
-          @success="(f) => quickAttachments.push(f)"
+          @success="onPickedFile"
         >
           <template #default="{ openFileSelector, uploading }">
             <button
@@ -215,6 +253,7 @@
           class="max-h-[120px] min-h-[38px] flex-1 resize-none rounded-[19px] border border-outline-gray-2 px-3.5 py-2 text-base text-ink-gray-9 placeholder-ink-gray-4 focus:outline-none focus:ring-1 focus:ring-outline-gray-3"
           :class="mode === 'note' ? 'bg-surface-amber-1' : 'bg-surface-gray-1'"
           @input="autogrow"
+          @paste="inlinePaste"
           @focus="focused = true"
           @blur="focused = false"
         />
@@ -230,7 +269,13 @@
         <button
           class="flex size-[38px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
           :style="{ backgroundColor: mode === 'note' ? '#b45309' : '#1b2a4a' }"
-          :disabled="(!quickText.trim() && !quickAttachments.length) || sending"
+          :disabled="
+            (!quickText.trim() &&
+              !quickAttachments.length &&
+              !inlineImages.length) ||
+            inlineBusy ||
+            sending
+          "
           :aria-label="mode === 'note' ? __('Add note') : __('Send reply')"
           @mousedown.prevent
           @click="sendQuick"
@@ -482,6 +527,10 @@ import {
   buildAiReplyDraft,
   hasAiReplyDraft,
 } from "@/composables/aiReplyDraft";
+import {
+  isImageFile,
+  useInlineReplyImages,
+} from "@/composables/inlineReplyImages";
 import { useTyping } from "@/composables/realtime";
 import {
   helpdeskSupportEmails,
@@ -570,12 +619,57 @@ const { onUserType, cleanup: cleanupTyping } = useTyping(tid);
 const composeOpen = ref(false);
 const focused = ref(false);
 const quickAttachments = ref<any[]>([]);
+
+// Screenshots pasted / dropped / picked into the bar. They go INTO the body
+// (CID-embedded by the framework), so they're tracked apart from the plain
+// attachments — see composables/inlineReplyImages.ts.
+const inline = useInlineReplyImages(tid, (f) => quickAttachments.value.push(f));
+const inlineImages = inline.images;
+const inlineBusy = inline.busy;
+const inlineDragging = inline.dragging;
+const {
+  onDragOver: inlineDragOver,
+  onDragLeave: inlineDragLeave,
+  onDrop: inlineDrop,
+  remove: removeInlineImage,
+} = inline;
+
+/**
+ * A clipboard can hold an image AND text (Excel, a copied web image). The
+ * paste handler cancels the event to take the image, so it hands the text back
+ * for us to write at the caret ourselves.
+ */
+function insertAtCaret(text: string) {
+  const el = quickInput.value;
+  const caret = el?.selectionStart ?? quickText.value.length;
+  const end = el?.selectionEnd ?? caret;
+  quickText.value =
+    quickText.value.slice(0, caret) + text + quickText.value.slice(end);
+  nextTick(() => {
+    autogrow();
+    const at = caret + text.length;
+    el?.setSelectionRange(at, at);
+  });
+}
+
+function inlinePaste(event: ClipboardEvent) {
+  inline.onPaste(event, insertAtCaret);
+}
+
+/** The photo button routes by type, same rule as a paste. */
+function onPickedFile(f: any) {
+  if (isImageFile(f)) inline.addUploaded(f);
+  else quickAttachments.value.push(f);
+}
+
 const expanded = computed(
   () =>
     focused.value ||
     recipientsBarOpen.value ||
     !!quickText.value.trim() ||
-    !!quickAttachments.value.length
+    !!quickAttachments.value.length ||
+    !!inlineImages.value.length ||
+    inlineBusy.value
 );
 
 async function removeQuickAttachment(a: any) {
@@ -885,6 +979,8 @@ function textToHtml(t: string): string {
 
 interface ComposePayload {
   carryText?: string;
+  /** Ready-made HTML (inline images) carried up from the quick bar. */
+  carryHtml?: string;
   content?: string;
   to?: string[] | string;
   cc?: string[] | string;
@@ -898,8 +994,12 @@ function asList(v: string[] | string | undefined): string[] {
 }
 
 function openCompose(payload: ComposePayload = {}) {
-  if (payload.carryText?.trim()) {
-    newEmail.value = textToHtml(payload.carryText) + signatureHtml.value;
+  const carryHtml = payload.carryHtml || "";
+  if (payload.carryText?.trim() || carryHtml) {
+    newEmail.value =
+      (payload.carryText?.trim() ? textToHtml(payload.carryText) : "") +
+      carryHtml +
+      signatureHtml.value;
   } else if (isContentEmpty(newEmail.value)) {
     newEmail.value = signatureHtml.value || "<p></p>";
   }
@@ -934,8 +1034,12 @@ function closeCompose() {
 }
 function expandFromQuick() {
   const carry = quickText.value;
+  // Images ride across too — dropping them on the way to the full composer
+  // would look like they were silently thrown away.
+  const carryHtml = inline.html();
   quickText.value = "";
-  openCompose({ carryText: carry });
+  inline.reset();
+  openCompose({ carryText: carry, carryHtml });
 }
 
 function applySavedReply(template: string) {
@@ -1000,6 +1104,7 @@ const sendMail = createResource({
       mentionedAgents.value = [];
       quickText.value = "";
       quickAttachments.value = [];
+      inline.reset();
       nextTick(autogrow);
     } else {
       newEmail.value = null;
@@ -1023,7 +1128,11 @@ let pendingReplyMessage = "";
 function sendQuick() {
   const text = quickText.value.trim();
   // A screenshot with no words is a legitimate reply.
-  if ((!text && !quickAttachments.value.length) || sending.value) return;
+  if (
+    (!text && !quickAttachments.value.length && !inlineImages.value.length) ||
+    sending.value
+  )
+    return;
   if (mode.value === "note") {
     sendNote(text);
     return;
@@ -1031,7 +1140,9 @@ function sendQuick() {
   out.origin.value = "quick";
   pendingReplyMentions = activeMentions(text);
   pendingReplyMessage = text ? textToHtml(text) : "";
-  out.message.value = (text ? textToHtml(text) : "") + signatureHtml.value;
+  // Images sit between the words and the signature, in the order added.
+  out.message.value =
+    (text ? textToHtml(text) : "") + inline.html() + signatureHtml.value;
   out.to.value = quickTo.value.join(",") || doc.value?.raised_by || "";
   out.cc.value = quickCc.value.join(",");
   out.bcc.value = "";
@@ -1086,7 +1197,7 @@ function sendNote(text: string) {
       // tiptap markup — HDTicketComment.after_insert extracts them and
       // pushes/emails the mentioned agents server-side.
       args: {
-        content: text ? mentionHtml(text) : "",
+        content: (text ? mentionHtml(text) : "") + inline.html(),
         attachments: quickAttachments.value,
       },
     }),
@@ -1094,6 +1205,7 @@ function sendNote(text: string) {
       sending.value = false;
       quickText.value = "";
       quickAttachments.value = [];
+      inline.reset();
       mentionedAgents.value = [];
       mode.value = "reply";
       nextTick(autogrow);
