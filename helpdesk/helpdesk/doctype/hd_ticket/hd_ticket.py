@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 from email.utils import parseaddr
 from html import escape as html_escape
+from zoneinfo import ZoneInfo
 
 import frappe
 from bs4 import BeautifulSoup, Comment
@@ -114,6 +115,18 @@ ACK_SWEEP_BATCH = 50
 AUTO_CLOSE_SENDER_HINT = "ui.com"
 AUTO_CLOSE_SUBJECT_RE = re.compile(r"NVR['’ʼ]s\b", re.IGNORECASE)
 AUTO_CLOSE_FIELD = "pyek_auto_closed"
+
+# The marker paragraph every quoted reply carries. The composers emit it
+# (EmailEditor.vue, MobileReplyFlow.submitCompose) and hide it in the editor
+# via [&_p.reply-to-content]:hidden; reply_via_agent reads it as "this message
+# already carries a quote", so a composer reply never gets quoted twice.
+QUOTED_REPLY_MARKER = "reply-to-content"
+
+# _QUOTE_HEADER in hd_ticket/api.py matches `^on .{0,140}wrote:?$` to cut the
+# attribution line out of an agent-facing bubble. Keep name + address well
+# inside that budget: an attribution that failed to match would surface as a
+# stray line above every quoted reply in the thread.
+QUOTE_ATTRIBUTION_MAX = 90
 
 
 def _split_ack_patterns(raw) -> list:
@@ -237,7 +250,7 @@ class HDTicket(Document):
         try:
             frappe.sendmail(
                 recipients=[self.raised_by],
-                subject=f"Re: {self.subject}",
+                subject=self.outgoing_subject(),
                 message=self._get_rendered_template(
                     feedback_email_content,
                     default_feedback_email_content,
@@ -773,12 +786,37 @@ class HDTicket(Document):
 
         return email_account
 
+    def ticket_email_account(self):
+        """The inbox this ticket arrived on, when it is able to send."""
+        if not self.email_account:
+            return
+
+        if not frappe.db.exists("Email Account", self.email_account):
+            return
+
+        email_account = frappe.get_doc("Email Account", self.email_account)
+
+        if not email_account.enable_outgoing:
+            return
+
+        return email_account
+
     def sender_email(self):
         """
         Find an email to use as sender. Fall back through multiple choices
 
         :return: `Email Account`
         """
+        # The ticket's own inbox comes first. Keying on the newest message
+        # instead let the account drift: an Echo acknowledgement goes out on
+        # the IT account, so a POS ticket whose last message was automated
+        # answered from help.pyek@ rather than pos.pyek@. That put 5 of 109
+        # POS replies on the wrong address between 8/6 and 8/22 (tickets 0272,
+        # 0379, 0381, 0558) — the requester sees an address they don't
+        # recognise, and their answer lands back in the IT queue.
+        if email_account := self.ticket_email_account():
+            return email_account
+
         if email_account := self.last_communication_email():
             return email_account
 
@@ -787,6 +825,111 @@ class HDTicket(Document):
 
         if email_account := default_outgoing_email_account():
             return email_account
+
+    def outgoing_subject(self) -> str:
+        """The subject every requester-facing email on this ticket carries.
+
+        The trailing `(#name)` is Frappe's own inbound convention —
+        `InboundMail.get_reference_name_from_subject` reads
+        `subject.rsplit("#", 1)[-1].strip(" ()")` — so the reference has to sit
+        LAST or a ticket whose own subject contains a '#' wins the split. It
+        also hands Outlook a distinct conversation topic per ticket, which is
+        the point: Brittany Estes had three open tickets all titled "TTH
+        consignment" on 2026-08-24, and every reply collapsed into one
+        indistinguishable thread.
+
+        utils/agent_email.py builds the same string for relayed agent mail;
+        keep the two in step.
+        """
+        return f"Re: {self.subject} (#{self.name})"
+
+    def _last_inbound_communication(self):
+        rows = frappe.get_all(
+            "Communication",
+            filters={
+                "reference_doctype": "HD Ticket",
+                "reference_name": self.name,
+                "communication_type": "Communication",
+                "sent_or_received": "Received",
+            },
+            fields=[
+                "content",
+                "sender",
+                "sender_full_name",
+                "communication_date",
+                "creation",
+            ],
+            order_by="creation desc",
+            limit=1,
+        )
+        return rows[0] if rows else None
+
+    @staticmethod
+    def _quote_timestamp(value) -> str:
+        if not value:
+            return ""
+        try:
+            dt = get_datetime(value)
+        except Exception:
+            return ""
+        # %-I is not portable, so strip the leading zero by hand.
+        hour = dt.strftime("%I").lstrip("0") or "12"
+        stamp = f"{dt.strftime('%b %d, %Y')} at {hour}:{dt.strftime('%M %p')}"
+        # Communication timestamps are stored in the SITE timezone, which is
+        # not the reader's — this desk already shipped an hour-off bug from
+        # exactly that gap (2026-08-20). Naming the zone costs four characters
+        # and makes the quote unambiguous instead of quietly wrong.
+        try:
+            zone = ZoneInfo(frappe.utils.get_system_timezone())
+            if abbreviation := dt.replace(tzinfo=zone).strftime("%Z"):
+                stamp = f"{stamp} {abbreviation}"
+        except Exception:
+            pass
+        return stamp
+
+    @staticmethod
+    def _quote_attribution(comm) -> str:
+        name = (comm.get("sender_full_name") or "").strip()
+        address = (comm.get("sender") or "").strip()
+        who = f"{name} <{address}>" if name and address else (name or address)
+        if len(who) > QUOTE_ATTRIBUTION_MAX:
+            who = name or address
+        when = HDTicket._quote_timestamp(
+            comm.get("communication_date") or comm.get("creation")
+        )
+        said = ", ".join(part for part in (when, who) if part)
+        if not said:
+            return ""
+        return f"On {said} wrote:"
+
+    def quoted_thread_html(self) -> str:
+        """The requester's own last message, quoted under a new reply.
+
+        The quick reply bars send a bare line — "Done!" and nothing else — so a
+        requester with three same-subject tickets open cannot tell which one
+        was answered (Brittany Estes, 2026-08-24). The full composer has always
+        appended this block client-side; building it server-side means every
+        surface quotes, including any added later.
+
+        Both pieces are load-bearing downstream: `_visible_lines` in
+        hd_ticket/api.py decomposes the <blockquote> and `_QUOTE_HEADER` cuts
+        the attribution, so agent-facing bubbles stay exactly as short as they
+        are today while the outgoing email carries the history.
+
+        Only RECEIVED mail is ever quoted, so our own replies can't compound
+        into an ever-growing chain of themselves.
+        """
+        comm = self._last_inbound_communication()
+        if not comm or not (comm.get("content") or "").strip():
+            return ""
+
+        attribution = self._quote_attribution(comm)
+        header = f"<p>{html_escape(attribution)}</p>" if attribution else ""
+        return (
+            f'<p class="{QUOTED_REPLY_MARKER}"></p>'
+            f"{header}"
+            f"<blockquote>{comm['content']}</blockquote>"
+        )
 
     @property
     def portal_uri(self):
@@ -826,7 +969,15 @@ class HDTicket(Document):
             )
         skip_email_workflow = self.skip_email_workflow()
         medium = "" if skip_email_workflow else "Email"
-        subject = f"Re: {self.subject}"
+        subject = self.outgoing_subject()
+
+        # The quick reply bars send only what the agent typed; the full
+        # composer appends its own quote client-side and marks it. Fill the gap
+        # here, before the Communication is built, so the stored thread and the
+        # outgoing email say the same thing.
+        if not skip_email_workflow and QUOTED_REPLY_MARKER not in (message or ""):
+            message = (message or "") + self.quoted_thread_html()
+
         from_email_id = from_email.get("email_id") if from_email else None
         email_account_name = from_email.get("email_account") if from_email else None
         sender = from_email_id or frappe.session.user
