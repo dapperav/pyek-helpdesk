@@ -1552,3 +1552,83 @@ class TestHDTicket(FrappeTestCase):
         remove_holidays()
         frappe.db.set_single_value("HD Settings", "default_ticket_status", "Open")
         frappe.delete_doc("HD Ticket Status", "New", force=True)
+
+
+class TestQuotedReply(FrappeTestCase):
+    """A reply that carries no history reads as one bare word in the
+    requester's inbox. Brittany Estes had three tickets all titled "TTH
+    consignment" answered with "Done!" on 2026-08-24 and could not tell which
+    was which, so both halves matter: the quote, and a subject that keeps the
+    three apart in Outlook.
+    """
+
+    def _inbound(self, ticket, content, sender="requester@example.com"):
+        return frappe.get_doc(
+            {
+                "doctype": "Communication",
+                "communication_type": "Communication",
+                "communication_medium": "Email",
+                "sent_or_received": "Received",
+                "email_status": "Open",
+                "status": "Linked",
+                "subject": ticket.subject,
+                "sender": sender,
+                "sender_full_name": "Brittany Estes",
+                "content": content,
+                "reference_doctype": "HD Ticket",
+                "reference_name": ticket.name,
+            }
+        ).insert(ignore_permissions=True)
+
+    def test_subject_carries_the_ticket_reference_last(self):
+        ticket = make_ticket(subject="Invoice #4433 will not scan")
+        subject = ticket.outgoing_subject()
+
+        self.assertTrue(subject.endswith(f"(#{ticket.name})"))
+        # Frappe's InboundMail.get_reference_name_from_subject splits on the
+        # LAST '#', so a ticket subject containing its own '#' must not win.
+        self.assertEqual(
+            subject.rsplit("#", 1)[-1].strip(" ()"),
+            ticket.name,
+            "the reply subject must resolve back to this ticket on the way in",
+        )
+
+    def test_quote_carries_the_requesters_last_message(self):
+        ticket = make_ticket(subject="TTH consignment")
+        self._inbound(ticket, "<p>Please check this code, it is not working.</p>")
+
+        quoted = ticket.quoted_thread_html()
+
+        self.assertIn("Please check this code", quoted)
+        self.assertIn("<blockquote>", quoted)
+        self.assertIn("wrote:", quoted)
+
+    def test_quote_is_empty_without_inbound_mail(self):
+        ticket = make_ticket(subject="Raised from the portal")
+
+        self.assertEqual(ticket.quoted_thread_html(), "")
+
+    def test_only_inbound_mail_is_quoted(self):
+        """Quoting our own replies would compound the thread on every send."""
+        ticket = make_ticket(subject="TTH consignment")
+        self._inbound(ticket, "<p>Original question.</p>")
+        frappe.get_doc(
+            {
+                "doctype": "Communication",
+                "communication_type": "Communication",
+                "communication_medium": "Email",
+                "sent_or_received": "Sent",
+                "email_status": "Open",
+                "status": "Linked",
+                "subject": ticket.outgoing_subject(),
+                "sender": "agent@example.com",
+                "content": "<p>Done!</p>",
+                "reference_doctype": "HD Ticket",
+                "reference_name": ticket.name,
+            }
+        ).insert(ignore_permissions=True)
+
+        quoted = ticket.quoted_thread_html()
+
+        self.assertIn("Original question", quoted)
+        self.assertNotIn("Done!", quoted)
