@@ -7,12 +7,18 @@ import {
 } from "@tiptap/extension-table";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
-import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import {
+  Plugin,
+  PluginKey,
+  TextSelection,
+  type Transaction,
+} from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { SuggestionExtension } from "frappe-ui/editor";
 import FieldAutocompleteList from "./components/Settings/SavedReplies/components/FieldAutocompleteList.vue";
 import { userFields } from "./components/Settings/SavedReplies/savedReplies";
 import { getMeta } from "./stores/meta";
+import { clampToEmailWidth, MAX_EMAIL_WIDTH } from "./emailImageSize";
 
 export interface FieldItem {
   title: string;
@@ -764,6 +770,86 @@ export const HandleExcelPaste = Extension.create({
 
             return false;
           },
+        },
+      }),
+    ];
+  },
+});
+
+/**
+ * Keep a pasted screenshot from going out at its natural width.
+ *
+ * frappe-ui's image extension inserts at whatever size the file happens to be,
+ * and a full-screen grab is 1400-2500px wide. That is how ticket #0606 shipped
+ * `width="1407"` to a requester (2026-08-26) — nobody chose it, and in Outlook,
+ * which ignores `max-width` on images, it blows the reading pane out sideways.
+ *
+ * So: clamp once, on arrival, keeping the aspect ratio, and then get out of the
+ * way. The node view's own drag handle takes over from there, which is the
+ * point — the default should be sane and the agent should still be able to
+ * make it any size they like.
+ *
+ * `sized` is the "hands off" mark. It renders to nothing, and images PARSED
+ * from HTML come in already marked: a quoted thread, a saved reply, or the
+ * hand-off from the quick bar all carry widths somebody already decided on, and
+ * silently rewriting those would be a different feature (and a rude one).
+ */
+export const CapImageWidth = Extension.create<{ max: number }>({
+  name: "capImageWidth",
+
+  addOptions() {
+    return { max: MAX_EMAIL_WIDTH };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["image"],
+        attributes: {
+          sized: {
+            default: null,
+            parseHTML: () => "kept",
+            renderHTML: () => ({}),
+          },
+        },
+      },
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    const max = this.options.max;
+
+    return [
+      new Plugin({
+        key: new PluginKey("capImageWidth"),
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          let tr: Transaction | null = null;
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name !== "image") return;
+            // Still uploading: its width is the placeholder's and the upload
+            // may yet overwrite it. Wait for the final one.
+            if (node.attrs.sized || node.attrs.loading) return;
+
+            const width = Number(node.attrs.width);
+            if (!width) return;
+
+            const clamped = clampToEmailWidth(
+              width,
+              Number(node.attrs.height) || null,
+              max
+            );
+            // A null clamp means it already fits; mark it either way so we
+            // never look at this node again.
+            (tr ??= newState.tr).setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              ...(clamped ?? {}),
+              sized: true,
+            });
+          });
+
+          return tr;
         },
       }),
     ];

@@ -20,6 +20,13 @@
  * CID attachments — private files included — so the requester sees the
  * screenshot in the mail body rather than a download link.
  *
+ * Each image carries a size step (S/M/L/Full, see emailImageSize.ts) that the
+ * chip on its thumbnail cycles through, and that becomes the `width` attribute
+ * on the outgoing tag. Width is the only sizing lever an email has — Outlook
+ * renders through Word, which ignores `max-width` on images — so an unsized
+ * screenshot goes out at its natural 1400-plus pixels and wrecks the reading
+ * pane. Default is M (640px); the chip is how an agent overrides it.
+ *
  * Placement is "after the text, in the order added" rather than at the caret:
  * a textarea has no way to anchor a node to a moving cursor, and an offset
  * remembered at paste time drifts silently as the reply is edited. Agents who
@@ -27,22 +34,29 @@
  */
 import { __ } from "@/translation";
 import { removeAttachmentFromServer, uploadFunction } from "@/utils";
+import {
+  DEFAULT_SIZE,
+  emailWidth,
+  isResizable,
+  nextSize,
+  sizeLabel,
+  type SizeKey,
+} from "@/emailImageSize";
 import { toast } from "frappe-ui";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const IMAGE_MIME = /^image\//i;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i;
 
-/** Widest an inline image is allowed to render at in the mail body. */
-const MAX_EMAIL_WIDTH = 640;
-
 export interface InlineImage {
   /** `File` docname — what the delete call needs. */
   name: string;
   file_url: string;
   file_name: string;
-  /** Natural width in px, capped for the email; null while unknown. */
-  width: number | null;
+  /** Width as uploaded, in px; null when the probe failed. */
+  natural: number | null;
+  /** Which size step the agent picked. See emailImageSize.ts. */
+  size: SizeKey;
 }
 
 /** Is this uploaded `File` doc an image? Works off the name, not the MIME. */
@@ -59,10 +73,11 @@ function escapeAttr(value: string) {
 }
 
 /**
- * Read an image's natural width so the mail can carry a `width` attribute.
- * Outlook desktop ignores `max-width` on images, so a 3000px screenshot would
- * blow the layout out without it. Resolves to null rather than rejecting — a
- * missing width is cosmetic, a failed send is not.
+ * Read an image's natural width. Everything downstream needs it: the mail wants
+ * a `width` attribute (Outlook ignores `max-width` on images, so a 3000px
+ * screenshot would blow the layout out without one) and the size chip refuses
+ * to offer a step wider than the picture actually is. Resolves to null rather
+ * than rejecting — a missing width is cosmetic, a failed send is not.
  */
 function probeWidth(url: string): Promise<number | null> {
   return new Promise((resolve) => {
@@ -99,12 +114,12 @@ export function useInlineReplyImages(
    */
   async function addUploaded(uploaded: any) {
     if (!uploaded?.file_url) return;
-    const width = await probeWidth(uploaded.file_url);
     images.value.push({
       name: String(uploaded.name ?? ""),
       file_url: uploaded.file_url,
       file_name: uploaded.file_name || uploaded.file_url,
-      width: width ? Math.min(width, MAX_EMAIL_WIDTH) : null,
+      natural: await probeWidth(uploaded.file_url),
+      size: DEFAULT_SIZE,
     });
   }
 
@@ -116,12 +131,12 @@ export function useInlineReplyImages(
         const uploaded = await uploadFunction(file, "HD Ticket", ticketId);
         if (!uploaded?.file_url) throw new Error("no file_url");
         if (IMAGE_MIME.test(file.type) || isImageFile(uploaded)) {
-          const width = await probeWidth(uploaded.file_url);
           images.value.push({
             name: String(uploaded.name ?? ""),
             file_url: uploaded.file_url,
             file_name: uploaded.file_name || file.name,
-            width: width ? Math.min(width, MAX_EMAIL_WIDTH) : null,
+            natural: await probeWidth(uploaded.file_url),
+            size: DEFAULT_SIZE,
           });
         } else {
           onOther(uploaded);
@@ -139,6 +154,25 @@ export function useInlineReplyImages(
     await removeAttachmentFromServer(image.name).catch(() => {});
   }
 
+  /**
+   * Step this picture to the next size. A cycle rather than a dropdown: the
+   * target is a 56px thumbnail that has to work under a thumb on the phone, and
+   * there are only four choices to walk through.
+   */
+  function resize(image: InlineImage) {
+    image.size = nextSize(image.size, image.natural);
+  }
+
+  /** What the chip on a thumbnail reads — "M", or "480px" at natural size. */
+  function label(image: InlineImage) {
+    return sizeLabel(image.size, image.natural);
+  }
+
+  /** Whether to show the chip at all — see isResizable. */
+  function resizable(image: InlineImage) {
+    return isResizable(image.natural);
+  }
+
   /** Drop the local list without touching the server (post-send reset). */
   function reset() {
     images.value = [];
@@ -153,7 +187,8 @@ export function useInlineReplyImages(
     if (!images.value.length) return "";
     return images.value
       .map((i) => {
-        const width = i.width ? ` width="${i.width}"` : "";
+        const px = emailWidth(i.size, i.natural);
+        const width = px ? ` width="${px}"` : "";
         return (
           `<p><img src="${escapeAttr(i.file_url)}"` +
           ` alt="${escapeAttr(i.file_name)}"${width}` +
@@ -272,6 +307,9 @@ export function useInlineReplyImages(
     addFiles,
     addUploaded,
     remove,
+    resize,
+    label,
+    resizable,
     reset,
     html,
     onPaste,
