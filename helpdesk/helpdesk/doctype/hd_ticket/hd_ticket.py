@@ -7,7 +7,7 @@ from html import escape as html_escape
 from zoneinfo import ZoneInfo
 
 import frappe
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup
 from frappe import _
 from frappe.core.page.permission_manager.permission_manager import remove
 from frappe.desk.form.assign_to import add as assign
@@ -29,6 +29,10 @@ from helpdesk.helpdesk.doctype.hd_ticket_activity.hd_ticket_activity import (
     log_ticket_activity,
 )
 from helpdesk.helpdesk.utils import echo
+from helpdesk.helpdesk.utils.inline_images import (
+    embed_site_images,
+    inlined_file_urls,
+)
 from helpdesk.helpdesk.utils.email import (
     default_outgoing_email_account,
     default_ticket_outgoing_email_account,
@@ -1019,13 +1023,19 @@ class HDTicket(Document):
         communication.insert(ignore_permissions=True)
         capture_event("agent_replied")
 
+        # Every picked file is linked to the Communication and the ticket, but a
+        # file the body already embeds must not ALSO ride as an attachment — the
+        # requester would see the screenshot in the text and an identical
+        # download beside it. Linking still happens; only the mail payload skips.
+        inline = inlined_file_urls(message)
         _attachments = []
 
         for attachment in attachments:
             file_url = frappe.db.get_value("File", attachment, "file_url")
             self.attach_file_with_doc("Communication", communication.name, file_url)
             self.attach_file_with_doc("HD Ticket", self.name, file_url)
-            _attachments.append({"file_url": file_url})
+            if file_url not in inline:
+                _attachments.append({"file_url": file_url})
 
         if skip_email_workflow or not frappe.db.get_single_value(
             "HD Settings", "enable_reply_email_via_agent"
@@ -1800,28 +1810,14 @@ class HDTicket(Document):
         }
 
     def parse_content(self, content):
+        """Prepare a reply's HTML so its pictures arrive inline, not as downloads.
+
+        The whole of it lives in helpdesk.helpdesk.utils.inline_images — it is
+        shared with the agent-reply relay, and the reason it has to *replace*
+        each src rather than add an embed beside it is worth reading before
+        touching either caller.
         """
-        Finds 'src' attribute of img/video and replaces it  with 'embed' attribute
-        embed tag is important because framework replaces it with <img src="cid:content_id">
-        this in turn is displayed as an image in the mail sent to the customer
-        """
-        if not content:
-            return ""
-
-        soup = BeautifulSoup(content, "html.parser")
-
-        # comments (e.g. Outlook MSO conditionals in quoted replies) get mangled
-        # by the markdown conversion in sendmail and show up as visible text
-        for comment in soup.find_all(string=lambda s: isinstance(s, Comment)):
-            comment.extract()
-
-        for tag in soup.find_all(["img", "video"]):
-            if tag.name == "img":
-                tag["embed"] = tag.get("src")
-            elif tag.name == "video":
-                tag["embed"] = tag.get("src")
-
-        return str(soup)
+        return embed_site_images(content)
 
     @staticmethod
     def filter_standard_fields(fields):

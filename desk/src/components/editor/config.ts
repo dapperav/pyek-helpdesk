@@ -25,7 +25,12 @@ import {
   type CommandMenuItem,
 } from "frappe-ui/editor";
 import type { MaybeRefOrGetter } from "vue";
-import { CleanStyles, ComponentUtils, HandleExcelPaste } from "@/tiptap-extensions";
+import {
+  CapImageWidth,
+  CleanStyles,
+  ComponentUtils,
+  HandleExcelPaste,
+} from "@/tiptap-extensions";
 
 /** A mentionable agent as the new editor expects it: `{ id, label }`. */
 export interface MentionItem {
@@ -52,6 +57,9 @@ export function buildEditorExtensions(options: {
     ComponentUtils,
     HandleExcelPaste,
     CleanStyles,
+    // Clamps a freshly pasted screenshot to a width that survives Outlook; the
+    // node view's drag handle still overrides it. See tiptap-extensions.ts.
+    CapImageWidth,
     ...(options.extra ?? []),
   ];
 }

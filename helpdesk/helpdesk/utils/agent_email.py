@@ -30,6 +30,10 @@ import frappe
 from frappe.utils import get_url, pretty_date
 
 from helpdesk.helpdesk.utils import echo
+from helpdesk.helpdesk.utils.inline_images import (
+    embed_site_images,
+    inlined_file_urls,
+)
 
 # Cut here on the way back in. Wording matters: it is the one instruction the
 # agent sees, and every mail client quotes it back to us verbatim.
@@ -523,6 +527,13 @@ def relay_agent_reply(ticket, communication) -> bool:
         if address and address.lower() not in own:
             cc.append(address)
 
+    # The agent's mail client wrote this HTML and its pictures point at site
+    # URLs the requester can't open. Same treatment the portal's own replies get
+    # (see helpdesk.helpdesk.utils.inline_images) — without it the relay is the
+    # one reply surface that still arrives as a wall of broken boxes.
+    body = embed_site_images(communication.content)
+    inline = inlined_file_urls(body)
+
     attachments = [
         {"file_url": file_url}
         for file_url in frappe.get_all(
@@ -533,6 +544,10 @@ def relay_agent_reply(ticket, communication) -> bool:
             },
             pluck="file_url",
         )
+        # An embedded picture already travels with the message. Attaching it
+        # again would show the requester the screenshot in the text and an
+        # identical download sitting beside it.
+        if file_url not in inline
     ]
 
     frappe.sendmail(
@@ -540,7 +555,7 @@ def relay_agent_reply(ticket, communication) -> bool:
         cc=cc or None,
         communication=communication.name,
         expose_recipients="header",
-        message=communication.content,
+        message=body,
         recipients=recipients,
         reference_doctype="HD Ticket",
         reference_name=ticket.name,

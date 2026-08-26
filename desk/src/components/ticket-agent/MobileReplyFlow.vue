@@ -101,6 +101,16 @@
           >
             <FeatherIcon class="h-2.5 w-2.5" name="x" />
           </button>
+          <button
+            v-if="inlineResizable(img)"
+            class="absolute inset-x-0 bottom-0 rounded-b-lg bg-black/55 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
+            :title="__('How wide it goes out in the email — tap to change')"
+            :aria-label="__('Change image size')"
+            @mousedown.prevent
+            @click="resizeInlineImage(img)"
+          >
+            {{ inlineSizeLabel(img) }}
+          </button>
         </div>
         <span v-if="inlineBusy" class="text-xs text-ink-gray-4">
           {{ __("Uploading…") }}
@@ -635,6 +645,9 @@ const {
   onDragOver: inlineDragOver,
   onDrop: inlineDrop,
   remove: removeInlineImage,
+  resize: resizeInlineImage,
+  label: inlineSizeLabel,
+  resizable: inlineResizable,
 } = inline;
 
 /**
