@@ -18,7 +18,7 @@ import { SuggestionExtension } from "frappe-ui/editor";
 import FieldAutocompleteList from "./components/Settings/SavedReplies/components/FieldAutocompleteList.vue";
 import { userFields } from "./components/Settings/SavedReplies/savedReplies";
 import { getMeta } from "./stores/meta";
-import { MAX_EMAIL_WIDTH } from "./emailImageSize";
+import { clampToEmailWidth, MAX_EMAIL_WIDTH } from "./emailImageSize";
 
 export interface FieldItem {
   title: string;
@@ -835,18 +835,16 @@ export const CapImageWidth = Extension.create<{ max: number }>({
             const width = Number(node.attrs.width);
             if (!width) return;
 
-            const next = (tr ??= newState.tr);
-            if (width <= max) {
-              // Small enough already — mark it so we never look again.
-              next.setNodeMarkup(pos, undefined, { ...node.attrs, sized: true });
-              return;
-            }
-
-            const height = Number(node.attrs.height);
-            next.setNodeMarkup(pos, undefined, {
+            const clamped = clampToEmailWidth(
+              width,
+              Number(node.attrs.height) || null,
+              max
+            );
+            // A null clamp means it already fits; mark it either way so we
+            // never look at this node again.
+            (tr ??= newState.tr).setNodeMarkup(pos, undefined, {
               ...node.attrs,
-              width: max,
-              height: height ? Math.round((height * max) / width) : null,
+              ...(clamped ?? {}),
               sized: true,
             });
           });

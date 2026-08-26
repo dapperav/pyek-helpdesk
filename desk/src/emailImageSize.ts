@@ -79,6 +79,26 @@ export function nextSize(key: SizeKey, natural: number | null): SizeKey {
 }
 
 /**
+ * Clamp a freshly inserted picture to something an email can carry, keeping the
+ * aspect ratio. Returns null when it already fits — the caller uses that to
+ * mark the node and stop looking rather than dispatching a no-op transaction.
+ *
+ * Height is rounded, not floored: a 1407x766 screenshot at 640 wide is 348.36
+ * tall, and flooring accumulates a visible squash on tall narrow images.
+ */
+export function clampToEmailWidth(
+  width: number,
+  height: number | null,
+  max: number = MAX_EMAIL_WIDTH
+): { width: number; height: number | null } | null {
+  if (!width || width <= max) return null;
+  return {
+    width: max,
+    height: height ? Math.round((height * max) / width) : null,
+  };
+}
+
+/**
  * Whether this picture has more than one size worth offering. A 200px icon
  * doesn't — every step collapses to 200px — so the caller hides the control
  * rather than leaving a button that does nothing when pressed.
